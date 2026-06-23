@@ -2630,14 +2630,36 @@
             ? "pay-danger"
             : "pay-neutral";
         const searchText = [
-          orderNo,
-          recipientName,
-          recipientPhone,
-          recipientAddress,
-          String(order?.finalAmount ?? "").trim(),
+          order?.orderNo,
+          order?.recipientName,
+          order?.recipientPhone,
+          order?.recipientAddress,
+
+          order?.buyerName,
+          order?.buyerPhone,
+
+          order?.itemsSummary,
+          order?.finalAmount,
+
+          order?.paymentMethod,
+          order?.paymentStatus,
+
+          order?.customerNote,
+          order?.adminNote,
+
+          order?.lineDisplayName,
+          order?.trackingNo,
+
+          order?.orderStatus,
+          order?.expectedShippingDate,
+          order?.actualShippingDate,
+
+          order?.changedFields,
+          order?.notificationStatus,
         ]
+          .map((value) => String(value ?? "").trim())
+          .filter(Boolean)
           .join(" ")
-          .trim()
           .toLowerCase();
         const customerNote = String(order?.customerNote ?? "").trim();
         const actualShippingDateRow = buildReadOnlyExtraRow(
