@@ -1239,6 +1239,9 @@
         <div class="gas-test-status" id="gasTestStatus">
           準備讀取 GAS 訂單資料...
         </div>
+        <div class="gas-test-status" id="adminReadStatus">
+          等待管理員完整訂單讀取…
+        </div>
       </div>
 
       <div class="top-filter-panel">
@@ -1807,6 +1810,7 @@
       const ADMIN_LINE_STATE_KEY = "milkpear_admin_line_state";
       const ADMIN_LINE_NONCE_KEY = "milkpear_admin_line_nonce";
       const ADMIN_LINE_CODE_VERIFIER_KEY = "milkpear_admin_line_code_verifier";
+      const ADMIN_LINE_SESSION_TOKEN_KEY = "milkpear_admin_session_token";
 
       const PRODUCT_LIST = [
         {
@@ -1938,6 +1942,7 @@
       async function startAdminAuth(forceLogin = false) {
         if (!isLineLoginConfigured()) {
           clearAdminAuthSession();
+          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
           showAdminAuthOverlay("⚠️ 尚未完成管理員登入設定", false);
           return;
         }
@@ -1977,6 +1982,7 @@
 
         if (!codeVerifier || !nonce) {
           clearAdminAuthSession();
+          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
           clearAdminAuthQuery();
           showAdminAuthOverlay("⚠️ LINE 登入驗證失敗，請重新登入 LINE", true);
           return false;
@@ -1998,18 +2004,33 @@
           });
 
           const payload = await response.json();
-          clearAdminAuthSession();
-          clearAdminAuthQuery();
 
-          if (payload && payload.ok === true && payload.allowed === true) {
+          if (
+            payload &&
+            payload.ok === true &&
+            payload.action === "adminAuth" &&
+            payload.allowed === true &&
+            typeof payload.adminSessionToken === "string" &&
+            payload.adminSessionToken.trim()
+          ) {
+            sessionStorage.setItem(
+              ADMIN_LINE_SESSION_TOKEN_KEY,
+              payload.adminSessionToken.trim(),
+            );
+            clearAdminAuthSession();
+            clearAdminAuthQuery();
             hideAdminAuthOverlay();
             return true;
           }
 
+          clearAdminAuthSession();
+          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+          clearAdminAuthQuery();
           showAdminAuthOverlay("⚠️ 非白名單管理員，請重新登入 LINE", true);
           return false;
         } catch (error) {
           clearAdminAuthSession();
+          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
           clearAdminAuthQuery();
           showAdminAuthOverlay("⚠️ LINE 登入驗證失敗，請重新登入 LINE", true);
           return false;
@@ -2022,6 +2043,7 @@
         const params = new URLSearchParams(window.location.search);
         if (params.has("error") || params.has("error_description")) {
           clearAdminAuthSession();
+          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
           clearAdminAuthQuery();
           showAdminAuthOverlay(
             "⚠️ LINE 登入已取消或失敗，請重新登入 LINE",
@@ -2037,6 +2059,7 @@
           const expectedState = sessionStorage.getItem(ADMIN_LINE_STATE_KEY);
           if (!expectedState || returnedState !== expectedState) {
             clearAdminAuthSession();
+            sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
             clearAdminAuthQuery();
             showAdminAuthOverlay("⚠️ LINE 登入驗證失敗，請重新登入 LINE", true);
             return false;
@@ -2449,6 +2472,95 @@
         }
       }
 
+      async function fetchAdminOrdersFromGas() {
+        const adminReadStatusEl = document.getElementById("adminReadStatus");
+
+        try {
+          const baseUrl = String(GAS_ORDERS_API_URL || "").trim();
+          const adminSessionToken = String(
+            sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+          ).trim();
+
+          if (adminReadStatusEl) {
+            adminReadStatusEl.className = "gas-test-status";
+            adminReadStatusEl.innerText = "讀取管理員完整訂單中...";
+          }
+
+          if (!baseUrl || !adminSessionToken) {
+            throw new Error("ADMIN_SESSION_REQUIRED");
+          }
+
+          const response = await fetch(baseUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify({
+              action: "adminReadOrders",
+              adminSessionToken,
+            }),
+          });
+
+          const payload = await response.json();
+
+          if (
+            payload &&
+            payload.ok === false &&
+            payload.action === "adminReadOrders" &&
+            payload.error === "ADMIN_SESSION_REQUIRED"
+          ) {
+            throw new Error("ADMIN_SESSION_REQUIRED");
+          }
+
+          if (
+            !payload ||
+            payload.ok !== true ||
+            payload.action !== "adminReadOrders" ||
+            !Array.isArray(payload.orders)
+          ) {
+            throw new Error("ADMIN_ORDERS_READ_FAILED");
+          }
+
+          const orders = payload.orders;
+          const firstOrder = orders[0] || null;
+          const returnedCount = Number.isFinite(Number(payload.count))
+            ? Number(payload.count)
+            : orders.length;
+          const statusLines = [
+            "✅ 管理員完整訂單讀取成功",
+            `回傳筆數：${returnedCount}`,
+          ];
+
+          if (firstOrder) {
+            statusLines.push(
+              `第一筆訂單編號：${firstOrder.orderNo || "未提供"}`,
+            );
+          } else {
+            statusLines.push("目前沒有正式訂單");
+          }
+
+          if (adminReadStatusEl) {
+            adminReadStatusEl.className = "gas-test-status success";
+            adminReadStatusEl.innerText = statusLines.join("\n");
+          }
+        } catch (error) {
+          if (String(error && error.message) === "ADMIN_SESSION_REQUIRED") {
+            sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+            showAdminAuthOverlay(
+              "⚠️ 登入已過期，請重新登入 LINE",
+              true,
+            );
+            return;
+          }
+
+          if (adminReadStatusEl) {
+            adminReadStatusEl.className = "gas-test-status error";
+            adminReadStatusEl.innerText =
+              "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。";
+          }
+        }
+      }
+
       // 頁面初始化
       window.addEventListener("DOMContentLoaded", async () => {
         const retryBtn = document.getElementById("adminAuthRetryBtn");
@@ -2468,7 +2580,8 @@
 
         const isAdminAllowed = await initAdminAuth();
         if (isAdminAllowed) {
-          fetchOrdersFromGas();
+          await fetchOrdersFromGas();
+          await fetchAdminOrdersFromGas();
         }
       });
       // ==========================================
