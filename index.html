@@ -1312,6 +1312,7 @@
           data-pending-notice-fields=""
           data-discount-amount="0"
           data-discount-reason=""
+          data-search-text="王大明 0966-966-693 台北市中正區長安路一段45-3號 3500"
         >
           <div class="row-top">
             <div class="order-no-wrapper">
@@ -2543,6 +2544,8 @@
             adminReadStatusEl.className = "gas-test-status success";
             adminReadStatusEl.innerText = statusLines.join("\n");
           }
+
+          return orders;
         } catch (error) {
           if (String(error && error.message) === "ADMIN_SESSION_REQUIRED") {
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
@@ -2550,7 +2553,7 @@
               "⚠️ 登入已過期，請重新登入 LINE",
               true,
             );
-            return;
+            return null;
           }
 
           if (adminReadStatusEl) {
@@ -2558,7 +2561,285 @@
             adminReadStatusEl.innerText =
               "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。";
           }
+
+          return null;
         }
+      }
+
+      function renderAdminOrders(adminOrders) {
+        const cardsContainer = document.getElementById("cards-container");
+
+        if (!cardsContainer || !Array.isArray(adminOrders)) {
+          return false;
+        }
+
+        try {
+          if (adminOrders.length === 0) {
+            cardsContainer.innerHTML = `
+              <div class="status-msg">
+                目前沒有正式訂單
+              </div>
+            `;
+            return true;
+          }
+
+          const renderedHtml = adminOrders
+            .map((order) => buildAdminOrderCardHtml(order))
+            .join("");
+
+          if (!renderedHtml.trim()) {
+            return false;
+          }
+
+          cardsContainer.innerHTML = renderedHtml;
+          return true;
+        } catch (error) {
+          const adminReadStatusEl = document.getElementById("adminReadStatus");
+
+          if (adminReadStatusEl) {
+            adminReadStatusEl.className = "gas-test-status error";
+            adminReadStatusEl.innerText =
+              "⚠️ 真實訂單卡渲染失敗，原畫面已保留。";
+          }
+
+          return false;
+        }
+      }
+
+      function buildAdminOrderCardHtml(order) {
+        const statusMeta = getAdminOrderStatusMeta(order?.orderStatus);
+        const orderStatus = String(order?.orderStatus ?? "").trim();
+        const orderNo = String(order?.orderNo ?? "").trim();
+        const recipientName = String(order?.recipientName ?? "").trim();
+        const recipientPhone = String(order?.recipientPhone ?? "").trim();
+        const recipientAddress = String(order?.recipientAddress ?? "").trim();
+        const finalAmount = formatAdminMoney(order?.finalAmount);
+        const discountAmountNumber = Number(order?.discountAmount);
+        const hasDiscount =
+          Number.isFinite(discountAmountNumber) && discountAmountNumber > 0;
+        const originalAmount = formatAdminMoney(order?.originalAmount);
+        const discountAmount = formatAdminMoney(order?.discountAmount);
+        const discountReason = String(order?.discountReason ?? "").trim();
+        const paymentLabel = formatReadOnlyPaymentLabel(
+          order?.paymentMethod,
+          order?.paymentStatus,
+        );
+        const paymentClass = paymentLabel.includes("已付款")
+          ? "pay-success"
+          : paymentLabel.includes("未付款")
+            ? "pay-danger"
+            : "pay-neutral";
+        const searchText = [
+          orderNo,
+          recipientName,
+          recipientPhone,
+          recipientAddress,
+          String(order?.finalAmount ?? "").trim(),
+        ]
+          .join(" ")
+          .trim()
+          .toLowerCase();
+        const customerNote = String(order?.customerNote ?? "").trim();
+        const actualShippingDateRow = buildReadOnlyExtraRow(
+          "實際出貨日期",
+          order?.actualShippingDate,
+        );
+        const trackingNoRow = buildReadOnlyExtraRow("宅配單號", order?.trackingNo);
+
+        return `
+          <div
+            class="card ${escapeHtml(statusMeta.cardClass)}"
+            data-status="${escapeHtml(orderStatus)}"
+            data-readonly="true"
+            data-order-no="${escapeHtml(orderNo)}"
+            data-search-text="${escapeHtml(searchText)}"
+          >
+            <div class="row-top">
+              <div class="order-no-wrapper">
+                <div class="order-no">
+                  訂單編號：${escapeHtml(orderNo || "未提供")}
+                  <span class="state-badge ${escapeHtml(statusMeta.badgeClass)}">${escapeHtml(statusMeta.badgeText)}</span>
+                  <span class="payment-badge pay-neutral">👁 唯讀</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="main-customer-block">
+              <div class="customer-info-group">
+                <div class="name">${escapeHtml(recipientName || "未提供")}</div>
+                <div class="phone">${escapeHtml(recipientPhone || "未提供")}</div>
+                <div class="address">${escapeHtml(recipientAddress || "未提供")}</div>
+              </div>
+
+              <div class="right-header-box">
+                <div class="amount">$${escapeHtml(finalAmount)}</div>
+                ${
+                  hasDiscount
+                    ? `<div class="original-amount">原始應收：$${escapeHtml(originalAmount)}</div>`
+                    : `<div class="original-amount" style="display: none"></div>`
+                }
+                <div class="payment-badge ${escapeHtml(paymentClass)}">${escapeHtml(paymentLabel)}</div>
+              </div>
+            </div>
+
+            ${
+              customerNote
+                ? `<div class="order-note">${formatMultilineHtml(customerNote)}</div>`
+                : ""
+            }
+            ${
+              hasDiscount
+                ? `<div class="discount-badge">優惠：-$${escapeHtml(discountAmount)}${discountReason ? `｜優惠原因：${escapeHtml(discountReason)}` : ""}</div>`
+                : ""
+            }
+
+            <div class="product-section">
+              <div class="product-container-view">
+                ${formatMultilineHtml(order?.itemsSummary || "未提供")}
+              </div>
+            </div>
+
+            <details>
+              <summary>出貨安排</summary>
+              <div class="quick-operation-panel">
+                <div class="quick-operation-grid">
+                  <div class="quick-operation-field">
+                    <label>預計出貨日期</label>
+                    <div>${escapeHtml(String(order?.expectedShippingDate ?? "").trim() || "未填")}</div>
+                  </div>
+                  <div class="quick-operation-field">
+                    <label>付款資訊</label>
+                    <div>${escapeHtml(paymentLabel)}</div>
+                  </div>
+                  <div class="quick-operation-field">
+                    <label>訂單狀態</label>
+                    <div>${escapeHtml(orderStatus || "未設定")}</div>
+                  </div>
+                </div>
+              </div>
+              <div class="extra">
+                ${actualShippingDateRow}
+                ${trackingNoRow}
+              </div>
+            </details>
+
+            <details>
+              <summary>更多資訊</summary>
+              <div class="extra">
+                ${buildReadOnlyExtraRow("訂購人", order?.buyerName)}
+                ${buildReadOnlyExtraRow("訂購人電話", order?.buyerPhone)}
+                ${buildReadOnlyExtraRow("LINE 名稱", order?.lineDisplayName)}
+                ${buildReadOnlyExtraRow("訂單來源", order?.orderSource)}
+                ${buildReadOnlyExtraRow("管理員備註", order?.adminNote, "admin-note-display")}
+                ${buildReadOnlyExtraRow("異動欄位", order?.changedFields)}
+                ${buildReadOnlyExtraRow("通知狀態", order?.notificationStatus)}
+                ${buildReadOnlyExtraRow("最後通知類型", order?.lastNotificationType)}
+                ${buildReadOnlyExtraRow("最後通知方式", order?.lastNotificationMethod)}
+                ${buildReadOnlyExtraRow("最後通知時間", order?.lastNotificationAt)}
+                ${buildReadOnlyExtraRow("最後修改人", order?.lastUpdatedBy)}
+                ${buildReadOnlyExtraRow("最後修改時間", order?.lastUpdatedAt)}
+                ${buildReadOnlyExtraRow("建立人", order?.createdBy)}
+                ${buildReadOnlyExtraRow("建立時間", order?.createdAt)}
+              </div>
+            </details>
+          </div>
+        `;
+      }
+
+      function applyReadOnlyModeToRealOrders() {
+        document
+          .querySelectorAll(
+            ".btn-add-order-trigger, #global-selectAll, #batchShippedBtn, #sendBtn",
+          )
+          .forEach((element) => {
+            element.disabled = true;
+            element.title = "D1-3 資料寫回功能尚未開放";
+            element.setAttribute("aria-disabled", "true");
+            element.classList.remove("enabled");
+          });
+      }
+
+      function getAdminOrderStatusMeta(orderStatus) {
+        const status = String(orderStatus ?? "").trim();
+
+        if (status === "待確認") {
+          return {
+            cardClass: "status-pending",
+            badgeClass: "state-badge-pending",
+            badgeText: "待確認",
+          };
+        }
+        if (status === "已安排出貨") {
+          return {
+            cardClass: "status-confirmed",
+            badgeClass: "state-badge-confirmed",
+            badgeText: "已安排出貨",
+          };
+        }
+        if (status === "已寄出") {
+          return {
+            cardClass: "status-shipped",
+            badgeClass: "state-badge-shipped",
+            badgeText: "已寄出",
+          };
+        }
+        if (status === "已取消") {
+          return {
+            cardClass: "status-cancelled",
+            badgeClass: "state-badge-cancelled",
+            badgeText: "已取消",
+          };
+        }
+
+        return {
+          cardClass: "status-cancelled",
+          badgeClass: "state-badge-cancelled",
+          badgeText: "未設定",
+        };
+      }
+
+      function formatAdminMoney(value) {
+        const number = Number(String(value ?? "0").replace(/,/g, ""));
+
+        if (!Number.isFinite(number)) {
+          return "0";
+        }
+
+        return Math.round(number).toLocaleString("zh-TW");
+      }
+
+      function formatReadOnlyPaymentLabel(paymentMethod, paymentStatus) {
+        const method = String(paymentMethod ?? "").trim();
+        const status = String(paymentStatus ?? "").trim();
+
+        if (method.includes("貨到")) return "貨到付款";
+        if (method.includes("月結")) return "月結";
+        if (method.includes("季結")) return "季結";
+        if (method && status) return `${method}－${status}`;
+        if (method) return method;
+        if (status) return status;
+        return "付款資訊未填";
+      }
+
+      function formatMultilineHtml(value) {
+        return escapeHtml(String(value ?? "").trim()).replace(/\r?\n/g, "<br>");
+      }
+
+      function buildReadOnlyExtraRow(label, value, extraClass = "") {
+        const normalizedValue = String(value ?? "").trim();
+
+        if (!normalizedValue) {
+          return "";
+        }
+
+        const className = String(extraClass ?? "").trim();
+
+        return `
+          <div class="extra-item">
+            <div class="label">${escapeHtml(label)}</div>
+            <div${className ? ` class="${escapeHtml(className)}"` : ""}>${formatMultilineHtml(normalizedValue)}</div>
+          </div>
+        `;
       }
 
       // 頁面初始化
@@ -2581,7 +2862,24 @@
         const isAdminAllowed = await initAdminAuth();
         if (isAdminAllowed) {
           await fetchOrdersFromGas();
-          await fetchAdminOrdersFromGas();
+
+          const adminOrders = await fetchAdminOrdersFromGas();
+
+          if (!Array.isArray(adminOrders)) {
+            return;
+          }
+
+          const rendered = renderAdminOrders(adminOrders);
+
+          if (!rendered) {
+            return;
+          }
+
+          updateStatsCounters();
+          applyCurrentFilter();
+          handleBatchCheckChange();
+          updateNotifyButton();
+          applyReadOnlyModeToRealOrders();
         }
       });
       // ==========================================
@@ -2692,10 +2990,12 @@
         const cards = document.querySelectorAll(".cards-container .card");
         cards.forEach((card) => {
           const cardStatus = card.getAttribute("data-status") || "待確認";
-          if (
+          const statusMatch =
             currentFilterStatus === "全部" ||
-            cardStatus === currentFilterStatus
-          ) {
+            cardStatus === currentFilterStatus;
+          const searchMatch = card.dataset.searchMatch !== "false";
+
+          if (statusMatch && searchMatch) {
             card.style.display = "";
           } else {
             card.style.display = "none";
@@ -3566,16 +3866,19 @@ ${adminNote}
 
       // 搜尋功能
       function handleSearch() {
-        const query = document.getElementById("searchBar").value.toLowerCase();
-        const cards = document.querySelectorAll(".cards-container .card");
-        cards.forEach((card) => {
-          const content = card.innerText.toLowerCase();
-          if (content.includes(query)) {
-            card.style.display = "";
-          } else {
-            card.style.display = "none";
-          }
+        const keyword = String(
+          document.getElementById("searchBar")?.value ?? "",
+        )
+          .trim()
+          .toLowerCase();
+
+        document.querySelectorAll(".cards-container .card").forEach((card) => {
+          const searchableText = String(card.dataset.searchText || "");
+          card.dataset.searchMatch =
+            !keyword || searchableText.includes(keyword) ? "true" : "false";
         });
+
+        applyCurrentFilter();
       }
 
       // 彈窗模組開啟關閉
