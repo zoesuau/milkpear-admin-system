@@ -2056,13 +2056,21 @@
         const code = params.get("code");
         const returnedState = params.get("state");
 
-        if (code) {
+        if (params.has("code") || params.has("state")) {
           const expectedState = sessionStorage.getItem(ADMIN_LINE_STATE_KEY);
-          if (!expectedState || returnedState !== expectedState) {
+          if (
+            !code ||
+            !returnedState ||
+            !expectedState ||
+            returnedState !== expectedState
+          ) {
             clearAdminAuthSession();
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
             clearAdminAuthQuery();
-            showAdminAuthOverlay("⚠️ LINE 登入驗證失敗，請重新登入 LINE", true);
+            showAdminAuthOverlay(
+              "⚠️ LINE 登入驗證失敗，請重新登入 LINE",
+              true,
+            );
             return false;
           }
 
@@ -2896,28 +2904,31 @@
         renderProductManagement();
 
         const isAdminAllowed = await initAdminAuth();
-        if (isAdminAllowed) {
-          await fetchOrdersFromGas();
 
-          const adminOrders = await fetchAdminOrdersFromGas();
-
-          if (!Array.isArray(adminOrders)) {
-            return;
-          }
-
-          const rendered = renderAdminOrders(adminOrders);
-
-          if (!rendered) {
-            return;
-          }
-
-          updateStatsCounters();
-          applyCurrentFilter();
-          handleBatchCheckChange();
-          updateNotifyButton();
-          applyReadOnlyModeToRealOrders();
-          hideAdminAuthOverlay();
+        if (isAdminAllowed !== true) {
+          return;
         }
+
+        await fetchOrdersFromGas();
+
+        const adminOrders = await fetchAdminOrdersFromGas();
+
+        if (!Array.isArray(adminOrders)) {
+          return;
+        }
+
+        const rendered = renderAdminOrders(adminOrders);
+
+        if (!rendered) {
+          return;
+        }
+
+        updateStatsCounters();
+        applyCurrentFilter();
+        handleBatchCheckChange();
+        updateNotifyButton();
+        applyReadOnlyModeToRealOrders();
+        hideAdminAuthOverlay();
       });
       // ==========================================
       // ✨ 系統一：訂單狀態 badge/class 同步（由系統自動推導）
