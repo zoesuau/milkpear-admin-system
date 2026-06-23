@@ -2020,7 +2020,7 @@
             );
             clearAdminAuthSession();
             clearAdminAuthQuery();
-            hideAdminAuthOverlay();
+            showAdminAuthOverlay("正在讀取最新訂單資料...", false);
             return true;
           }
 
@@ -2067,6 +2067,15 @@
           }
 
           return completeAdminAuth(code);
+        }
+
+        const existingSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+
+        if (existingSessionToken) {
+          showAdminAuthOverlay("正在驗證既有管理員登入狀態...", false);
+          return true;
         }
 
         await startAdminAuth();
@@ -2562,6 +2571,11 @@
               "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。";
           }
 
+          showAdminAuthOverlay(
+            "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。",
+            false,
+          );
+
           return null;
         }
       }
@@ -2902,6 +2916,7 @@
           handleBatchCheckChange();
           updateNotifyButton();
           applyReadOnlyModeToRealOrders();
+          hideAdminAuthOverlay();
         }
       });
       // ==========================================
