@@ -60,6 +60,54 @@
         color: #b91c1c;
       }
 
+      .admin-auth-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(244, 246, 245, 0.96);
+      }
+
+      .admin-auth-overlay.hidden {
+        display: none;
+      }
+
+      .admin-auth-panel {
+        width: min(100%, 360px);
+        background: #ffffff;
+        border: 1px solid #dbeafe;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.14);
+      }
+
+      .admin-auth-message {
+        color: #1e293b;
+        font-size: 15px;
+        font-weight: 800;
+        line-height: 1.6;
+        margin-bottom: 14px;
+      }
+
+      .admin-auth-retry {
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 14px;
+        background: #2563eb;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .admin-auth-retry.hidden {
+        display: none;
+      }
+
       .top-filter-panel {
         max-width: 500px;
         margin: 0 auto 16px auto;
@@ -1151,6 +1199,21 @@
   </head>
 
   <body>
+    <div class="admin-auth-overlay" id="adminAuthOverlay" aria-live="polite">
+      <div class="admin-auth-panel">
+        <div class="admin-auth-message" id="adminAuthMessage">
+          管理員登入確認中...
+        </div>
+        <button
+          type="button"
+          class="admin-auth-retry hidden"
+          id="adminAuthRetryBtn"
+        >
+          重新登入 LINE
+        </button>
+      </div>
+    </div>
+
     <div class="admin-tab-bar">
       <button
         type="button"
@@ -1738,6 +1801,12 @@
       const statusMsg = document.getElementById("statusMsg");
       const GAS_ORDERS_API_URL =
         "https://script.google.com/macros/s/AKfycby9r7QgpvOJ7KP_3uVI9eYHkzeJnPVFhP7Z3uQdQBvMogYglPoim79H3HJpjyUAgW57/exec";
+      const LINE_LOGIN_CHANNEL_ID = "2010484376";
+      const ADMIN_AUTH_REDIRECT_URI =
+        "https://zoesuau.github.io/milkpear-admin-system/index/";
+      const ADMIN_LINE_STATE_KEY = "milkpear_admin_line_state";
+      const ADMIN_LINE_NONCE_KEY = "milkpear_admin_line_nonce";
+      const ADMIN_LINE_CODE_VERIFIER_KEY = "milkpear_admin_line_code_verifier";
 
       const PRODUCT_LIST = [
         {
@@ -1809,6 +1878,176 @@
         .map((product) => product.code);
       const CURRENT_ADMIN_NAME = "後台管理員";
       let currentFilterStatus = "全部";
+
+      function showAdminAuthOverlay(message, showRetry) {
+        const overlay = document.getElementById("adminAuthOverlay");
+        const messageEl = document.getElementById("adminAuthMessage");
+        const retryBtn = document.getElementById("adminAuthRetryBtn");
+
+        if (messageEl) messageEl.innerText = message;
+        if (retryBtn) retryBtn.classList.toggle("hidden", !showRetry);
+        if (overlay) overlay.classList.remove("hidden");
+      }
+
+      function hideAdminAuthOverlay() {
+        const overlay = document.getElementById("adminAuthOverlay");
+        if (overlay) overlay.classList.add("hidden");
+      }
+
+      function clearAdminAuthSession() {
+        sessionStorage.removeItem(ADMIN_LINE_STATE_KEY);
+        sessionStorage.removeItem(ADMIN_LINE_NONCE_KEY);
+        sessionStorage.removeItem(ADMIN_LINE_CODE_VERIFIER_KEY);
+      }
+
+      function clearAdminAuthQuery() {
+        const cleanUrl = `${window.location.origin}${window.location.pathname}${window.location.hash}`;
+        history.replaceState({}, document.title, cleanUrl);
+      }
+
+      function base64UrlEncode(bytes) {
+        let binary = "";
+        bytes.forEach((byte) => {
+          binary += String.fromCharCode(byte);
+        });
+        return btoa(binary)
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/g, "");
+      }
+
+      function createRandomBase64Url(byteLength) {
+        const bytes = new Uint8Array(byteLength);
+        crypto.getRandomValues(bytes);
+        return base64UrlEncode(bytes);
+      }
+
+      async function createCodeChallenge(codeVerifier) {
+        const digest = await crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(codeVerifier),
+        );
+        return base64UrlEncode(new Uint8Array(digest));
+      }
+
+      function isLineLoginConfigured() {
+        const channelId = String(LINE_LOGIN_CHANNEL_ID || "").trim();
+        return channelId && channelId !== "PASTE_LINE_LOGIN_CHANNEL_ID_HERE";
+      }
+
+      async function startAdminAuth(forceLogin = false) {
+        if (!isLineLoginConfigured()) {
+          clearAdminAuthSession();
+          showAdminAuthOverlay("⚠️ 尚未完成管理員登入設定", false);
+          return;
+        }
+
+        const state = createRandomBase64Url(32);
+        const nonce = createRandomBase64Url(32);
+        const codeVerifier = createRandomBase64Url(64);
+        const codeChallenge = await createCodeChallenge(codeVerifier);
+
+        sessionStorage.setItem(ADMIN_LINE_STATE_KEY, state);
+        sessionStorage.setItem(ADMIN_LINE_NONCE_KEY, nonce);
+        sessionStorage.setItem(ADMIN_LINE_CODE_VERIFIER_KEY, codeVerifier);
+
+        const authorizeUrl = new URL(
+          "https://access.line.me/oauth2/v2.1/authorize",
+        );
+        authorizeUrl.searchParams.set("response_type", "code");
+        authorizeUrl.searchParams.set("client_id", LINE_LOGIN_CHANNEL_ID);
+        authorizeUrl.searchParams.set("redirect_uri", ADMIN_AUTH_REDIRECT_URI);
+        authorizeUrl.searchParams.set("state", state);
+        authorizeUrl.searchParams.set("scope", "openid profile");
+        authorizeUrl.searchParams.set("nonce", nonce);
+        authorizeUrl.searchParams.set("code_challenge", codeChallenge);
+        authorizeUrl.searchParams.set("code_challenge_method", "S256");
+        if (forceLogin) {
+          authorizeUrl.searchParams.set("disable_auto_login", "true");
+        }
+
+        window.location.assign(authorizeUrl.toString());
+      }
+
+      async function completeAdminAuth(code) {
+        const codeVerifier = sessionStorage.getItem(
+          ADMIN_LINE_CODE_VERIFIER_KEY,
+        );
+        const nonce = sessionStorage.getItem(ADMIN_LINE_NONCE_KEY);
+
+        if (!codeVerifier || !nonce) {
+          clearAdminAuthSession();
+          clearAdminAuthQuery();
+          showAdminAuthOverlay("⚠️ LINE 登入驗證失敗，請重新登入 LINE", true);
+          return false;
+        }
+
+        try {
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify({
+              action: "adminAuth",
+              code,
+              redirectUri: ADMIN_AUTH_REDIRECT_URI,
+              codeVerifier,
+              nonce,
+            }),
+          });
+
+          const payload = await response.json();
+          clearAdminAuthSession();
+          clearAdminAuthQuery();
+
+          if (payload && payload.ok === true && payload.allowed === true) {
+            hideAdminAuthOverlay();
+            return true;
+          }
+
+          showAdminAuthOverlay("⚠️ 非白名單管理員，請重新登入 LINE", true);
+          return false;
+        } catch (error) {
+          clearAdminAuthSession();
+          clearAdminAuthQuery();
+          showAdminAuthOverlay("⚠️ LINE 登入驗證失敗，請重新登入 LINE", true);
+          return false;
+        }
+      }
+
+      async function initAdminAuth() {
+        showAdminAuthOverlay("管理員登入確認中...", false);
+
+        const params = new URLSearchParams(window.location.search);
+        if (params.has("error") || params.has("error_description")) {
+          clearAdminAuthSession();
+          clearAdminAuthQuery();
+          showAdminAuthOverlay(
+            "⚠️ LINE 登入已取消或失敗，請重新登入 LINE",
+            true,
+          );
+          return false;
+        }
+
+        const code = params.get("code");
+        const returnedState = params.get("state");
+
+        if (code) {
+          const expectedState = sessionStorage.getItem(ADMIN_LINE_STATE_KEY);
+          if (!expectedState || returnedState !== expectedState) {
+            clearAdminAuthSession();
+            clearAdminAuthQuery();
+            showAdminAuthOverlay("⚠️ LINE 登入驗證失敗，請重新登入 LINE", true);
+            return false;
+          }
+
+          return completeAdminAuth(code);
+        }
+
+        await startAdminAuth();
+        return false;
+      }
 
       function switchAdminTab(tabName) {
         const orderSection = document.getElementById("order-page-section");
@@ -2211,7 +2450,14 @@
       }
 
       // 頁面初始化
-      window.addEventListener("DOMContentLoaded", () => {
+      window.addEventListener("DOMContentLoaded", async () => {
+        const retryBtn = document.getElementById("adminAuthRetryBtn");
+        if (retryBtn) {
+          retryBtn.addEventListener("click", () => {
+            startAdminAuth(true);
+          });
+        }
+
         calculateCardAmount("orderCard1");
         updateStatsCounters();
         handleBatchCheckChange();
@@ -2219,7 +2465,11 @@
         initShipmentBaseline("orderCard1");
         updateNotifyButton();
         renderProductManagement();
-        fetchOrdersFromGas();
+
+        const isAdminAllowed = await initAdminAuth();
+        if (isAdminAllowed) {
+          fetchOrdersFromGas();
+        }
       });
       // ==========================================
       // ✨ 系統一：訂單狀態 badge/class 同步（由系統自動推導）
