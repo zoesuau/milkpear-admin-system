@@ -435,6 +435,83 @@
         border-radius: 10px;
         font-size: 14px;
       }
+      .admin-workflow-editor {
+        margin-top: 14px;
+        padding: 14px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(79, 127, 99, 0.22);
+        border-radius: 12px;
+      }
+      .admin-workflow-title {
+        margin-bottom: 10px;
+        color: #334155;
+        font-size: 14px;
+        font-weight: 800;
+      }
+      .admin-workflow-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      .admin-workflow-field label {
+        display: block;
+        margin-bottom: 5px;
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .admin-workflow-date,
+      .admin-workflow-payment,
+      .admin-workflow-status {
+        width: 100%;
+        height: 40px;
+        padding: 0 10px;
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        color: #1e293b;
+        font-size: 14px;
+      }
+      .admin-workflow-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .admin-workflow-feedback {
+        flex: 1;
+        min-height: 18px;
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .admin-workflow-feedback.is-error {
+        color: #b91c1c;
+      }
+      .admin-workflow-save {
+        min-width: 112px;
+        height: 40px;
+        padding: 0 14px;
+        background: #4f7f63;
+        border: none;
+        border-radius: 10px;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .admin-workflow-save:disabled {
+        background: #cbd5e1;
+        color: #64748b;
+        cursor: not-allowed;
+      }
+      .admin-workflow-unavailable {
+        margin-top: 12px;
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 700;
+      }
       .autosave-msg {
         min-height: 18px;
         margin-top: 8px;
@@ -2632,6 +2709,21 @@
         const statusMeta = getAdminOrderStatusMeta(order?.orderStatus);
         const orderStatus = String(order?.orderStatus ?? "").trim();
         const orderNo = String(order?.orderNo ?? "").trim();
+        const expectedShippingDate = String(
+          order?.expectedShippingDate ?? "",
+        ).trim();
+        const paymentStatus = String(order?.paymentStatus ?? "").trim();
+        const adminWorkflowEditable =
+          !!orderNo &&
+          ["待確認", "已安排出貨"].includes(orderStatus) &&
+          [
+            "未付款",
+            "已付款",
+            "貨到付款",
+            "月結",
+            "季結",
+          ].includes(paymentStatus) &&
+          adminWorkflowIsValidDate(expectedShippingDate);
         const recipientName = String(order?.recipientName ?? "").trim();
         const recipientPhone = String(order?.recipientPhone ?? "").trim();
         const recipientAddress = String(order?.recipientAddress ?? "").trim();
@@ -2696,6 +2788,7 @@
             data-status="${escapeHtml(orderStatus)}"
             data-readonly="true"
             data-order-no="${escapeHtml(orderNo)}"
+            ${adminWorkflowEditable ? 'data-admin-workflow-editor="true"' : ""}
             data-search-text="${escapeHtml(searchText)}"
           >
             <div class="row-top">
@@ -2749,7 +2842,7 @@
                 <div class="quick-operation-grid">
                   <div class="quick-operation-field">
                     <label>預計出貨日期</label>
-                    <div>${escapeHtml(String(order?.expectedShippingDate ?? "").trim() || "未填")}</div>
+                    <div>${escapeHtml(expectedShippingDate || "未填")}</div>
                   </div>
                   <div class="quick-operation-field">
                     <label>付款資訊</label>
@@ -2761,6 +2854,15 @@
                   </div>
                 </div>
               </div>
+              ${
+                adminWorkflowEditable
+                  ? buildAdminWorkflowEditorHtml({
+                      expectedShippingDate,
+                      paymentStatus,
+                      orderStatus,
+                    })
+                  : `<div class="admin-workflow-unavailable">此筆目前不在 D1-3A 可編輯範圍。</div>`
+              }
               <div class="extra">
                 ${actualShippingDateRow}
                 ${trackingNoRow}
@@ -2788,6 +2890,375 @@
             </details>
           </div>
         `;
+      }
+
+      function buildAdminWorkflowEditorHtml({
+        expectedShippingDate,
+        paymentStatus,
+        orderStatus,
+      }) {
+        const paymentOptions = [
+          "未付款",
+          "已付款",
+          "貨到付款",
+          "月結",
+          "季結",
+        ];
+        const orderStatusOptions = ["待確認", "已安排出貨", "已取消"];
+        const buildOptions = (options, selectedValue) =>
+          options
+            .map(
+              (option) =>
+                `<option value="${escapeHtml(option)}"${option === selectedValue ? " selected" : ""}>${escapeHtml(option)}</option>`,
+            )
+            .join("");
+
+        return `
+          <div
+            class="admin-workflow-editor"
+            data-admin-workflow-editor="true"
+            data-baseline-date="${escapeHtml(expectedShippingDate)}"
+            data-baseline-payment="${escapeHtml(paymentStatus)}"
+            data-baseline-status="${escapeHtml(orderStatus)}"
+          >
+            <div class="admin-workflow-title">單筆訂單流程操作</div>
+            <div class="admin-workflow-grid">
+              <div class="admin-workflow-field">
+                <label>預計出貨日期</label>
+                <input
+                  type="date"
+                  class="admin-workflow-date"
+                  value="${escapeHtml(expectedShippingDate)}"
+                />
+              </div>
+              <div class="admin-workflow-field">
+                <label>付款狀態</label>
+                <select class="admin-workflow-payment">
+                  ${buildOptions(paymentOptions, paymentStatus)}
+                </select>
+              </div>
+              <div class="admin-workflow-field">
+                <label>訂單流程狀態</label>
+                <select class="admin-workflow-status">
+                  ${buildOptions(orderStatusOptions, orderStatus)}
+                </select>
+              </div>
+            </div>
+            <div class="admin-workflow-actions">
+              <div class="admin-workflow-feedback" aria-live="polite"></div>
+              <button type="button" class="admin-workflow-save" disabled>
+                儲存此筆修改
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      function adminWorkflowIsValidDate(value) {
+        if (value === "") return true;
+
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if (!match) return false;
+
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        const day = Number(match[3]);
+        const isLeapYear =
+          year % 400 === 0 || (year % 4 === 0 && year % 100 !== 0);
+        const daysInMonth = [
+          31,
+          isLeapYear ? 29 : 28,
+          31,
+          30,
+          31,
+          30,
+          31,
+          31,
+          30,
+          31,
+          30,
+          31,
+        ];
+
+        return (
+          year >= 1 &&
+          month >= 1 &&
+          month <= 12 &&
+          day >= 1 &&
+          day <= daysInMonth[month - 1]
+        );
+      }
+
+      function adminWorkflowGetValues(editor) {
+        return {
+          expectedShippingDate:
+            editor.querySelector(".admin-workflow-date")?.value || "",
+          paymentStatus:
+            editor.querySelector(".admin-workflow-payment")?.value || "",
+          orderStatus:
+            editor.querySelector(".admin-workflow-status")?.value || "",
+        };
+      }
+
+      function adminWorkflowSetFeedback(editor, message, isError = false) {
+        const feedback = editor.querySelector(".admin-workflow-feedback");
+        if (!feedback) return;
+
+        feedback.innerText = message;
+        feedback.classList.toggle("is-error", isError);
+      }
+
+      function adminWorkflowIsDirty(editor) {
+        const values = adminWorkflowGetValues(editor);
+        return (
+          values.expectedShippingDate !== (editor.dataset.baselineDate || "") ||
+          values.paymentStatus !== (editor.dataset.baselinePayment || "") ||
+          values.orderStatus !== (editor.dataset.baselineStatus || "")
+        );
+      }
+
+      function adminWorkflowRefreshDirtyState(editor) {
+        if (!editor || editor.dataset.saving === "true") return;
+
+        const isDirty = adminWorkflowIsDirty(editor);
+        const saveButton = editor.querySelector(".admin-workflow-save");
+        if (saveButton) saveButton.disabled = !isDirty;
+        adminWorkflowSetFeedback(editor, isDirty ? "尚未儲存" : "");
+      }
+
+      function adminWorkflowSetSaving(editor, isSaving) {
+        editor.dataset.saving = isSaving ? "true" : "false";
+        editor
+          .querySelectorAll(
+            ".admin-workflow-date, .admin-workflow-payment, .admin-workflow-status",
+          )
+          .forEach((control) => {
+            control.disabled = isSaving;
+          });
+
+        const saveButton = editor.querySelector(".admin-workflow-save");
+        if (saveButton) {
+          saveButton.disabled = isSaving || !adminWorkflowIsDirty(editor);
+        }
+      }
+
+      function adminWorkflowValidate(orderNo, values) {
+        if (!orderNo) return "訂單編號不存在，無法儲存。";
+
+        if (
+          !["未付款", "已付款", "貨到付款", "月結", "季結"].includes(
+            values.paymentStatus,
+          )
+        ) {
+          return "付款狀態不允許。";
+        }
+
+        if (
+          !["待確認", "已安排出貨", "已取消"].includes(values.orderStatus)
+        ) {
+          return "此操作不允許的訂單狀態。";
+        }
+
+        if (!adminWorkflowIsValidDate(values.expectedShippingDate)) {
+          return "日期格式不正確。";
+        }
+
+        if (
+          values.orderStatus === "已安排出貨" &&
+          !values.expectedShippingDate
+        ) {
+          return "已安排出貨必須選預計出貨日期。";
+        }
+
+        return "";
+      }
+
+      function adminWorkflowGetErrorMessage(errorCode) {
+        const messages = {
+          INVALID_EXPECTED_SHIPPING_DATE: "日期格式不正確。",
+          INVALID_ORDER_WORKFLOW_STATE: "已安排出貨必須選預計出貨日期。",
+          PAYMENT_STATUS_NOT_ALLOWED: "付款狀態不允許。",
+          ORDER_STATUS_NOT_ALLOWED: "此操作不允許的訂單狀態。",
+          ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
+          ORDER_NO_NOT_UNIQUE: "訂單資料異常，請停止操作。",
+          ADMIN_ORDER_UPDATE_BUSY: "系統忙碌，請稍後再試。",
+          ADMIN_ORDER_UPDATE_FAILED: "儲存失敗，未套用前端變更。",
+          ADMIN_ORDER_UPDATE_INDETERMINATE:
+            "無法確認儲存結果，請重新讀取此筆訂單。",
+        };
+
+        return messages[errorCode] || "儲存失敗，請重新讀取後再試。";
+      }
+
+      async function adminWorkflowRefreshOrdersAfterSave(editor) {
+        const adminOrders = await fetchAdminOrdersFromGas();
+        if (!Array.isArray(adminOrders)) {
+          adminWorkflowSetSaving(editor, false);
+          adminWorkflowSetFeedback(
+            editor,
+            "訂單已儲存，但重新讀取失敗，請重新整理確認最新資料。",
+            true,
+          );
+          return false;
+        }
+
+        const rendered = renderAdminOrders(adminOrders);
+        if (!rendered) {
+          adminWorkflowSetSaving(editor, false);
+          adminWorkflowSetFeedback(
+            editor,
+            "訂單已儲存，但重新讀取失敗，請重新整理確認最新資料。",
+            true,
+          );
+          return false;
+        }
+
+        updateStatsCounters();
+        applyCurrentFilter();
+        handleBatchCheckChange();
+        updateNotifyButton();
+        applyReadOnlyModeToRealOrders();
+        return true;
+      }
+
+      async function adminWorkflowSaveCard(card, editor) {
+        if (
+          !card ||
+          !editor ||
+          editor.dataset.saving === "true" ||
+          !adminWorkflowIsDirty(editor)
+        ) {
+          return;
+        }
+
+        const orderNo = String(card.getAttribute("data-order-no") || "").trim();
+        const values = adminWorkflowGetValues(editor);
+        const validationMessage = adminWorkflowValidate(orderNo, values);
+
+        if (validationMessage) {
+          adminWorkflowSetFeedback(editor, validationMessage, true);
+          return;
+        }
+
+        const adminSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+
+        if (!adminSessionToken) {
+          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+          showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+          adminWorkflowSetFeedback(editor, "登入已過期，請重新登入 LINE。", true);
+          return;
+        }
+
+        adminWorkflowSetSaving(editor, true);
+        adminWorkflowSetFeedback(editor, "儲存中…");
+
+        try {
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify({
+              action: "adminUpdateOrderWorkflow",
+              adminSessionToken,
+              orderNo,
+              expectedShippingDate: values.expectedShippingDate,
+              paymentStatus: values.paymentStatus,
+              orderStatus: values.orderStatus,
+            }),
+          });
+          const payload = await response.json();
+
+          if (
+            !payload ||
+            payload.ok !== true ||
+            payload.action !== "adminUpdateOrderWorkflow" ||
+            !payload.order ||
+            payload.order.orderNo !== orderNo ||
+            payload.order.expectedShippingDate !==
+              values.expectedShippingDate ||
+            payload.order.paymentStatus !== values.paymentStatus ||
+            payload.order.orderStatus !== values.orderStatus
+          ) {
+            const errorCode = String(payload?.errorCode || "");
+
+            if (errorCode === "ADMIN_SESSION_REQUIRED") {
+              sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+              showAdminAuthOverlay(
+                "⚠️ 登入已過期，請重新登入 LINE",
+                true,
+              );
+            }
+
+            adminWorkflowSetSaving(editor, false);
+            adminWorkflowSetFeedback(
+              editor,
+              errorCode === "ADMIN_SESSION_REQUIRED"
+                ? "登入已過期，請重新登入 LINE。"
+                : adminWorkflowGetErrorMessage(errorCode),
+              true,
+            );
+            return;
+          }
+
+          adminWorkflowSetFeedback(editor, "已儲存，正在重新讀取訂單…");
+          await adminWorkflowRefreshOrdersAfterSave(editor);
+        } catch (error) {
+          adminWorkflowSetSaving(editor, false);
+          adminWorkflowSetFeedback(
+            editor,
+            "儲存失敗，請重新讀取後再試。",
+            true,
+          );
+        }
+      }
+
+      function bindAdminWorkflowEvents() {
+        const cardsContainer = document.getElementById("cards-container");
+        if (!cardsContainer || cardsContainer.dataset.adminWorkflowBound) {
+          return;
+        }
+
+        cardsContainer.dataset.adminWorkflowBound = "true";
+
+        const handleValueChange = (event) => {
+          if (
+            !event.target.matches(
+              ".admin-workflow-date, .admin-workflow-payment, .admin-workflow-status",
+            )
+          ) {
+            return;
+          }
+
+          const editor = event.target.closest(
+            '[data-admin-workflow-editor="true"].admin-workflow-editor',
+          );
+          const card = event.target.closest(
+            '.card[data-readonly="true"][data-order-no][data-admin-workflow-editor="true"]',
+          );
+
+          if (!editor || !card || !card.contains(editor)) return;
+          adminWorkflowRefreshDirtyState(editor);
+        };
+
+        cardsContainer.addEventListener("input", handleValueChange);
+        cardsContainer.addEventListener("change", handleValueChange);
+        cardsContainer.addEventListener("click", (event) => {
+          const saveButton = event.target.closest(".admin-workflow-save");
+          if (!saveButton || !cardsContainer.contains(saveButton)) return;
+
+          const editor = saveButton.closest(
+            '[data-admin-workflow-editor="true"].admin-workflow-editor',
+          );
+          const card = saveButton.closest(
+            '.card[data-readonly="true"][data-order-no][data-admin-workflow-editor="true"]',
+          );
+
+          if (!editor || !card || !card.contains(editor)) return;
+          adminWorkflowSaveCard(card, editor);
+        });
       }
 
       function applyReadOnlyModeToRealOrders() {
@@ -2895,6 +3366,7 @@
           });
         }
 
+        bindAdminWorkflowEvents();
         calculateCardAmount("orderCard1");
         updateStatsCounters();
         handleBatchCheckChange();
