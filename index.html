@@ -512,6 +512,88 @@
         font-size: 12px;
         font-weight: 700;
       }
+      .admin-note-editor {
+        width: 100%;
+      }
+      .admin-note-view-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .admin-note-view-content {
+        flex: 1;
+        min-width: 0;
+      }
+      .admin-note-display {
+        margin-top: 4px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .admin-note-edit-button,
+      .admin-note-save,
+      .admin-note-cancel {
+        min-height: 36px;
+        padding: 0 12px;
+        border-radius: 9px;
+        font-size: 13px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .admin-note-edit-button,
+      .admin-note-cancel {
+        background: #ffffff;
+        border: 1px solid #94a3b8;
+        color: #475569;
+      }
+      .admin-note-edit-panel {
+        margin-top: 10px;
+      }
+      .admin-note-textarea {
+        width: 100%;
+        min-height: 112px;
+        padding: 10px 12px;
+        resize: vertical;
+        background: #ffffff;
+        border: 1px solid #94a3b8;
+        border-radius: 10px;
+        color: #1e293b;
+        font: inherit;
+        line-height: 1.55;
+      }
+      .admin-note-edit-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 8px;
+      }
+      .admin-note-count,
+      .admin-note-feedback {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .admin-note-count.is-error,
+      .admin-note-feedback.is-error {
+        color: #b91c1c;
+      }
+      .admin-note-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .admin-note-save {
+        background: #4f7f63;
+        border: 1px solid #4f7f63;
+        color: #ffffff;
+      }
+      .admin-note-edit-button:disabled,
+      .admin-note-save:disabled,
+      .admin-note-cancel:disabled,
+      .admin-note-textarea:disabled {
+        cursor: not-allowed;
+        opacity: 0.58;
+      }
       .autosave-msg {
         min-height: 18px;
         margin-top: 8px;
@@ -2839,6 +2921,7 @@
           .join(" ")
           .toLowerCase();
         const customerNote = String(order?.customerNote ?? "").trim();
+        const adminNote = String(order?.adminNote ?? "");
         const actualShippingDateRow = buildReadOnlyExtraRow(
           "實際寄出",
           actualShippingDate,
@@ -2944,7 +3027,7 @@
                 ${buildReadOnlyExtraRow("訂購人電話", order?.buyerPhone)}
                 ${buildReadOnlyExtraRow("LINE 名稱", order?.lineDisplayName)}
                 ${buildReadOnlyExtraRow("訂單來源", order?.orderSource)}
-                ${buildReadOnlyExtraRow("管理員備註", order?.adminNote, "admin-note-display")}
+                ${buildAdminNoteEditorHtml(adminNote)}
                 ${buildReadOnlyExtraRow("異動欄位", order?.changedFields)}
                 ${buildReadOnlyExtraRow("通知狀態", order?.notificationStatus)}
                 ${buildReadOnlyExtraRow("最後通知類型", order?.lastNotificationType)}
@@ -2958,6 +3041,375 @@
             </details>
           </div>
         `;
+      }
+
+      function buildAdminNoteEditorHtml(adminNote) {
+        const note = String(adminNote ?? "");
+        return `
+          <div
+            class="extra-item admin-note-editor"
+            data-admin-note-editor="true"
+            data-baseline-note="${escapeHtml(note)}"
+            data-open="false"
+            data-saving="false"
+          >
+            <div class="admin-note-view-row">
+              <div class="admin-note-view-content">
+                <div class="label">管理員備註</div>
+                <div class="admin-note-display">${formatMultilineHtml(note || "無")}</div>
+              </div>
+              <button type="button" class="admin-note-edit-button">
+                編輯備註
+              </button>
+            </div>
+            <div class="admin-note-edit-panel hidden">
+              <textarea
+                class="admin-note-textarea"
+                aria-label="管理員備註"
+              >${escapeHtml(note)}</textarea>
+              <div class="admin-note-edit-footer">
+                <div>
+                  <div class="admin-note-count">0／500</div>
+                  <div class="admin-note-feedback" aria-live="polite"></div>
+                </div>
+                <div class="admin-note-actions">
+                  <button type="button" class="admin-note-cancel">取消</button>
+                  <button type="button" class="admin-note-save" disabled>儲存</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      function adminNoteCharacterCount(value) {
+        return Array.from(String(value ?? "")).length;
+      }
+
+      function adminNoteNormalize(value) {
+        return String(value ?? "").trim();
+      }
+
+      function adminNoteSetFeedback(editor, message, isError = false) {
+        const feedback = editor?.querySelector(".admin-note-feedback");
+        if (!feedback) return;
+        feedback.innerText = message;
+        feedback.classList.toggle("is-error", isError);
+      }
+
+      function adminNoteIsOpen(card) {
+        const editor = card?.querySelector(
+          '[data-admin-note-editor="true"].admin-note-editor',
+        );
+        return (
+          editor?.dataset.open === "true" ||
+          editor?.dataset.saving === "true"
+        );
+      }
+
+      function adminNoteRefreshEditor(editor) {
+        if (!editor) return;
+        const textarea = editor.querySelector(".admin-note-textarea");
+        const saveButton = editor.querySelector(".admin-note-save");
+        const countEl = editor.querySelector(".admin-note-count");
+        const value = textarea?.value || "";
+        const count = adminNoteCharacterCount(value);
+        const isSaving = editor.dataset.saving === "true";
+        const isDirty = value !== (editor.dataset.baselineNote || "");
+        const isTooLong = count > 500;
+
+        if (countEl) {
+          countEl.innerText = `${count}／500`;
+          countEl.classList.toggle("is-error", isTooLong);
+        }
+        if (saveButton) {
+          saveButton.disabled = isSaving || !isDirty || isTooLong;
+        }
+        if (!isSaving) {
+          adminNoteSetFeedback(
+            editor,
+            isTooLong ? "管理員備註不可超過 500 個字元。" : "",
+            isTooLong,
+          );
+        }
+      }
+
+      function adminNoteRefreshCardLocks(card) {
+        if (!card) return;
+        const noteEditor = card.querySelector(
+          '[data-admin-note-editor="true"].admin-note-editor',
+        );
+        const workflowEditor = card.querySelector(
+          '[data-admin-workflow-editor="true"].admin-workflow-editor',
+        );
+        const shippedPanel = card.querySelector(
+          '[data-mark-shipped="true"].admin-mark-shipped-panel',
+        );
+        const noteLocked =
+          noteEditor?.dataset.open === "true" ||
+          noteEditor?.dataset.saving === "true";
+        const workflowSaving = workflowEditor?.dataset.saving === "true";
+        const shippedSaving = shippedPanel?.dataset.saving === "true";
+
+        if (workflowEditor) {
+          workflowEditor
+            .querySelectorAll(
+              ".admin-workflow-date, .admin-workflow-payment, .admin-workflow-status",
+            )
+            .forEach((control) => {
+              control.disabled = noteLocked || workflowSaving || shippedSaving;
+            });
+          const saveButton = workflowEditor.querySelector(
+            ".admin-workflow-save",
+          );
+          if (saveButton) {
+            saveButton.disabled =
+              noteLocked ||
+              workflowSaving ||
+              shippedSaving ||
+              !adminWorkflowIsDirty(workflowEditor);
+          }
+        }
+
+        if (shippedPanel) {
+          shippedPanel
+            .querySelectorAll(
+              ".admin-mark-shipped-date, .admin-mark-shipped-submit",
+            )
+            .forEach((control) => {
+              control.disabled = noteLocked || shippedSaving;
+            });
+          const submitButton = shippedPanel.querySelector(
+            ".admin-mark-shipped-submit",
+          );
+          if (submitButton) {
+            submitButton.disabled =
+              noteLocked ||
+              shippedSaving ||
+              workflowSaving ||
+              (!!workflowEditor && adminWorkflowIsDirty(workflowEditor));
+          }
+        }
+      }
+
+      function adminNoteOpen(card, editor) {
+        if (
+          !card?.matches('.card[data-readonly="true"][data-order-no]') ||
+          !editor ||
+          editor.dataset.open === "true"
+        ) {
+          return;
+        }
+        const workflowEditor = card.querySelector(
+          '[data-admin-workflow-editor="true"].admin-workflow-editor',
+        );
+        const shippedPanel = card.querySelector(
+          '[data-mark-shipped="true"].admin-mark-shipped-panel',
+        );
+        if (
+          (workflowEditor && adminWorkflowIsDirty(workflowEditor)) ||
+          workflowEditor?.dataset.saving === "true" ||
+          shippedPanel?.dataset.saving === "true"
+        ) {
+          window.alert("請先完成或取消此筆既有訂單流程操作。");
+          return;
+        }
+
+        const textarea = editor.querySelector(".admin-note-textarea");
+        if (textarea) textarea.value = editor.dataset.baselineNote || "";
+        editor.dataset.open = "true";
+        editor.querySelector(".admin-note-view-row")?.classList.add("hidden");
+        editor.querySelector(".admin-note-edit-panel")?.classList.remove("hidden");
+        adminNoteSetFeedback(editor, "");
+        adminNoteRefreshEditor(editor);
+        adminNoteRefreshCardLocks(card);
+        textarea?.focus();
+      }
+
+      function adminNoteCancel(card, editor) {
+        if (!editor || editor.dataset.saving === "true") return;
+        const textarea = editor.querySelector(".admin-note-textarea");
+        if (textarea) textarea.value = editor.dataset.baselineNote || "";
+        editor.dataset.open = "false";
+        editor.querySelector(".admin-note-view-row")?.classList.remove("hidden");
+        editor.querySelector(".admin-note-edit-panel")?.classList.add("hidden");
+        adminNoteSetFeedback(editor, "");
+        adminNoteRefreshCardLocks(card);
+      }
+
+      function adminNoteSetSaving(card, editor, isSaving) {
+        editor.dataset.saving = isSaving ? "true" : "false";
+        editor
+          .querySelectorAll(
+            ".admin-note-textarea, .admin-note-save, .admin-note-cancel",
+          )
+          .forEach((control) => {
+            control.disabled = isSaving;
+          });
+        if (!isSaving) adminNoteRefreshEditor(editor);
+        adminNoteRefreshCardLocks(card);
+      }
+
+      function adminNoteGetErrorMessage(errorCode) {
+        const messages = {
+          ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入 LINE。",
+          REQUEST_KEYS_INVALID: "送出資料格式不正確。",
+          ORDER_NO_REQUIRED: "訂單編號不存在，無法送出。",
+          ADMIN_NOTE_INVALID: "管理員備註格式不正確。",
+          ADMIN_NOTE_TOO_LONG: "管理員備註不可超過 500 個字元。",
+          ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
+          ORDER_NO_DUPLICATE: "訂單資料異常，請停止操作。",
+          ADMIN_NOTE_UPDATE_BUSY: "系統忙碌，請稍後再試。",
+          ADMIN_NOTE_WRITE_VERIFY_FAILED:
+            "備註未能安全寫入，已嘗試還原。",
+          ADMIN_NOTE_ROLLBACK_FAILED:
+            "備註寫入結果無法確認，請停止操作並重新整理。",
+          ADMIN_NOTE_UPDATE_INDETERMINATE:
+            "備註寫入結果無法確認，請重新讀取此筆訂單。",
+          ADMIN_NOTE_UPDATE_FAILED: "儲存失敗，請重新讀取後再試。",
+        };
+        return messages[errorCode] || "儲存失敗，請重新讀取後再試。";
+      }
+
+      function adminNoteDisableForExpiredSession(card, editor) {
+        editor.dataset.open = "false";
+        editor.dataset.saving = "false";
+        editor.querySelector(".admin-note-view-row")?.classList.remove(
+          "hidden",
+        );
+        editor.querySelector(".admin-note-edit-panel")?.classList.add("hidden");
+        editor.querySelector(".admin-note-edit-button")?.setAttribute(
+          "disabled",
+          "",
+        );
+        editor
+          .querySelectorAll(
+            ".admin-note-textarea, .admin-note-save, .admin-note-cancel",
+          )
+          .forEach((control) => {
+            control.disabled = true;
+          });
+        adminNoteRefreshCardLocks(card);
+      }
+
+      async function adminNoteSave(card, editor) {
+        if (
+          !card?.matches('.card[data-readonly="true"][data-order-no]') ||
+          !editor ||
+          editor.dataset.saving === "true"
+        ) {
+          return;
+        }
+        const textarea = editor.querySelector(".admin-note-textarea");
+        const orderNo = String(card.dataset.orderNo || "").trim();
+        const rawAdminNote = textarea?.value || "";
+        const adminNote = adminNoteNormalize(rawAdminNote);
+        if (rawAdminNote === (editor.dataset.baselineNote || "")) return;
+        if (!orderNo) {
+          adminNoteSetFeedback(editor, "訂單編號不存在，無法送出。", true);
+          return;
+        }
+        if (adminNoteCharacterCount(adminNote) > 500) {
+          adminNoteSetFeedback(
+            editor,
+            "管理員備註不可超過 500 個字元。",
+            true,
+          );
+          return;
+        }
+
+        const adminSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+        if (!adminSessionToken) {
+          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+          showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+          adminNoteDisableForExpiredSession(card, editor);
+          return;
+        }
+
+        adminNoteSetSaving(card, editor, true);
+        adminNoteSetFeedback(editor, "儲存中…");
+        let actionSucceeded = false;
+
+        try {
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify({
+              action: "adminUpdateOrderAdminNote",
+              adminSessionToken,
+              orderNo,
+              adminNote,
+            }),
+          });
+          const payload = await response.json();
+          if (
+            !payload ||
+            payload.ok !== true ||
+            payload.action !== "adminUpdateOrderAdminNote" ||
+            !payload.order ||
+            payload.order.orderNo !== orderNo ||
+            payload.order.adminNote !== adminNote
+          ) {
+            const errorCode = String(payload?.errorCode || "");
+            if (errorCode === "ADMIN_SESSION_REQUIRED") {
+              sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+              showAdminAuthOverlay(
+                "⚠️ 登入已過期，請重新登入 LINE",
+                true,
+              );
+              adminNoteDisableForExpiredSession(card, editor);
+              return;
+            }
+            adminNoteSetSaving(card, editor, false);
+            adminNoteSetFeedback(
+              editor,
+              adminNoteGetErrorMessage(errorCode),
+              true,
+            );
+            return;
+          }
+
+          actionSucceeded = true;
+          adminNoteSetFeedback(editor, "已寫入，正在重新讀取訂單…");
+          const adminOrders = await fetchAdminOrdersFromGas();
+          if (
+            !Array.isArray(adminOrders) ||
+            !renderAdminOrders(adminOrders)
+          ) {
+            if (
+              !sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY)
+            ) {
+              adminNoteDisableForExpiredSession(card, editor);
+              return;
+            }
+            adminNoteSetSaving(card, editor, false);
+            adminNoteSetFeedback(
+              editor,
+              "管理員備註可能已寫入，但重新讀取失敗。請重新整理後確認。",
+              true,
+            );
+            return;
+          }
+
+          updateStatsCounters();
+          applyCurrentFilter();
+          handleBatchCheckChange();
+          updateNotifyButton();
+          applyReadOnlyModeToRealOrders();
+        } catch (error) {
+          adminNoteSetSaving(card, editor, false);
+          adminNoteSetFeedback(
+            editor,
+            actionSucceeded
+              ? "管理員備註可能已寫入，但重新讀取失敗。請重新整理後確認。"
+              : "儲存失敗，請重新讀取後再試。",
+            true,
+          );
+        }
       }
 
       function buildAdminWorkflowEditorHtml({
@@ -3092,7 +3544,7 @@
         const saveButton = editor.querySelector(".admin-workflow-save");
         if (saveButton) saveButton.disabled = !isDirty;
         adminWorkflowSetFeedback(editor, isDirty ? "尚未儲存" : "");
-        adminMarkOrderShippedRefreshState(editor.closest(".card"));
+        adminNoteRefreshCardLocks(editor.closest(".card"));
       }
 
       function adminWorkflowSetSaving(editor, isSaving) {
@@ -3109,7 +3561,7 @@
         if (saveButton) {
           saveButton.disabled = isSaving || !adminWorkflowIsDirty(editor);
         }
-        adminMarkOrderShippedRefreshState(editor.closest(".card"));
+        adminNoteRefreshCardLocks(editor.closest(".card"));
       }
 
       function getTaipeiToday() {
@@ -3174,12 +3626,13 @@
         const isDirty = !!editor && adminWorkflowIsDirty(editor);
         const workflowSaving = editor?.dataset.saving === "true";
         const shippedSaving = panel.dataset.saving === "true";
+        const noteLocked = adminNoteIsOpen(card);
         const submitButton = panel.querySelector(
           ".admin-mark-shipped-submit",
         );
         if (submitButton) {
           submitButton.disabled =
-            isDirty || workflowSaving || shippedSaving;
+            noteLocked || isDirty || workflowSaving || shippedSaving;
         }
       }
 
@@ -3209,6 +3662,7 @@
           if (editor) adminWorkflowSetSaving(editor, false);
           adminMarkOrderShippedRefreshState(card);
         }
+        adminNoteRefreshCardLocks(card);
       }
 
       function adminMarkOrderShippedGetErrorMessage(errorCode) {
@@ -3250,7 +3704,8 @@
         );
         if (
           (editor && adminWorkflowIsDirty(editor)) ||
-          editor?.dataset.saving === "true"
+          editor?.dataset.saving === "true" ||
+          adminNoteIsOpen(card)
         ) {
           adminMarkOrderShippedSetFeedback(
             panel,
@@ -3616,6 +4071,27 @@
           }
 
           const saveButton = event.target.closest(".admin-workflow-save");
+          const adminNoteEditor = event.target.closest(
+            '[data-admin-note-editor="true"].admin-note-editor',
+          );
+          const adminNoteCard = event.target.closest(
+            '.card[data-readonly="true"][data-order-no]',
+          );
+          if (adminNoteEditor && adminNoteCard) {
+            if (event.target.closest(".admin-note-edit-button")) {
+              adminNoteOpen(adminNoteCard, adminNoteEditor);
+              return;
+            }
+            if (event.target.closest(".admin-note-cancel")) {
+              adminNoteCancel(adminNoteCard, adminNoteEditor);
+              return;
+            }
+            if (event.target.closest(".admin-note-save")) {
+              adminNoteSave(adminNoteCard, adminNoteEditor);
+              return;
+            }
+          }
+
           if (!saveButton || !cardsContainer.contains(saveButton)) return;
 
           const editor = saveButton.closest(
@@ -3626,7 +4102,15 @@
           );
 
           if (!editor || !card || !card.contains(editor)) return;
+          if (adminNoteIsOpen(card)) return;
           adminWorkflowSaveCard(card, editor);
+        });
+        cardsContainer.addEventListener("input", (event) => {
+          if (!event.target.matches(".admin-note-textarea")) return;
+          const editor = event.target.closest(
+            '[data-admin-note-editor="true"].admin-note-editor',
+          );
+          if (editor) adminNoteRefreshEditor(editor);
         });
       }
 
