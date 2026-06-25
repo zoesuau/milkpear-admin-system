@@ -310,6 +310,11 @@
         border: 1px solid #e2e8f0;
         opacity: 0.7;
       } /* 灰色 */
+      .card.order-change-pending {
+        background: #fff1f5;
+        border-color: #f9a8d4;
+        box-shadow: 0 6px 18px rgba(190, 24, 93, 0.12);
+      }
 
       /* 確保彈窗按鈕樣式 */
       .btn-modal-submit {
@@ -952,10 +957,10 @@
         display: none;
         margin-top: 12px;
         padding: 12px;
-        background: #fff7ed;
-        border: 1px solid #fed7aa;
+        background: #fff0f6;
+        border: 1px solid #f9a8d4;
         border-radius: 12px;
-        color: #9a3412;
+        color: #9d174d;
       }
       .order-change-title {
         font-size: 14px;
@@ -971,9 +976,9 @@
       .order-change-chip {
         padding: 4px 8px;
         background: white;
-        border: 1px solid #fdba74;
+        border: 1px solid #f9a8d4;
         border-radius: 999px;
-        color: #9a3412;
+        color: #9d174d;
         font-size: 13px;
         font-weight: 800;
       }
@@ -2593,8 +2598,9 @@
 
       function isLineOrder(card) {
         return (
-          card?.dataset.source === "line" &&
-          !!(card.dataset.lineUserId || "").trim()
+          card?.dataset.canLineNotify === "true" ||
+          (card?.dataset.source === "line" &&
+            !!(card.dataset.lineUserId || "").trim())
         );
       }
 
@@ -2688,12 +2694,16 @@
         applyCardStatusChange(cardId, "待確認");
       }
 
-      function queueOrderForNotification(cardId) {
-        console.log("cardId =", cardId);
+      async function queueOrderForNotification(cardId) {
         const card = document.getElementById(cardId);
         if (!card) return;
         const fields = getPendingNoticeFields(card);
         if (!fields.length) return;
+
+        if (card.dataset.orderNo) {
+          await adminOrderNotificationSubmit(card);
+          return;
+        }
 
         completeOrderChange(card);
         triggerUpdateFeedback(
@@ -2733,7 +2743,13 @@
             .querySelectorAll(".cards-container .card")
             .forEach((card) => {
               const fields = getPendingNoticeFields(card);
-              if (!isLineOrder(card) || !fields.length) return;
+              if (
+                card.dataset.orderNo ||
+                !isLineOrder(card) ||
+                !fields.length
+              ) {
+                return;
+              }
 
               completeOrderChange(card);
               notifyCount++;
@@ -3050,6 +3066,33 @@
           order?.requestedShippingBatchLabel ?? "",
         ).trim();
         const paymentStatus = String(order?.paymentStatus ?? "").trim();
+        const notificationStatus = String(
+          order?.notificationStatus ?? "",
+        ).trim();
+        const notificationFieldLabels = {
+          收件人姓名: "收件人",
+          收件人: "收件人",
+          收件人電話: "收件電話",
+          收件電話: "收件電話",
+          收件地址: "收件地址",
+          商品內容: "商品內容",
+          商品數量: "商品數量",
+          確定出貨日期: "確定出貨日期",
+        };
+        const pendingNoticeFields = [
+          ...new Set(
+            String(order?.changedFields ?? "")
+              .split(/[|,、\r\n]+/)
+              .map((field) => notificationFieldLabels[field.trim()] || "")
+              .filter(Boolean),
+          ),
+        ];
+        const isPendingNotification =
+          pendingNoticeFields.length > 0 &&
+          ["待送出", "待重新通知", "待人工通知"].includes(
+            notificationStatus,
+          );
+        const canLineNotify = order?.canLineNotify === true;
         const adminWorkflowEditable =
           !!orderNo &&
           ["待確認", "已安排出貨"].includes(orderStatus) &&
@@ -3139,10 +3182,13 @@
 
         return `
           <div
-            class="card ${escapeHtml(statusMeta.cardClass)}"
+            class="card ${escapeHtml(statusMeta.cardClass)}${isPendingNotification ? " order-change-pending" : ""}"
             data-status="${escapeHtml(orderStatus)}"
             data-readonly="true"
             data-order-no="${escapeHtml(orderNo)}"
+            data-can-line-notify="${canLineNotify ? "true" : "false"}"
+            data-notification-status="${escapeHtml(notificationStatus)}"
+            data-pending-notice-fields="${escapeHtml(pendingNoticeFields.join("|"))}"
             ${adminWorkflowEditable ? 'data-admin-workflow-editor="true"' : ""}
             data-search-text="${escapeHtml(searchText)}"
           >
@@ -3263,6 +3309,27 @@
               </div>
             </details>
             </div>
+            ${
+              isPendingNotification
+                ? `
+                  <div class="order-change-alert" style="display:block">
+                    <div class="order-change-title">⚠️ 以下資訊已異動</div>
+                    <div class="order-change-list">
+                      ${pendingNoticeFields
+                        .map(
+                          (field) =>
+                            `<span class="order-change-chip">${escapeHtml(field)}</span>`,
+                        )
+                        .join("")}
+                    </div>
+                    <button type="button" class="btn-resend-notice">
+                      ${canLineNotify ? "重新發送通知" : "電話已通知"}
+                    </button>
+                    <div class="admin-workflow-feedback admin-notification-feedback" aria-live="polite"></div>
+                  </div>
+                `
+                : ""
+            }
           </div>
         `;
       }
@@ -4576,6 +4643,10 @@
         return "";
       }
 
+      function adminWorkflowFormatDateForConfirm(value) {
+        return value ? value.replace(/-/g, "/") : "未安排";
+      }
+
       function adminWorkflowGetErrorMessage(errorCode) {
         const messages = {
           INVALID_EXPECTED_SHIPPING_DATE: "日期格式不正確。",
@@ -4645,6 +4716,18 @@
           return;
         }
 
+        const baselineDate = editor.dataset.baselineDate || "";
+        const baselineStatus = editor.dataset.baselineStatus || "";
+        const dateChangedToNonBlank =
+          values.expectedShippingDate !== baselineDate &&
+          values.expectedShippingDate !== "";
+        if (dateChangedToNonBlank) {
+          const confirmed = window.confirm(
+            `以下重要資料將被修改：\n\n- 確定出貨日期：${adminWorkflowFormatDateForConfirm(baselineDate)} → ${adminWorkflowFormatDateForConfirm(values.expectedShippingDate)}\n\n確認儲存這次修改？`,
+          );
+          if (!confirmed) return;
+        }
+
         const adminSessionToken = String(
           sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
         ).trim();
@@ -4675,6 +4758,12 @@
             }),
           });
           const payload = await response.json();
+          const expectedReturnedStatus =
+            dateChangedToNonBlank &&
+            ((baselineStatus === "待確認" && baselineDate === "") ||
+              (baselineStatus === "已安排出貨" && baselineDate !== ""))
+              ? "已安排出貨"
+              : values.orderStatus;
 
           if (
             !response.ok ||
@@ -4689,7 +4778,7 @@
             payload.order.expectedShippingDate !==
               values.expectedShippingDate ||
             payload.order.paymentStatus !== values.paymentStatus ||
-            payload.order.orderStatus !== values.orderStatus
+            payload.order.orderStatus !== expectedReturnedStatus
           ) {
             const errorCode = String(payload?.errorCode || "");
 
@@ -4724,6 +4813,116 @@
         }
       }
 
+      async function adminOrderNotificationSubmit(card) {
+        if (
+          !card?.matches('.card[data-readonly="true"][data-order-no]') ||
+          card.dataset.notificationSaving === "true"
+        ) {
+          return;
+        }
+
+        const orderNo = String(card.dataset.orderNo || "").trim();
+        const canLineNotify = card.dataset.canLineNotify === "true";
+        const button = card.querySelector(".btn-resend-notice");
+        const feedback = card.querySelector(".admin-notification-feedback");
+        const adminSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+
+        if (!adminSessionToken) {
+          showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+          if (feedback) feedback.innerText = "登入已過期，請重新登入 LINE。";
+          return;
+        }
+
+        card.dataset.notificationSaving = "true";
+        if (button) {
+          button.disabled = true;
+          button.innerText = canLineNotify ? "通知發送中…" : "儲存中…";
+        }
+        if (feedback) {
+          feedback.classList.remove("is-error");
+          feedback.innerText = "";
+        }
+
+        try {
+          const action = canLineNotify
+            ? "adminResendOrderNotification"
+            : "adminMarkOrderPhoneNotified";
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify({
+              action,
+              adminSessionToken,
+              orderNo,
+            }),
+          });
+          const payload = await response.json();
+
+          if (
+            !response.ok ||
+            !payload ||
+            payload.ok !== true ||
+            payload.action !== action
+          ) {
+            if (payload?.errorCode === "ADMIN_SESSION_REQUIRED") {
+              sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+              showAdminAuthOverlay(
+                "⚠️ 登入已過期，請重新登入 LINE",
+                true,
+              );
+            }
+            throw new Error(payload?.errorCode || "NOTIFICATION_FAILED");
+          }
+
+          if (payload.result !== "成功") {
+            card.dataset.notificationSaving = "false";
+            if (button) {
+              button.disabled = false;
+              button.innerText = canLineNotify
+                ? "重新發送通知"
+                : "電話已通知";
+            }
+            if (feedback) {
+              feedback.classList.add("is-error");
+              feedback.innerText =
+                payload.result === "略過"
+                  ? "通知已略過，異動仍待處理。"
+                  : "通知失敗，異動仍待處理。";
+            }
+            return;
+          }
+
+          const adminOrders = await fetchAdminOrdersFromGas();
+          if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
+            throw new Error("NOTIFICATION_REFRESH_FAILED");
+          }
+          updateStatsCounters();
+          applyCurrentFilter();
+          handleBatchCheckChange();
+          updateNotifyButton();
+          applyReadOnlyModeToRealOrders();
+        } catch (error) {
+          card.dataset.notificationSaving = "false";
+          if (button) {
+            button.disabled = false;
+            button.innerText = canLineNotify
+              ? "重新發送通知"
+              : "電話已通知";
+          }
+          if (feedback) {
+            feedback.classList.add("is-error");
+            feedback.innerText =
+              error.message === "NOTIFICATION_REFRESH_FAILED"
+                ? "通知可能已完成，但重新讀取失敗，請重新整理確認。"
+                : "處理失敗，異動仍待通知。";
+          }
+        }
+      }
+
       function bindAdminWorkflowEvents() {
         const cardsContainer = document.getElementById("cards-container");
         if (!cardsContainer || cardsContainer.dataset.adminWorkflowBound) {
@@ -4755,6 +4954,22 @@
         cardsContainer.addEventListener("input", handleValueChange);
         cardsContainer.addEventListener("change", handleValueChange);
         cardsContainer.addEventListener("click", (event) => {
+          const notificationButton = event.target.closest(
+            ".btn-resend-notice",
+          );
+          if (
+            notificationButton &&
+            cardsContainer.contains(notificationButton)
+          ) {
+            const notificationCard = notificationButton.closest(
+              '.card[data-readonly="true"][data-order-no]',
+            );
+            if (notificationCard) {
+              adminOrderNotificationSubmit(notificationCard);
+            }
+            return;
+          }
+
           const markShippedButton = event.target.closest(
             ".admin-mark-shipped-submit",
           );
