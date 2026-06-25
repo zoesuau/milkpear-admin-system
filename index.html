@@ -1992,6 +1992,7 @@
         </div>
         <div class="modal-body">
           <form id="newOrderForm" onsubmit="handleNewOrderSubmit(event)">
+            <div class="admin-content-section-title">一、收件資料</div>
             <div class="form-group">
               <label>收件人姓名</label>
               <input
@@ -2000,7 +2001,6 @@
                 class="form-control"
                 required
                 placeholder="請輸入收件人姓名"
-                oninput="syncSenderFields()"
               />
             </div>
             <div class="form-group">
@@ -2011,7 +2011,6 @@
                 class="form-control"
                 required
                 placeholder="請輸入電話號碼"
-                oninput="syncSenderFields()"
               />
             </div>
             <div class="form-group">
@@ -2024,171 +2023,69 @@
                 placeholder="請輸入完整收件地址"
               />
             </div>
-
             <div class="form-group">
-              <label
-                >訂購品項
-                <button
-                  type="button"
-                  class="btn-add-product"
-                  style="
-                    padding: 2px 8px;
-                    font-size: 11px;
-                    margin-top: 0;
-                    margin-left: 6px;
-                  "
-                  onclick="addModalProductRow()"
-                >
-                  ➕ 新增品項
-                </button></label
-              >
-              <div id="modal-product-list" class="product-edit-list">
-                <div class="product-edit-row">
-                  <select
-                    class="edit-select modal-spec-select"
-                    onchange="updateNewOrderAmountPreview()"
-                  ></select>
-                  <span
-                    style="font-size: 16px; font-weight: bold; color: #64748b"
-                    >×</span
-                  >
-                  <input
-                    type="number"
-                    class="edit-qty modal-qty-input"
-                    value="1"
-                    min="1"
-                    oninput="updateNewOrderAmountPreview()"
-                    style="text-align: center"
-                  />
-                  <span
-                    style="
-                      cursor: pointer;
-                      font-size: 14px;
-                      padding: 2px 6px;
-                      color: #ef4444;
-                    "
-                    onclick="
-                      this.parentElement.remove();
-                      updateNewOrderAmountPreview();
-                    "
-                    >🗑️</span
-                  >
-                </div>
-              </div>
+              <label>客戶備註</label>
+              <textarea id="new-note" class="form-control" placeholder="例如：管理室代收"></textarea>
             </div>
 
+            <div class="admin-content-section-title">二、訂購人資料</div>
             <div class="form-group">
-              <label>優惠金額</label>
-              <input
-                type="number"
-                id="new-discount-amount"
-                class="form-control"
-                min="0"
-                value="0"
-                placeholder="0"
-                oninput="updateNewOrderAmountPreview()"
-              />
+              <label>訂購人姓名</label>
+              <input type="text" id="new-sender-name" class="form-control" required placeholder="請輸入訂購人姓名" />
+            </div>
+            <div class="form-group">
+              <label>訂購人電話</label>
+              <input type="tel" id="new-sender-phone" class="form-control" required placeholder="請輸入訂購人電話" />
             </div>
 
-            <div class="form-group">
-              <label>優惠原因</label>
-              <input
-                type="text"
-                id="new-discount-reason"
-                class="form-control"
-                placeholder="例如：熟客免運、團購優惠"
-              />
-            </div>
-
-            <div class="form-group">
-              <label>金額預覽</label>
-              <div class="amount-preview-box">
-                <div class="amount-preview-row">
-                  <span>商品金額</span>
-                  <span>$<span id="new-preview-subtotal">0</span></span>
-                </div>
-                <div class="amount-preview-row">
-                  <span>運費與手續費</span>
-                  <span>$<span id="new-preview-fees">0</span></span>
-                </div>
-                <div class="amount-preview-row">
-                  <span>優惠金額</span>
-                  <span>-$<span id="new-preview-discount">0</span></span>
-                </div>
-                <div class="amount-preview-row total">
-                  <span>應收金額</span>
-                  <span>$<span id="new-preview-total">0</span></span>
-                </div>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>收貨需求日期</label>
-              <input type="date" id="new-date" class="form-control" required />
-            </div>
-
+            <div class="admin-content-section-title">三、訂單與出貨需求</div>
             <div class="form-group">
               <label>付款方式</label>
-              <select
-                id="new-payment-method"
-                class="form-control"
-                onchange="updateNewOrderAmountPreview()"
-              >
+              <select id="new-payment-method" class="form-control" onchange="updateNewOrderAmountPreview()">
                 <option value="銀行轉帳－未付款" selected>銀行轉帳</option>
                 <option value="貨到付款">貨到付款（+30手續費）</option>
                 <option value="月結">月結</option>
                 <option value="其他">其他</option>
               </select>
             </div>
-
             <div class="form-group">
-              <label>備註事項</label>
-              <textarea
-                id="new-note"
-                class="form-control"
-                placeholder="例如：星期六到貨、管理室代收..."
-              ></textarea>
+              <label>希望寄出批次</label>
+              <select id="new-requested-shipping-batch" class="form-control">
+                <option value="">未指定</option>
+              </select>
             </div>
 
+            <div class="admin-content-section-title">四、優惠與管理資訊</div>
             <div class="form-group">
-              <label style="display: flex; align-items: center; gap: 6px">
-                <input
-                  type="checkbox"
-                  id="sync-sender-check"
-                  onchange="toggleSenderSync(this)"
-                />
-                寄件人資料與收件人相同
-              </label>
-            </div>
-
-            <div class="form-group">
-              <label>寄件人姓名</label>
-              <input
-                type="text"
-                id="new-sender-name"
-                class="form-control"
-                placeholder="預設蘇湘琦"
-                value="蘇湘琦"
-              />
+              <label>優惠金額</label>
+              <input type="number" id="new-discount-amount" class="form-control" min="0" value="0" placeholder="0" oninput="updateNewOrderAmountPreview()" />
             </div>
             <div class="form-group">
-              <label>寄件人電話</label>
-              <input
-                type="tel"
-                id="new-sender-phone"
-                class="form-control"
-                placeholder="請輸入寄件人電話"
-                value="0912-345678"
-              />
+              <label>優惠原因</label>
+              <input type="text" id="new-discount-reason" class="form-control" placeholder="例如：熟客免運、團購優惠" />
             </div>
             <div class="form-group">
               <label>管理員備註</label>
-              <textarea
-                id="new-admin-note"
-                class="edit-textarea"
-                placeholder="僅後台可見，不會通知客戶"
-              ></textarea>
+              <textarea id="new-admin-note" class="edit-textarea" placeholder="僅後台可見，不會通知客戶"></textarea>
             </div>
+
+            <div class="admin-content-section-title">五、商品內容</div>
+            <div class="form-group">
+              <div id="modal-product-list" class="product-edit-list"></div>
+              <button type="button" class="btn-add-product" onclick="addModalProductRow()">➕ 新增品項</button>
+            </div>
+
+            <div class="admin-content-section-title">六、金額預覽</div>
+            <div class="form-group">
+              <div class="amount-preview-box">
+                <div class="amount-preview-row"><span>商品小計</span><span>$<span id="new-preview-subtotal">0</span></span></div>
+                <div class="amount-preview-row"><span>運費</span><span>$<span id="new-preview-shipping">0</span></span></div>
+                <div class="amount-preview-row" id="new-preview-cod-row"><span>貨到付款手續費</span><span>$<span id="new-preview-cod">0</span></span></div>
+                <div class="amount-preview-row"><span>優惠</span><span>-$<span id="new-preview-discount">0</span></span></div>
+                <div class="amount-preview-row total"><span>應收金額</span><span>$<span id="new-preview-total">0</span></span></div>
+              </div>
+            </div>
+            <div id="new-order-feedback" class="admin-content-feedback" aria-live="polite"></div>
           </form>
         </div>
         <div class="modal-footer">
@@ -2203,8 +2100,9 @@
             type="submit"
             form="newOrderForm"
             class="btn btn-modal-submit"
+            id="new-order-submit"
           >
-            確認新增
+            建立訂單
           </button>
         </div>
       </div>
@@ -2227,6 +2125,8 @@
       let adminProductCatalog = [];
       let adminProductsReady = false;
       let latestAdminOrders = [];
+      let adminShippingBatches = [];
+      let adminCreateOrderSubmitting = false;
       const CURRENT_ADMIN_NAME = "後台管理員";
       let currentFilterStatus = "全部";
 
@@ -3146,6 +3046,9 @@
         const actualShippingDate = String(
           order?.actualShippingDate ?? "",
         ).trim();
+        const requestedShippingBatchLabel = String(
+          order?.requestedShippingBatchLabel ?? "",
+        ).trim();
         const paymentStatus = String(order?.paymentStatus ?? "").trim();
         const adminWorkflowEditable =
           !!orderNo &&
@@ -3226,7 +3129,7 @@
         const customerNote = String(order?.customerNote ?? "").trim();
         const adminNote = String(order?.adminNote ?? "");
         const actualShippingDateRow = buildReadOnlyExtraRow(
-          "實際寄出",
+          "實際寄出日期",
           actualShippingDate,
         );
         const trackingNoRow = buildReadOnlyExtraRow("宅配單號", order?.trackingNo);
@@ -3301,7 +3204,11 @@
               <div class="quick-operation-panel">
                 <div class="quick-operation-grid">
                   <div class="quick-operation-field">
-                    <label>預計出貨日期</label>
+                    <label>客人希望寄出批次</label>
+                    <div>${escapeHtml(requestedShippingBatchLabel || "未指定")}</div>
+                  </div>
+                  <div class="quick-operation-field">
+                    <label>確定出貨日期</label>
                     <div>${escapeHtml(expectedShippingDate || "未填")}</div>
                   </div>
                   <div class="quick-operation-field">
@@ -3339,6 +3246,8 @@
               <div class="extra">
                 ${buildReadOnlyExtraRow("訂購人", order?.buyerName)}
                 ${buildReadOnlyExtraRow("訂購人電話", order?.buyerPhone)}
+                ${buildReadOnlyExtraRow("付款方式", order?.paymentMethod)}
+                ${buildReadOnlyExtraRow("付款狀態", order?.paymentStatus)}
                 ${buildReadOnlyExtraRow("LINE 名稱", order?.lineDisplayName)}
                 ${buildReadOnlyExtraRow("訂單來源", order?.orderSource)}
                 ${buildReadOnlyExtraRow("管理員備註", adminNote || "無")}
@@ -4230,7 +4139,7 @@
             <div class="admin-workflow-title">單筆訂單流程操作</div>
             <div class="admin-workflow-grid">
               <div class="admin-workflow-field">
-                <label>預計出貨日期</label>
+                <label>確定出貨日期</label>
                 <input
                   type="date"
                   class="admin-workflow-date"
@@ -4462,8 +4371,8 @@
           ACTUAL_SHIPPING_DATE_INVALID: "實際寄出日期格式不正確。",
           ACTUAL_SHIPPING_DATE_FUTURE_NOT_ALLOWED:
             "實際寄出日期不可晚於台灣今天。",
-          EXPECTED_SHIPPING_DATE_REQUIRED: "此訂單尚未設定預計出貨日期。",
-          EXPECTED_SHIPPING_DATE_INVALID: "此訂單的預計出貨日期無效。",
+          EXPECTED_SHIPPING_DATE_REQUIRED: "此訂單尚未設定確定出貨日期。",
+          EXPECTED_SHIPPING_DATE_INVALID: "此訂單的確定出貨日期無效。",
           ORDER_STATUS_TRANSITION_NOT_ALLOWED:
             "只有已安排出貨的訂單可以確認已寄出。",
           ACTUAL_SHIPPING_DATE_ALREADY_EXISTS:
@@ -4661,7 +4570,7 @@
           values.orderStatus === "已安排出貨" &&
           !values.expectedShippingDate
         ) {
-          return "已安排出貨必須選預計出貨日期。";
+          return "已安排出貨必須選確定出貨日期。";
         }
 
         return "";
@@ -4670,13 +4579,15 @@
       function adminWorkflowGetErrorMessage(errorCode) {
         const messages = {
           INVALID_EXPECTED_SHIPPING_DATE: "日期格式不正確。",
-          INVALID_ORDER_WORKFLOW_STATE: "已安排出貨必須選預計出貨日期。",
+          INVALID_ORDER_WORKFLOW_STATE: "已安排出貨必須選確定出貨日期。",
           PAYMENT_STATUS_NOT_ALLOWED: "付款狀態不允許。",
           ORDER_STATUS_NOT_ALLOWED: "此操作不允許的訂單狀態。",
           ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
           ORDER_NO_NOT_UNIQUE: "訂單資料異常，請停止操作。",
           ADMIN_ORDER_UPDATE_BUSY: "系統忙碌，請稍後再試。",
           ADMIN_ORDER_UPDATE_FAILED: "儲存失敗，未套用前端變更。",
+          PAYMENT_STATUS_WRITE_VERIFY_FAILED:
+            "付款狀態未成功儲存，請重新整理後再試。",
           ADMIN_ORDER_UPDATE_INDETERMINATE:
             "無法確認儲存結果，請重新讀取此筆訂單。",
         };
@@ -4766,9 +4677,13 @@
           const payload = await response.json();
 
           if (
+            !response.ok ||
             !payload ||
             payload.ok !== true ||
             payload.action !== "adminUpdateOrderWorkflow" ||
+            !payload.saved ||
+            payload.saved.orderNo !== orderNo ||
+            payload.saved.paymentStatus !== values.paymentStatus ||
             !payload.order ||
             payload.order.orderNo !== orderNo ||
             payload.order.expectedShippingDate !==
@@ -4966,12 +4881,8 @@
         const method = String(paymentMethod ?? "").trim();
         const status = String(paymentStatus ?? "").trim();
 
-        if (method.includes("貨到")) return "貨到付款";
-        if (method.includes("月結")) return "月結";
-        if (method.includes("季結")) return "季結";
-        if (method && status) return `${method}－${status}`;
-        if (method) return method;
         if (status) return status;
+        if (method) return method;
         return "付款資訊未填";
       }
 
@@ -6007,7 +5918,39 @@ ${adminNote}
       }
 
       // 彈窗模組開啟關閉
-      function openAddOrderModal() {
+      async function fetchAdminShippingBatches() {
+        const response = await fetch(
+          `${GAS_ORDERS_API_URL}?action=readShippingBatches`,
+        );
+        const payload = await response.json();
+        if (
+          !response.ok ||
+          !payload ||
+          payload.ok !== true ||
+          payload.action !== "readShippingBatches" ||
+          !Array.isArray(payload.batches)
+        ) {
+          throw new Error("SHIPPING_BATCHES_READ_FAILED");
+        }
+
+        adminShippingBatches = payload.batches
+          .slice()
+          .sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder));
+        const select = document.getElementById(
+          "new-requested-shipping-batch",
+        );
+        if (select) {
+          select.innerHTML = [
+            '<option value="">未指定</option>',
+            ...adminShippingBatches.map(
+              (batch) =>
+                `<option value="${escapeHtml(batch.batchId)}">${escapeHtml(batch.displayLabel)}</option>`,
+            ),
+          ].join("");
+        }
+      }
+
+      async function openAddOrderModal() {
         if (!adminProductsReady) {
           alert(
             "商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。",
@@ -6017,16 +5960,38 @@ ${adminNote}
         if (!document.querySelector("#modal-product-list .product-edit-row")) {
           resetModalProductRows();
         }
+        try {
+          await fetchAdminShippingBatches();
+        } catch (error) {
+          adminShippingBatches = [];
+          const select = document.getElementById(
+            "new-requested-shipping-batch",
+          );
+          if (select) {
+            select.innerHTML = '<option value="">未指定</option>';
+          }
+        }
         document.getElementById("addOrderModal").classList.add("open");
         document.body.style.overflow = "hidden";
         updateNewOrderAmountPreview();
       }
 
       function closeAddOrderModal() {
+        if (adminCreateOrderSubmitting) return;
         document.getElementById("addOrderModal").classList.remove("open");
         document.body.style.overflow = "";
         document.getElementById("newOrderForm").reset();
         resetModalProductRows();
+        const feedback = document.getElementById("new-order-feedback");
+        if (feedback) {
+          feedback.className = "admin-content-feedback";
+          feedback.innerText = "";
+        }
+        const submitButton = document.getElementById("new-order-submit");
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.innerText = "建立訂單";
+        }
         updateNewOrderAmountPreview();
       }
 
@@ -6061,7 +6026,8 @@ ${adminNote}
 
         return {
           subtotal: amount.subtotal,
-          fees: amount.shippingFee + amount.codFee,
+          shippingFee: amount.shippingFee,
+          codFee: amount.codFee,
           discountAmount: amount.discount,
           originalTotal: amount.originalTotal,
           finalTotal: amount.finalTotal,
@@ -6078,9 +6044,12 @@ ${adminNote}
           if (el) el.innerText = formatMoney(value);
         };
         setText("new-preview-subtotal", totals.subtotal);
-        setText("new-preview-fees", totals.fees);
+        setText("new-preview-shipping", totals.shippingFee);
+        setText("new-preview-cod", totals.codFee);
         setText("new-preview-discount", totals.discountAmount);
         setText("new-preview-total", totals.finalTotal);
+        const codRow = document.getElementById("new-preview-cod-row");
+        if (codRow) codRow.style.display = totals.codFee > 0 ? "flex" : "none";
       }
 
       // 新增訂單彈窗專用的新增品項功能
@@ -6102,230 +6071,149 @@ ${adminNote}
         updateNewOrderAmountPreview();
       }
 
-      // 寄件人與收件人相同連動控制
-      function toggleSenderSync(checkbox) {
-        syncSenderFields();
-      }
-
-      function syncSenderFields() {
-        const syncCheck = document.getElementById("sync-sender-check");
-        if (syncCheck && syncCheck.checked) {
-          document.getElementById("new-sender-name").value =
-            document.getElementById("new-name").value;
-          document.getElementById("new-sender-phone").value =
-            document.getElementById("new-phone").value;
-        }
-      }
-
-      // ==========================================
-      // ✨ 核心：表單新增訂單 (掛載全自動系統)
-      // ==========================================
-      function handleNewOrderSubmit(event) {
+      async function handleNewOrderSubmit(event) {
         event.preventDefault();
+        if (!adminProductsReady || adminCreateOrderSubmitting) return;
 
-        if (!adminProductsReady) {
-          alert(
-            "商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。",
-          );
+        const feedback = document.getElementById("new-order-feedback");
+        const submitButton = document.getElementById("new-order-submit");
+        const modalRows = [
+          ...document.querySelectorAll(
+            "#modal-product-list .product-edit-row",
+          ),
+        ];
+        const items = modalRows.map((row) => ({
+          code: row.querySelector(".modal-spec-select")?.value || "",
+          qty: Number(row.querySelector(".modal-qty-input")?.value || 0),
+        }));
+        const codes = items.map((item) => item.code);
+
+        if (
+          !items.length ||
+          items.some(
+            (item) =>
+              !item.code || !Number.isInteger(item.qty) || item.qty <= 0,
+          ) ||
+          new Set(codes).size !== codes.length
+        ) {
+          feedback.className = "admin-content-feedback is-error";
+          feedback.innerText = "商品至少一列，SKU 不可重複，數量須為正整數。";
           return;
         }
 
-        const name = document.getElementById("new-name").value;
-        const phone = document.getElementById("new-phone").value;
-        const address = document.getElementById("new-address").value;
-        const rawDate = document.getElementById("new-date").value;
-        const paymentMethod =
-          document.getElementById("new-payment-method").value;
-        const note = document.getElementById("new-note").value || "無備註事項";
-        const adminNote =
-          document.getElementById("new-admin-note")?.value.trim() || "";
-        const discountAmount = normalizeMoney(
-          document.getElementById("new-discount-amount")?.value || 0,
-        );
-        const discountReason =
-          document.getElementById("new-discount-reason")?.value.trim() || "";
-        const senderName =
-          document.getElementById("new-sender-name").value || "蘇湘琦";
-        const senderPhone =
-          document.getElementById("new-sender-phone").value || "0912-345678";
+        const payload = {
+          action: "adminCreateOrder",
+          adminSessionToken: String(
+            sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+          ).trim(),
+          recipientName:
+            document.getElementById("new-name")?.value.trim() || "",
+          recipientPhone:
+            document.getElementById("new-phone")?.value.trim() || "",
+          recipientAddress:
+            document.getElementById("new-address")?.value.trim() || "",
+          buyerName:
+            document.getElementById("new-sender-name")?.value.trim() || "",
+          buyerPhone:
+            document.getElementById("new-sender-phone")?.value.trim() || "",
+          customerNote:
+            document.getElementById("new-note")?.value.trim() || "",
+          adminNote:
+            document.getElementById("new-admin-note")?.value.trim() || "",
+          paymentMethod:
+            document.getElementById("new-payment-method")?.value || "",
+          requestedShippingBatchId:
+            document.getElementById("new-requested-shipping-batch")?.value ||
+            "",
+          discountAmount: Number(
+            document.getElementById("new-discount-amount")?.value || 0,
+          ),
+          discountReason:
+            document.getElementById("new-discount-reason")?.value.trim() || "",
+          items,
+        };
 
-        const formattedDate = rawDate ? rawDate.replace(/-/g, "/") : "未排定";
-        const uniqueCardId = "orderCard_" + Date.now();
+        if (
+          !payload.adminSessionToken ||
+          !payload.recipientName ||
+          !payload.recipientPhone ||
+          !payload.recipientAddress ||
+          !payload.buyerName ||
+          !payload.buyerPhone ||
+          !Number.isInteger(payload.discountAmount) ||
+          payload.discountAmount < 0
+        ) {
+          feedback.className = "admin-content-feedback is-error";
+          feedback.innerText = "請完整填寫必填欄位，優惠金額須為非負整數。";
+          return;
+        }
 
-        // 讀取彈窗內動態擴充的所有規格品項與數量
-        const modalRows = document.querySelectorAll(
-          "#modal-product-list .product-edit-row",
-        );
-        let finalViewHtml = "";
-        const orderItems = [];
+        adminCreateOrderSubmitting = true;
+        submitButton.disabled = true;
+        submitButton.innerText = "建立中…";
+        feedback.className = "admin-content-feedback";
+        feedback.innerText = "";
 
-        modalRows.forEach((row) => {
-          const spec = row.querySelector(".modal-spec-select").value;
-          const qty = parseInt(
-            row.querySelector(".modal-qty-input").value || 1,
-            10,
-          );
-          const item = normalizeOrderItem({
-            productCode: spec,
-            qty,
+        try {
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify(payload),
           });
-          if (!item) return;
-          orderItems.push(item);
-          finalViewHtml += `<div class="product-item" data-product-id="${escapeHtml(item.productId)}" data-product-code="${escapeHtml(item.productCode)}" data-product-name="${escapeHtml(item.productName)}" data-unit-price="${item.unitPrice}"><span>${escapeHtml(item.productCode)}</span> × <strong class="qty-val">${item.qty}</strong></div>`;
-        });
-
-        if (orderItems.length !== modalRows.length) {
-          alert("商品目錄中找不到所選 SKU，請重新整理後再試。");
-          return;
-        }
-
-        const amount = calculateOrderAmount(
-          orderItems,
-          paymentMethod,
-          discountAmount,
-        );
-        const originalAmount = amount.originalTotal;
-        const totalAmount = amount.finalTotal;
-
-        // 付款狀態樣式匹配
-        let paymentBadgeClass = "pay-danger";
-        let displayPaymentMethodText = paymentMethod;
-        if (paymentMethod === "貨到付款") {
-          paymentBadgeClass = "pay-neutral";
-          displayPaymentMethodText = "貨到付款（+30手續費）";
-        } else if (paymentMethod === "月結") {
-          paymentBadgeClass = "pay-neutral";
-        }
-
-        const newCardHTML = `
-          <div class="card status-pending" id="${uniqueCardId}" data-status="待確認" data-source="manual" data-line-user-id="" data-needs-reconfirm="false" data-pending-notice-fields="" data-discount-amount="${discountAmount}" data-discount-reason="${escapeHtml(discountReason)}">
-            <div class="row-top">
-              <div class="order-no-wrapper">
-                <input type="checkbox" class="batch-check" onchange="handleBatchCheckChange()" />
-                <div class="order-no">
-                  訂單編號
-                  <span class="state-badge state-badge-pending">待確認</span>
-                </div>
-              </div>
-              <div class="card-edit-actions">
-                <button type="button" class="edit-icon-btn edit-back-btn" title="回上一步" onclick="exitEditMode('${uniqueCardId}')">↩</button>
-                <button type="button" class="edit-icon-btn edit-main-btn" onclick="toggleEditMode('${uniqueCardId}')">✏️ 修改訂單資料</button>
-              </div>
-            </div>
-
-            <div class="main-customer-block">
-              <div class="customer-info-group">
-                <div class="name">${name}</div>
-                <div class="phone">${phone}</div>
-                <div class="address">${address}</div>
-              </div>
-              
-              <div class="right-header-box">
-                <div class="amount">$${totalAmount}</div>
-                <div class="original-amount" style="${discountAmount > 0 ? "display:block;" : ""}">$${originalAmount}</div>
-                <div class="payment-badge ${paymentBadgeClass}">${displayPaymentMethodText}</div>
-              </div>
-            </div>
-
-            <div class="order-note">${note}</div>
-            <div class="discount-badge" style="${discountAmount > 0 ? "display:inline-block;" : ""}">🏷 ${escapeHtml(discountReason || "優惠")} -${discountAmount}</div>
-
-            <div class="product-section">
-              <div class="product-container-view">
-                ${finalViewHtml}
-              </div>
-
-              <div style="display: none">
-                <div class="product-edit-list"></div>
-                <button type="button" class="btn-add-product" onclick="addNewProductRow('${uniqueCardId}')">➕ 新增品項</button>
-              </div>
-            </div>
-
-            
-
-            <details>
-              <summary>出貨完成操作</summary>
-              <div class="extra">
-                <div class="quick-operation-panel">
-              <div class="quick-operation-grid">
-                <div class="quick-operation-field">
-                  <label>出貨日期</label>
-                  <input type="date" class="form-control shipdate-select" value="${rawDate || ""}" onchange="autoSaveShipment('${uniqueCardId}')">
-                </div>
-                <div class="quick-operation-field">
-                  <label>付款狀態</label>
-                  <select class="payment-select" onchange="autoSaveShipment('${uniqueCardId}')">
-                    <option value="銀行轉帳－未付款" ${paymentMethod === "銀行轉帳－未付款" ? "selected" : ""}>銀行轉帳－未付款</option>
-                    <option value="銀行轉帳－已付款">銀行轉帳－已付款</option>
-                    <option value="貨到付款" ${paymentMethod === "貨到付款" ? "selected" : ""}>貨到付款</option>
-                    <option value="月結" ${paymentMethod === "月結" ? "selected" : ""}>月結</option>
-                  </select>
-                </div>
-                <div class="quick-operation-field">
-                  <label>訂單狀態</label>
-                  <select class="order-action-select" onchange="autoSaveShipment('${uniqueCardId}')">
-                    <option value="正常" selected>正常作業</option>
-                    <option value="取消訂單">取消訂單</option>
-                  </select>
-                </div>
-              </div>
-              <div class="autosave-msg">✓ 已儲存</div>
-            </div>
-                <div style="text-align:right;">
-                  <button type="button" class="btn-save-shipment btn-mark-shipped" onclick="markSingleOrderShipped('${uniqueCardId}')">🚚 單筆已寄出</button>
-                </div>
-                <div class="shipment-success-msg" style="display:none; color:#15803d; font-size:13px; font-weight:700; margin-top:6px;">✅ 出貨安排已更新</div>
-              </div>
-            </details>
-
-            <details>
-              <summary>更多資訊</summary>
-              <div class="extra">
-                <div class="extra-item"><div class="label">寄件人</div><div>${senderName}</div></div>
-                <div class="extra-item"><div class="label">寄件電話</div><div>${senderPhone}</div></div>
-                <div class="extra-item"><div class="label">LINE名稱</div><div>--</div></div>
-                
-                <div class="extra-item">
-  <div class="label">管理員備註</div>
-  <div class="admin-note-display">
-    ${adminNote || "無"}
-  </div>
-</div><div class="operation-log">
-                  <div class="extra-item"><div class="label">最後修改人</div><div class="last-editor">尚未修改</div></div>
-                  <div class="extra-item"><div class="label">最後修改時間</div><div class="last-edited-at">尚未修改</div></div>
-                  <div class="extra-item"><div class="label">最後通知時間</div><div class="last-notified-at">尚未通知</div></div>
-                </div>
-              </div>
-            </details>
-            <div class="status-msg"></div>
-            <div class="order-change-alert">
-              <div class="order-change-title">⚠️ 以下資訊已異動</div>
-              <div class="order-change-list"></div>
-              <button type="button" class="btn-resend-notice" onclick="queueOrderForNotification('${uniqueCardId}')">重新發送通知</button>
-            </div>
-          </div>
-        `;
-
-        const container = document.getElementById("cards-container");
-        if (container) {
-          container.insertAdjacentHTML("afterbegin", newCardHTML);
-          const newCard = document.getElementById(uniqueCardId);
-          calculateCardAmount(uniqueCardId);
-          // 初始化新卡片的出貨安排基準值
-          initShipmentBaseline(uniqueCardId);
-          if (newCard) {
-            newCard._customerEditSnapshot =
-              captureCustomerEditSnapshot(newCard);
-            renderNoticePrompt(newCard);
+          const result = await response.json();
+          if (
+            !response.ok ||
+            !result ||
+            result.ok !== true ||
+            result.action !== "adminCreateOrder" ||
+            !result.created ||
+            !String(result.created.orderNo || "").trim()
+          ) {
+            if (result?.errorCode === "ADMIN_SESSION_REQUIRED") {
+              sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+              showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+            }
+            throw new Error(result?.errorCode || "ORDER_CREATE_FAILED");
           }
-          updateNotifyButton();
-        }
 
-        updateStatsCounters();
-        applyCurrentFilter();
-        closeAddOrderModal();
-        handleBatchCheckChange();
-        updateNotifyButton();
+          const createdOrderNo = String(result.created.orderNo).trim();
+          const adminOrders = await fetchAdminOrdersFromGas();
+          if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
+            throw new Error("ORDER_CREATE_REFRESH_FAILED");
+          }
+          const createdCard = [
+            ...document.querySelectorAll(".card[data-order-no]"),
+          ].find((card) => card.dataset.orderNo === createdOrderNo);
+          if (!createdCard) {
+            throw new Error("ORDER_CREATE_REFRESH_FAILED");
+          }
+
+          adminCreateOrderSubmitting = false;
+          closeAddOrderModal();
+          updateStatsCounters();
+          applyCurrentFilter();
+          handleBatchCheckChange();
+          updateNotifyButton();
+          applyReadOnlyModeToRealOrders();
+          scrollAdminOrderCardIntoView(createdOrderNo);
+        } catch (error) {
+          feedback.className = "admin-content-feedback is-error";
+          if (error.message === "ORDER_CREATE_REFRESH_FAILED") {
+            feedback.innerText =
+              "訂單可能已建立，但列表未能重新載入。請重新整理後確認訂單編號，請勿重複建立。";
+            submitButton.innerText = "請先重新整理確認";
+            return;
+          }
+          adminCreateOrderSubmitting = false;
+          submitButton.disabled = false;
+          submitButton.innerText = "建立訂單";
+          feedback.innerText =
+            error.message === "REQUESTED_SHIPPING_BATCH_UNAVAILABLE"
+              ? "希望寄出批次已失效，請重新選擇。"
+              : "訂單建立失敗，請確認資料後再試。";
+        }
       }
     </script>
   </body>
