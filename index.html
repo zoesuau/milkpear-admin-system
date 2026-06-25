@@ -1706,13 +1706,13 @@
         <div class="search-control-box">
           <div class="search-control-left">
             <label><input type="checkbox" id="global-selectAll" /> 全選</label>
+            <span id="selectedOrderCount">已選 0 張</span>
             <button
               id="batchShippedBtn"
               class="btn-batch-shipped"
               disabled
-              onclick="batchUpdateStatusToShipped()"
             >
-              🚚 發送寄出通知
+              標記已寄出（0）
             </button>
           </div>
           <input
@@ -1722,6 +1722,7 @@
             oninput="handleSearch()"
           />
         </div>
+        <div id="batchActionFeedback" class="admin-workflow-feedback"></div>
       </div>
 
       <div class="cards-container" id="cards-container">
@@ -1739,11 +1740,6 @@
         >
           <div class="row-top">
             <div class="order-no-wrapper">
-              <input
-                type="checkbox"
-                class="batch-check"
-                onchange="handleBatchCheckChange()"
-              />
               <div class="order-no">
                 訂單編號
                 <span class="state-badge state-badge-pending">待確認</span>
@@ -2132,6 +2128,9 @@
       let latestAdminOrders = [];
       let adminShippingBatches = [];
       let adminCreateOrderSubmitting = false;
+      const selectedOrderNos = new Set();
+      const unconfirmedNotificationOrderNos = new Set();
+      let adminBatchProcessing = false;
       const CURRENT_ADMIN_NAME = "後台管理員";
       let currentFilterStatus = "全部";
 
@@ -2605,17 +2604,7 @@
       }
 
       function updateNotifyButton() {
-        if (!sendBtn) return;
-        const cards = document.querySelectorAll(".cards-container .card");
-        let notifyCount = 0;
-        cards.forEach((card) => {
-          if (isLineOrder(card) && getPendingNoticeFields(card).length > 0) {
-            notifyCount++;
-          }
-        });
-        sendBtn.innerText =
-          notifyCount > 0 ? `發送異動通知（${notifyCount}）` : "發送異動通知";
-        sendBtn.disabled = notifyCount === 0;
+        syncBatchSelectionUi();
       }
 
       function renderNoticePrompt(card) {
@@ -2737,26 +2726,7 @@
 
       // ── 發送通知 ──
       if (sendBtn) {
-        sendBtn.addEventListener("click", () => {
-          let notifyCount = 0;
-          document
-            .querySelectorAll(".cards-container .card")
-            .forEach((card) => {
-              const fields = getPendingNoticeFields(card);
-              if (
-                card.dataset.orderNo ||
-                !isLineOrder(card) ||
-                !fields.length
-              ) {
-                return;
-              }
-
-              completeOrderChange(card);
-              notifyCount++;
-            });
-
-          updateNotifyButton();
-        });
+        sendBtn.addEventListener("click", batchResendOrderNotifications);
       }
 
       async function fetchOrdersFromGas() {
@@ -3026,6 +2996,9 @@
                 目前沒有正式訂單
               </div>
             `;
+            selectedOrderNos.clear();
+            unconfirmedNotificationOrderNos.clear();
+            syncBatchSelectionUi();
             return true;
           }
 
@@ -3038,6 +3011,7 @@
           }
 
           cardsContainer.innerHTML = renderedHtml;
+          applyCurrentFilter();
           return true;
         } catch (error) {
           const adminReadStatusEl = document.getElementById("adminReadStatus");
@@ -3179,6 +3153,7 @@
         const canEditContent = ["待確認", "已安排出貨", "已寄出"].includes(
           orderStatus,
         );
+        const canSelectOrder = ["待確認", "已安排出貨"].includes(orderStatus);
 
         return `
           <div
@@ -3194,6 +3169,11 @@
           >
             <div class="row-top">
               <div class="order-no-wrapper">
+                ${
+                  canSelectOrder
+                    ? `<input type="checkbox" class="batch-check" data-order-no="${escapeHtml(orderNo)}"${selectedOrderNos.has(orderNo) ? " checked" : ""} />`
+                    : ""
+                }
                 <div class="order-no">
                   訂單編號：${escapeHtml(orderNo || "未提供")}
                   <span class="state-badge ${escapeHtml(statusMeta.badgeClass)}">${escapeHtml(statusMeta.badgeText)}</span>
@@ -4878,18 +4858,23 @@
             throw new Error(payload?.errorCode || "NOTIFICATION_FAILED");
           }
 
-          if (payload.result !== "成功") {
+          if (payload.result !== "success") {
             card.dataset.notificationSaving = "false";
             if (button) {
-              button.disabled = false;
-              button.innerText = canLineNotify
-                ? "重新發送通知"
-                : "電話已通知";
+              button.disabled = payload.result === "unconfirmed";
+              button.innerText =
+                payload.result === "unconfirmed"
+                  ? "通知結果待查核"
+                  : canLineNotify
+                    ? "重新發送通知"
+                    : "電話已通知";
             }
             if (feedback) {
               feedback.classList.add("is-error");
               feedback.innerText =
-                payload.result === "略過"
+                payload.result === "unconfirmed"
+                  ? "通知結果無法完整確認，請先至 NotificationLogs 查核。"
+                  : payload.result === "skipped"
                   ? "通知已略過，異動仍待處理。"
                   : "通知失敗，異動仍待處理。";
             }
@@ -5031,16 +5016,7 @@
       }
 
       function applyReadOnlyModeToRealOrders() {
-        document
-          .querySelectorAll(
-            "#global-selectAll, #batchShippedBtn, #sendBtn",
-          )
-          .forEach((element) => {
-            element.disabled = true;
-            element.title = "D1-3 資料寫回功能尚未開放";
-            element.setAttribute("aria-disabled", "true");
-            element.classList.remove("enabled");
-          });
+        syncBatchSelectionUi();
       }
 
       function getAdminOrderStatusMeta(orderStatus) {
@@ -5285,6 +5261,8 @@
             card.style.display = "none";
           }
         });
+        cleanupSelectedOrderNos(true);
+        syncBatchSelectionUi();
       }
 
       // ==========================================
@@ -6046,74 +6024,447 @@ ${adminNote}
       // ==========================================
       // 🔗 系統四：全選與批次連動按鈕核心控制區
       // ==========================================
-      document
-        .getElementById("global-selectAll")
-        .addEventListener("change", function () {
-          const checkboxes = document.querySelectorAll(".batch-check");
-          checkboxes.forEach((cb) => {
-            cb.checked = this.checked;
-          });
-          handleBatchCheckChange();
-        });
-
-      function isBatchShippableCard(card) {
-        return !!card && card.getAttribute("data-status") === "已安排出貨";
+      function getVisibleSelectableCheckboxes() {
+        return [
+          ...document.querySelectorAll(
+            '#cards-container .card[data-readonly="true"][data-order-no] .batch-check[data-order-no]',
+          ),
+        ].filter((checkbox) => checkbox.closest(".card")?.style.display !== "none");
       }
 
-      // Checkbox 保留給發送通知使用；批次已寄出按鈕只看已安排出貨的勾選卡片
-      function handleBatchCheckChange() {
-        const checkboxes = document.querySelectorAll(".batch-check");
-        let hasChecked = false;
-        let hasShippableChecked = false;
-        let checkedCount = 0;
-        checkboxes.forEach((cb) => {
-          if (cb.checked) {
-            hasChecked = true;
-            checkedCount++;
-            if (isBatchShippableCard(cb.closest(".card")))
-              hasShippableChecked = true;
+      function cleanupSelectedOrderNos(requireVisible = true) {
+        const selectable = new Set(
+          [
+            ...document.querySelectorAll(
+              '#cards-container .card[data-readonly="true"][data-order-no] .batch-check[data-order-no]',
+            ),
+          ]
+            .filter(
+              (checkbox) =>
+                !requireVisible ||
+                checkbox.closest(".card")?.style.display !== "none",
+            )
+            .map((checkbox) => String(checkbox.dataset.orderNo || "").trim())
+            .filter(Boolean),
+        );
+        [...selectedOrderNos].forEach((orderNo) => {
+          if (!selectable.has(orderNo)) {
+            selectedOrderNos.delete(orderNo);
+            unconfirmedNotificationOrderNos.delete(orderNo);
           }
+        });
+      }
+
+      function getSelectedAdminOrders() {
+        return [...selectedOrderNos]
+          .map((orderNo) => getLatestAdminOrder(orderNo))
+          .filter(Boolean);
+      }
+
+      function isBatchShippableOrder(order) {
+        return (
+          order?.orderStatus === "已安排出貨" &&
+          !!String(order?.expectedShippingDate || "").trim() &&
+          !String(order?.changedFields || "").trim() &&
+          !["待送出", "待重新通知", "待人工通知"].includes(
+            String(order?.notificationStatus || "").trim(),
+          )
+        );
+      }
+
+      function isBatchNotifiableOrder(order) {
+        return (
+          !["已寄出", "已取消"].includes(
+            String(order?.orderStatus || "").trim(),
+          ) &&
+          !!String(order?.changedFields || "").trim() &&
+          ["待送出", "待重新通知"].includes(
+            String(order?.notificationStatus || "").trim(),
+          ) &&
+          order?.canLineNotify === true
+        );
+      }
+
+      function setBatchFeedback(message, isError = false) {
+        const feedback = document.getElementById("batchActionFeedback");
+        if (!feedback) return;
+        feedback.innerText = message;
+        feedback.classList.toggle("is-error", isError);
+      }
+
+      function syncBatchSelectionUi(preserveFeedback = false) {
+        const count = selectedOrderNos.size;
+        const selectedOrders = getSelectedAdminOrders();
+        const allSelectedFound = selectedOrders.length === count;
+        const shippedEligible =
+          count > 0 &&
+          allSelectedFound &&
+          selectedOrders.every(isBatchShippableOrder);
+        const notifyEligible =
+          count > 0 &&
+          count <= 20 &&
+          allSelectedFound &&
+          [...selectedOrderNos].every(
+            (orderNo) => !unconfirmedNotificationOrderNos.has(orderNo),
+          ) &&
+          selectedOrders.every(isBatchNotifiableOrder);
+        const visibleCheckboxes = getVisibleSelectableCheckboxes();
+        const visibleSelectedCount = visibleCheckboxes.filter((checkbox) =>
+          selectedOrderNos.has(String(checkbox.dataset.orderNo || "").trim()),
+        ).length;
+
+        document.querySelectorAll(".batch-check[data-order-no]").forEach((checkbox) => {
+          checkbox.checked = selectedOrderNos.has(
+            String(checkbox.dataset.orderNo || "").trim(),
+          );
+          checkbox.disabled = adminBatchProcessing;
         });
 
         const selectAll = document.getElementById("global-selectAll");
         if (selectAll) {
+          selectAll.disabled =
+            adminBatchProcessing || visibleCheckboxes.length === 0;
           selectAll.checked =
-            checkboxes.length > 0 && checkedCount === checkboxes.length;
+            visibleCheckboxes.length > 0 &&
+            visibleSelectedCount === visibleCheckboxes.length;
+          selectAll.indeterminate =
+            visibleSelectedCount > 0 &&
+            visibleSelectedCount < visibleCheckboxes.length;
         }
+
+        const countLabel = document.getElementById("selectedOrderCount");
+        if (countLabel) countLabel.innerText = `已選 ${count} 張`;
 
         const batchShippedBtn = document.getElementById("batchShippedBtn");
-        if (hasShippableChecked) {
-          batchShippedBtn.disabled = false;
-          batchShippedBtn.classList.add("enabled");
-        } else {
-          batchShippedBtn.disabled = true;
-          batchShippedBtn.classList.remove("enabled");
+        if (batchShippedBtn) {
+          batchShippedBtn.innerText = adminBatchProcessing
+            ? "處理中…"
+            : `標記已寄出（${count}）`;
+          batchShippedBtn.disabled =
+            adminBatchProcessing || !shippedEligible;
+          batchShippedBtn.classList.toggle(
+            "enabled",
+            !batchShippedBtn.disabled,
+          );
+        }
+
+        if (sendBtn) {
+          sendBtn.innerText = adminBatchProcessing
+            ? "發送中…"
+            : `發送異動通知（${count}）`;
+          sendBtn.disabled = adminBatchProcessing || !notifyEligible;
+        }
+
+        if (!adminBatchProcessing && !preserveFeedback) {
+          if (!count) {
+            setBatchFeedback("");
+          } else if (
+            [...selectedOrderNos].some((orderNo) =>
+              unconfirmedNotificationOrderNos.has(orderNo),
+            )
+          ) {
+            setBatchFeedback(
+              "選取項目含待查核通知。請先確認 NotificationLogs，再決定是否重新發送。",
+              true,
+            );
+          } else if (count > 20 && selectedOrders.every(isBatchNotifiableOrder)) {
+            setBatchFeedback(
+              "一次最多發送 20 張異動通知，請分批處理。",
+              true,
+            );
+          } else {
+            const reasons = [];
+            if (!shippedEligible) {
+              reasons.push(
+                "已選訂單中包含尚未安排完成或待通知訂單，無法批次標記已寄出。",
+              );
+            }
+            if (!notifyEligible) {
+              reasons.push(
+                "已選訂單中包含無 LINE UID 或非待通知訂單，無法批次發送異動通知。",
+              );
+            }
+            setBatchFeedback(reasons.join("\n"), reasons.length > 0);
+          }
         }
       }
 
-      // 批次已寄出按鈕觸發事件
-      function batchUpdateStatusToShipped() {
-        const checkboxes = document.querySelectorAll(".batch-check");
-        let count = 0;
-        checkboxes.forEach((cb) => {
-          if (cb.checked) {
-            // 尋找最近的外層卡片
-            const card = cb.closest(".card");
-            if (isBatchShippableCard(card)) {
-              const cardId = card.getAttribute("id");
-              handleCardStatusChange(cardId, "已寄出");
-              cb.checked = false; // 一鍵更新後取消勾選
-              count++;
+      function handleBatchCheckChange() {
+        cleanupSelectedOrderNos(true);
+        syncBatchSelectionUi();
+      }
+
+      document
+        .getElementById("global-selectAll")
+        .addEventListener("change", function () {
+          if (adminBatchProcessing) return;
+          getVisibleSelectableCheckboxes().forEach((checkbox) => {
+            const orderNo = String(checkbox.dataset.orderNo || "").trim();
+            if (!orderNo) return;
+            if (this.checked) selectedOrderNos.add(orderNo);
+            else {
+              selectedOrderNos.delete(orderNo);
+              unconfirmedNotificationOrderNos.delete(orderNo);
             }
-          }
+          });
+          syncBatchSelectionUi();
         });
-        handleBatchCheckChange();
-        if (count === 0) {
-          alert("已勾選的訂單中，沒有可批次已寄出的已安排出貨訂單。");
-        } else {
-          alert(`成功將已選取的 ${count} 筆訂單狀態批次更新為【已寄出】`);
+
+      document
+        .getElementById("cards-container")
+        .addEventListener("change", (event) => {
+          if (
+            adminBatchProcessing ||
+            !event.target.matches(".batch-check[data-order-no]")
+          ) {
+            return;
+          }
+          const orderNo = String(event.target.dataset.orderNo || "").trim();
+          if (!orderNo) return;
+          if (event.target.checked) selectedOrderNos.add(orderNo);
+          else {
+            selectedOrderNos.delete(orderNo);
+            unconfirmedNotificationOrderNos.delete(orderNo);
+          }
+          syncBatchSelectionUi();
+        });
+
+      async function refreshAdminOrdersAfterBatch() {
+        const adminOrders = await fetchAdminOrdersFromGas();
+        if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
+          return false;
+        }
+        updateStatsCounters();
+        applyCurrentFilter();
+        updateNotifyButton();
+        applyReadOnlyModeToRealOrders();
+        return true;
+      }
+
+      async function batchUpdateStatusToShipped() {
+        if (adminBatchProcessing || !selectedOrderNos.size) return;
+        const orderNos = [...selectedOrderNos];
+        const selectedOrders = getSelectedAdminOrders();
+        if (
+          selectedOrders.length !== orderNos.length ||
+          !selectedOrders.every(isBatchShippableOrder)
+        ) {
+          syncBatchSelectionUi();
+          return;
+        }
+        if (
+          !window.confirm(
+            `將 ${orderNos.length} 張訂單標為已寄出？\n\n系統會依既有規則寫入實際寄出日期。\n此操作不會發送 LINE 通知。`,
+          )
+        ) {
+          return;
+        }
+
+        const adminSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+        if (!adminSessionToken) {
+          showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+          return;
+        }
+
+        adminBatchProcessing = true;
+        setBatchFeedback("");
+        syncBatchSelectionUi();
+        try {
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({
+              action: "adminBatchMarkOrdersShipped",
+              adminSessionToken,
+              orderNos,
+            }),
+          });
+          const payload = await response.json();
+          const returnedOrderNos = payload?.updated?.orderNos;
+          const sameOrderNos =
+            Array.isArray(returnedOrderNos) &&
+            returnedOrderNos.length === orderNos.length &&
+            orderNos.every((orderNo) => returnedOrderNos.includes(orderNo));
+          if (
+            !response.ok ||
+            payload?.ok !== true ||
+            payload?.action !== "adminBatchMarkOrdersShipped" ||
+            payload?.updated?.count !== orderNos.length ||
+            !sameOrderNos
+          ) {
+            throw new Error(
+              payload?.errorCode || "BATCH_SHIPPED_WRITE_VERIFY_FAILED",
+            );
+          }
+
+          if (!(await refreshAdminOrdersAfterBatch())) {
+            throw new Error("BATCH_REFRESH_FAILED");
+          }
+          selectedOrderNos.clear();
+          unconfirmedNotificationOrderNos.clear();
+          setBatchFeedback(`已將 ${orderNos.length} 張訂單標為已寄出。`);
+        } catch (error) {
+          setBatchFeedback(
+            error.message === "BATCH_REFRESH_FAILED"
+              ? "批次可能已完成，但列表重新讀取失敗。請重新整理確認，請勿重複送出。"
+              : error.message === "BATCH_SHIPPED_WRITE_VERIFY_FAILED"
+              ? "批次結果無法完整驗證，請重新整理確認，請勿重複送出。"
+              : "批次標記已寄出失敗，未套用前端變更。",
+            true,
+          );
+        } finally {
+          adminBatchProcessing = false;
+          syncBatchSelectionUi(true);
         }
       }
+
+      async function batchResendOrderNotifications() {
+        if (adminBatchProcessing || !selectedOrderNos.size) return;
+        const orderNos = [...selectedOrderNos];
+        const selectedOrders = getSelectedAdminOrders();
+        if (
+          orderNos.length > 20 ||
+          selectedOrders.length !== orderNos.length ||
+          !selectedOrders.every(isBatchNotifiableOrder)
+        ) {
+          syncBatchSelectionUi();
+          return;
+        }
+        if (
+          !window.confirm(
+            `將發送 ${orderNos.length} 張異動通知？\n\n通知成功的訂單會清除異動提示。\n通知失敗、略過或結果待查核的訂單，\n會保留待通知狀態與異動提示。`,
+          )
+        ) {
+          return;
+        }
+
+        const adminSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+        if (!adminSessionToken) {
+          showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+          return;
+        }
+
+        adminBatchProcessing = true;
+        setBatchFeedback("");
+        syncBatchSelectionUi();
+        try {
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({
+              action: "adminBatchResendOrderNotifications",
+              adminSessionToken,
+              orderNos,
+            }),
+          });
+          const payload = await response.json();
+          const summary = payload?.summary;
+          const results = Array.isArray(payload?.results)
+            ? payload.results
+            : [];
+          const allowedResults = [
+            "success",
+            "failed",
+            "skipped",
+            "unconfirmed",
+          ];
+          const actualCounts = results.reduce(
+            (counts, result) => {
+              if (allowedResults.includes(result?.result)) {
+                counts[result.result] += 1;
+              }
+              return counts;
+            },
+            { success: 0, failed: 0, skipped: 0, unconfirmed: 0 },
+          );
+          const resultTotal =
+            Number(summary?.successCount || 0) +
+            Number(summary?.failedCount || 0) +
+            Number(summary?.skippedCount || 0) +
+            Number(summary?.unconfirmedCount || 0);
+          if (
+            !response.ok ||
+            payload?.ok !== true ||
+            payload?.action !== "adminBatchResendOrderNotifications" ||
+            Number(summary?.requestedCount) !== orderNos.length ||
+            resultTotal !== orderNos.length ||
+            results.length !== orderNos.length ||
+            results.some(
+              (result) =>
+                !orderNos.includes(String(result?.orderNo || "")) ||
+                !allowedResults.includes(result?.result),
+            ) ||
+            orderNos.some(
+              (orderNo) =>
+                results.filter((result) => result?.orderNo === orderNo)
+                  .length !== 1,
+            ) ||
+            actualCounts.success !== Number(summary?.successCount) ||
+            actualCounts.failed !== Number(summary?.failedCount) ||
+            actualCounts.skipped !== Number(summary?.skippedCount) ||
+            actualCounts.unconfirmed !== Number(summary?.unconfirmedCount)
+          ) {
+            throw new Error("BATCH_NOTIFICATION_RESULT_INCOMPLETE");
+          }
+
+          const unconfirmedOrderNos = results
+            .filter((result) => result.result === "unconfirmed")
+            .map((result) => result.orderNo);
+          const incompleteOrderNos = results
+            .filter((result) =>
+              ["failed", "skipped"].includes(result.result),
+            )
+            .map((result) => result.orderNo);
+          selectedOrderNos.clear();
+          unconfirmedNotificationOrderNos.clear();
+          const retainedOrderNos = unconfirmedOrderNos.length
+            ? unconfirmedOrderNos
+            : incompleteOrderNos;
+          retainedOrderNos.forEach((orderNo) =>
+            selectedOrderNos.add(String(orderNo || "")),
+          );
+          unconfirmedOrderNos.forEach((orderNo) =>
+            unconfirmedNotificationOrderNos.add(String(orderNo || "")),
+          );
+
+          if (!(await refreshAdminOrdersAfterBatch())) {
+            throw new Error("BATCH_REFRESH_FAILED");
+          }
+
+          if (unconfirmedOrderNos.length) {
+            setBatchFeedback(
+              `有 ${unconfirmedOrderNos.length} 張通知結果待查核。\n請先確認 NotificationLogs，再決定是否重新發送。`,
+              true,
+            );
+          } else if (incompleteOrderNos.length) {
+            setBatchFeedback(
+              `已成功發送 ${summary.successCount} 張；${incompleteOrderNos.length} 張未完成，已保留待通知狀態。`,
+              true,
+            );
+          } else {
+            setBatchFeedback(
+              `已成功發送 ${summary.successCount} 張異動通知。`,
+            );
+          }
+        } catch (error) {
+          await refreshAdminOrdersAfterBatch();
+          setBatchFeedback(
+            "批次通知結果不完整，請重新整理確認，請勿立即重送。",
+            true,
+          );
+        } finally {
+          adminBatchProcessing = false;
+          syncBatchSelectionUi(true);
+        }
+      }
+
+      document
+        .getElementById("batchShippedBtn")
+        .addEventListener("click", batchUpdateStatusToShipped);
 
       // 搜尋功能
       function handleSearch() {
