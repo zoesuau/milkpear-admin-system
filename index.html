@@ -594,6 +594,156 @@
         cursor: not-allowed;
         opacity: 0.58;
       }
+      .admin-content-edit-trigger {
+        min-height: 38px;
+        padding: 0 12px;
+        border: 1px solid #94a3b8;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #334155;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .admin-content-editor {
+        margin-top: 14px;
+        padding: 14px;
+        border: 1px solid rgba(79, 127, 99, 0.24);
+        border-radius: 14px;
+        background: rgba(248, 250, 252, 0.94);
+      }
+      .admin-content-section {
+        margin-bottom: 16px;
+      }
+      .admin-content-section-title {
+        margin-bottom: 10px;
+        color: #334155;
+        font-size: 14px;
+        font-weight: 900;
+      }
+      .admin-content-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .admin-content-field {
+        min-width: 0;
+      }
+      .admin-content-field.full {
+        grid-column: 1 / -1;
+      }
+      .admin-content-field label {
+        display: block;
+        margin-bottom: 5px;
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .admin-content-field input,
+      .admin-content-field textarea,
+      .admin-content-product-row select,
+      .admin-content-product-row input {
+        width: 100%;
+        min-height: 42px;
+        padding: 9px 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #1e293b;
+        font: inherit;
+      }
+      .admin-content-field textarea {
+        min-height: 88px;
+        resize: vertical;
+      }
+      .admin-content-product-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 86px 42px;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .admin-content-product-delete {
+        min-height: 42px;
+        border: 1px solid #fecaca;
+        border-radius: 10px;
+        background: #fff1f2;
+        color: #dc2626;
+        cursor: pointer;
+      }
+      .admin-content-add-item {
+        min-height: 40px;
+        padding: 0 12px;
+        border: 1px dashed #4f7f63;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #4f7f63;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .admin-content-lock-message,
+      .admin-content-feedback {
+        margin-top: 8px;
+        color: #b45309;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .admin-content-feedback.is-error {
+        color: #b91c1c;
+      }
+      .admin-content-preview {
+        margin-top: 12px;
+        padding: 12px;
+        border-radius: 12px;
+        background: #ffffff;
+      }
+      .admin-content-preview-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 4px 0;
+      }
+      .admin-content-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 14px;
+      }
+      .admin-content-cancel,
+      .admin-content-save {
+        min-height: 42px;
+        padding: 0 16px;
+        border-radius: 10px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .admin-content-cancel {
+        border: 1px solid #94a3b8;
+        background: #ffffff;
+        color: #475569;
+      }
+      .admin-content-save {
+        border: 1px solid #4f7f63;
+        background: #4f7f63;
+        color: #ffffff;
+      }
+      .admin-content-save:disabled {
+        opacity: 0.58;
+        cursor: not-allowed;
+      }
+      @media (max-width: 640px) {
+        .admin-content-grid {
+          grid-template-columns: 1fr;
+        }
+        .admin-content-field.full {
+          grid-column: auto;
+        }
+        .admin-content-product-row {
+          grid-template-columns: minmax(0, 1fr) 72px 42px;
+        }
+        .admin-content-actions button {
+          flex: 1;
+        }
+      }
       .autosave-msg {
         min-height: 18px;
         margin-top: 8px;
@@ -1455,12 +1605,20 @@
         <div class="gas-test-status" id="adminReadStatus">
           等待管理員完整訂單讀取…
         </div>
+        <div class="gas-test-status" id="adminProductCatalogStatus">
+          等待管理員商品目錄讀取…
+        </div>
       </div>
 
       <div class="top-filter-panel">
         <div class="panel-header-row">
           <h2>訂單作業</h2>
-          <button class="btn-add-order-trigger" onclick="openAddOrderModal()">
+          <button
+            class="btn-add-order-trigger"
+            onclick="openAddOrderModal()"
+            disabled
+            aria-disabled="true"
+          >
             ➕ 新增訂單
           </button>
         </div>
@@ -1842,14 +2000,7 @@
                   <select
                     class="edit-select modal-spec-select"
                     onchange="updateNewOrderAmountPreview()"
-                  >
-                    <option value="13A">13A</option>
-                    <option value="14A" selected>14A</option>
-                    <option value="15A">15A</option>
-                    <option value="19A">19A</option>
-                    <option value="21A">21A</option>
-                    <option value="23A">23A</option>
-                  </select>
+                  ></select>
                   <span
                     style="font-size: 16px; font-weight: bold; color: #64748b"
                     >×</span
@@ -2026,74 +2177,9 @@
       const ADMIN_LINE_CODE_VERIFIER_KEY = "milkpear_admin_line_code_verifier";
       const ADMIN_LINE_SESSION_TOKEN_KEY = "milkpear_admin_session_token";
 
-      const PRODUCT_LIST = [
-        {
-          id: "p13A",
-          code: "13A",
-          name: "13 A",
-          weight: "12.1~13兩",
-          count: "10顆",
-          price: 900,
-          active: true,
-          sortOrder: 1,
-        },
-        {
-          id: "p14A",
-          code: "14A",
-          name: "14 A",
-          weight: "13.1~14兩",
-          count: "10顆",
-          price: 1000,
-          active: true,
-          sortOrder: 2,
-        },
-        {
-          id: "p15A",
-          code: "15A",
-          name: "15 A",
-          weight: "14.1~15兩",
-          count: "10顆",
-          price: 1100,
-          active: true,
-          sortOrder: 3,
-        },
-        {
-          id: "p19A",
-          code: "19A",
-          name: "19 A",
-          weight: "18.1~19兩",
-          count: "8顆",
-          price: 1300,
-          active: true,
-          sortOrder: 4,
-        },
-        {
-          id: "p21A",
-          code: "21A",
-          name: "21 A",
-          weight: "19.1~21兩",
-          count: "6顆",
-          price: 1200,
-          active: true,
-          sortOrder: 5,
-        },
-        {
-          id: "p23A",
-          code: "23A",
-          name: "23 A",
-          weight: "21.1~23兩",
-          count: "6顆",
-          price: 1500,
-          active: true,
-          sortOrder: 6,
-        },
-      ];
-      const PRICE_MAP = Object.fromEntries(
-        PRODUCT_LIST.map((product) => [product.code, product.price]),
-      );
-      const productOptions = PRODUCT_LIST.filter((product) => product.active)
-        .sort((a, b) => a.sortOrder - b.sortOrder)
-        .map((product) => product.code);
+      let adminProductCatalog = [];
+      let adminProductsReady = false;
+      let latestAdminOrders = [];
       const CURRENT_ADMIN_NAME = "後台管理員";
       let currentFilterStatus = "全部";
 
@@ -2325,7 +2411,7 @@
         const list = document.getElementById("product-management-list");
         if (!list) return;
 
-        list.innerHTML = PRODUCT_LIST.map((product) => {
+        list.innerHTML = adminProductCatalog.map((product) => {
           const activeText = product.active ? "啟用" : "停用";
           const activeClass = product.active
             ? "product-status-active"
@@ -2343,6 +2429,71 @@
         }).join("");
       }
 
+      function getActiveAdminProducts() {
+        return adminProductCatalog
+          .filter((product) => product.active === true)
+          .sort((a, b) => a.sortOrder - b.sortOrder);
+      }
+
+      function getDefaultAdminProduct() {
+        return getActiveAdminProducts()[0] || null;
+      }
+
+      function buildAdminProductOptionsHtml(selectedCode = "") {
+        const products = getActiveAdminProducts();
+        const selectedProduct = products.some(
+          (product) => product.code === selectedCode,
+        )
+          ? selectedCode
+          : products[0]?.code || "";
+
+        return products
+          .map(
+            (product) =>
+              `<option value="${escapeHtml(product.code)}" ${product.code === selectedProduct ? "selected" : ""}>${escapeHtml(product.name)}｜${escapeHtml(product.count)}裝｜$${escapeHtml(formatAdminMoney(product.price))}</option>`,
+          )
+          .join("");
+      }
+
+      function setAdminProductCatalogState(ready, message, isError = false) {
+        adminProductsReady = ready === true;
+        const trigger = document.querySelector(".btn-add-order-trigger");
+        const status = document.getElementById("adminProductCatalogStatus");
+
+        if (trigger) {
+          trigger.disabled = !adminProductsReady;
+          trigger.setAttribute(
+            "aria-disabled",
+            adminProductsReady ? "false" : "true",
+          );
+          trigger.title = adminProductsReady
+            ? ""
+            : "商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。";
+        }
+
+        if (status) {
+          status.className = `gas-test-status${isError ? " error" : ""}`;
+          status.innerText = message;
+        }
+      }
+
+      function resetModalProductRows() {
+        const list = document.getElementById("modal-product-list");
+        const defaultProduct = getDefaultAdminProduct();
+        if (!list || !defaultProduct) return;
+
+        list.innerHTML = `
+          <div class="product-edit-row">
+            <select class="edit-select modal-spec-select" onchange="updateNewOrderAmountPreview()">
+              ${buildAdminProductOptionsHtml(defaultProduct.code)}
+            </select>
+            <span style="font-size:16px; font-weight:bold; color:#64748b;">×</span>
+            <input type="number" class="edit-qty modal-qty-input" value="1" min="1" style="text-align:center;" oninput="updateNewOrderAmountPreview()">
+            <span style="cursor:pointer; font-size:14px; padding:2px 6px; color:#ef4444;" onclick="this.parentElement.remove(); updateNewOrderAmountPreview();">🗑️</span>
+          </div>
+        `;
+      }
+
       function normalizeMoney(value) {
         const amount = parseInt(String(value ?? "0").replace(/,/g, ""), 10);
         return Number.isFinite(amount) && amount > 0 ? amount : 0;
@@ -2353,40 +2504,71 @@
       }
 
       function getProductByCode(code) {
-        return PRODUCT_LIST.find((product) => product.code === code) || null;
+        return (
+          adminProductCatalog.find((product) => product.code === code) || null
+        );
       }
 
       function getProductById(productId) {
-        return PRODUCT_LIST.find((product) => product.id === productId) || null;
+        return (
+          adminProductCatalog.find((product) => product.id === productId) ||
+          null
+        );
       }
 
       function normalizeOrderItem(item) {
         const code = item.productCode || item.code || item.spec || "";
-        const product =
-          getProductById(item.productId) || getProductByCode(code);
+        const product = getProductByCode(code);
 
-        const productId = item.productId || product?.id || "";
-        const productCode = item.productCode || product?.code || code;
-        const productName = item.productName || product?.name || productCode;
-        const qty = Math.max(parseInt(item.qty || 0, 10), 0);
+        if (!product) return null;
 
-        const unitPrice = Number(
-          item.unitPrice ?? product?.price ?? PRICE_MAP[productCode] ?? 0,
-        );
+        const qty = Number(item.qty);
+        if (!Number.isInteger(qty) || qty <= 0) return null;
 
         return {
-          productId,
-          productCode,
-          productName,
-          unitPrice,
+          productId: product.id,
+          productCode: product.code,
+          productName: product.name,
+          weight: product.weight,
+          count: product.count,
+          unitPrice: product.price,
           qty,
         };
       }
 
       function calculateOrderAmount(items, paymentMethod, discountAmount = 0) {
+        if (!adminProductsReady) {
+          return {
+            items: [],
+            subtotal: 0,
+            totalBoxes: 0,
+            shippingFee: 0,
+            codFee: 0,
+            originalTotal: 0,
+            discount: 0,
+            finalTotal: 0,
+            valid: false,
+          };
+        }
+
         const normalizedItems = Array.isArray(items)
           ? items.map(normalizeOrderItem)
           : [];
+        const hasInvalidProduct = normalizedItems.some((item) => !item);
+
+        if (hasInvalidProduct) {
+          return {
+            items: [],
+            subtotal: 0,
+            totalBoxes: 0,
+            shippingFee: 0,
+            codFee: 0,
+            originalTotal: 0,
+            discount: 0,
+            finalTotal: 0,
+            valid: false,
+          };
+        }
 
         const subtotal = normalizedItems.reduce((sum, item) => {
           return sum + item.unitPrice * item.qty;
@@ -2421,6 +2603,7 @@
           originalTotal,
           discount,
           finalTotal,
+          valid: true,
         };
       }
 
@@ -2801,6 +2984,70 @@
         }
       }
 
+      async function fetchAdminProductCatalogFromGas() {
+        const baseUrl = String(GAS_ORDERS_API_URL || "").trim();
+        const adminSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+
+        setAdminProductCatalogState(false, "讀取管理員商品目錄中...");
+
+        try {
+          if (!baseUrl || !adminSessionToken) {
+            throw new Error("ADMIN_SESSION_REQUIRED");
+          }
+
+          const response = await fetch(baseUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify({
+              action: "adminReadProductCatalog",
+              adminSessionToken,
+            }),
+          });
+          const payload = await response.json();
+
+          if (
+            payload &&
+            payload.ok === false &&
+            payload.action === "adminReadProductCatalog" &&
+            payload.error === "ADMIN_SESSION_REQUIRED"
+          ) {
+            throw new Error("ADMIN_SESSION_REQUIRED");
+          }
+
+          if (
+            !payload ||
+            payload.ok !== true ||
+            payload.action !== "adminReadProductCatalog" ||
+            !Array.isArray(payload.products)
+          ) {
+            throw new Error(
+              String(payload?.error || "PRODUCT_CATALOG_READ_FAILED"),
+            );
+          }
+
+          adminProductCatalog = payload.products.slice();
+          setAdminProductCatalogState(true, "✅ 管理員商品目錄讀取成功");
+          renderProductManagement();
+          resetModalProductRows();
+          updateNewOrderAmountPreview();
+          return adminProductCatalog;
+        } catch (error) {
+          console.error("GAS 商品目錄讀取失敗", error);
+          adminProductCatalog = [];
+          setAdminProductCatalogState(
+            false,
+            "商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。",
+            true,
+          );
+          renderProductManagement();
+          return null;
+        }
+      }
+
       function renderAdminOrders(adminOrders) {
         const cardsContainer = document.getElementById("cards-container");
 
@@ -2809,6 +3056,7 @@
         }
 
         try {
+          latestAdminOrders = adminOrders.slice();
           if (adminOrders.length === 0) {
             cardsContainer.innerHTML = `
               <div class="status-msg">
@@ -2927,6 +3175,9 @@
           actualShippingDate,
         );
         const trackingNoRow = buildReadOnlyExtraRow("宅配單號", order?.trackingNo);
+        const canEditContent = ["待確認", "已安排出貨", "已寄出"].includes(
+          orderStatus,
+        );
 
         return `
           <div
@@ -2945,7 +3196,14 @@
                   <span class="payment-badge pay-neutral">👁 唯讀</span>
                 </div>
               </div>
+              ${
+                canEditContent
+                  ? `<button type="button" class="admin-content-edit-trigger" onclick="enterAdminContentEdit(this.closest('.card'))">✏️ 修改訂單資料</button>`
+                  : ""
+              }
             </div>
+
+            <div class="admin-content-editor-host"></div>
 
             <div class="main-customer-block">
               <div class="customer-info-group">
@@ -3027,7 +3285,7 @@
                 ${buildReadOnlyExtraRow("訂購人電話", order?.buyerPhone)}
                 ${buildReadOnlyExtraRow("LINE 名稱", order?.lineDisplayName)}
                 ${buildReadOnlyExtraRow("訂單來源", order?.orderSource)}
-                ${buildAdminNoteEditorHtml(adminNote)}
+                ${buildReadOnlyExtraRow("管理員備註", adminNote || "無")}
                 ${buildReadOnlyExtraRow("異動欄位", order?.changedFields)}
                 ${buildReadOnlyExtraRow("通知狀態", order?.notificationStatus)}
                 ${buildReadOnlyExtraRow("最後通知類型", order?.lastNotificationType)}
@@ -3041,6 +3299,433 @@
             </details>
           </div>
         `;
+      }
+
+      function getLatestAdminOrder(orderNo) {
+        return (
+          latestAdminOrders.find(
+            (order) => String(order?.orderNo || "") === String(orderNo || ""),
+          ) || null
+        );
+      }
+
+      function parseAdminEditableItemsSummary(itemsSummary) {
+        const lines = String(itemsSummary || "")
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+        const seenCodes = new Set();
+        const items = [];
+
+        if (!lines.length) return null;
+
+        for (const line of lines) {
+          const qtyMatch = line.match(/[×xX*]\s*(\d+)\s*盒/);
+          if (!qtyMatch) return null;
+
+          const qty = Number(qtyMatch[1]);
+          const identity = line
+            .replace(/[（(].*$/, "")
+            .replace(/\s+/g, "")
+            .toUpperCase();
+          const matches = adminProductCatalog.filter((product) => {
+            return [product.code, product.name].some(
+              (value) =>
+                String(value || "")
+                  .replace(/\s+/g, "")
+                  .toUpperCase() === identity,
+            );
+          });
+
+          if (
+            matches.length !== 1 ||
+            matches[0].active !== true ||
+            !Number.isInteger(qty) ||
+            qty <= 0 ||
+            seenCodes.has(matches[0].code)
+          ) {
+            return null;
+          }
+
+          seenCodes.add(matches[0].code);
+          items.push({ code: matches[0].code, qty });
+        }
+
+        return items;
+      }
+
+      function buildAdminContentProductRow(item = null) {
+        const selectedCode =
+          getProductByCode(item?.code)?.code || getDefaultAdminProduct()?.code;
+        if (!selectedCode) return "";
+
+        return `
+          <div class="admin-content-product-row">
+            <select class="admin-content-product-code" onchange="updateAdminContentPreview(this.closest('.card'))">
+              ${buildAdminProductOptionsHtml(selectedCode)}
+            </select>
+            <input type="number" class="admin-content-product-qty" min="1" step="1" value="${escapeHtml(item?.qty || 1)}" oninput="updateAdminContentPreview(this.closest('.card'))">
+            <button type="button" class="admin-content-product-delete" aria-label="刪除品項" onclick="removeAdminContentProductRow(this)">🗑️</button>
+          </div>
+        `;
+      }
+
+      function getAdminContentEditorItems(card) {
+        return [
+          ...card.querySelectorAll(".admin-content-product-row"),
+        ].map((row) => ({
+          code: row.querySelector(".admin-content-product-code")?.value || "",
+          qty: Number(
+            row.querySelector(".admin-content-product-qty")?.value || 0,
+          ),
+        }));
+      }
+
+      function buildAdminContentPreviewHtml(order, shippedOnly) {
+        if (shippedOnly) {
+          const originalAmount = Number.isFinite(Number(order.originalAmount))
+            ? Number(order.originalAmount)
+            : Number(order.finalAmount || 0) + Number(order.discountAmount || 0);
+          const discountAmount = Number(order.discountAmount || 0);
+          return `
+            <div class="admin-content-preview" data-shipped-original-amount="${escapeHtml(originalAmount)}">
+              <div class="admin-content-preview-row"><span>原始應收金額</span><strong data-preview-original>${formatAdminMoney(originalAmount)}</strong></div>
+              <div class="admin-content-preview-row"><span>優惠</span><strong data-preview-discount>${formatAdminMoney(discountAmount)}</strong></div>
+              <div class="admin-content-preview-row"><span>更新後應收金額</span><strong data-preview-final>${formatAdminMoney(Math.max(originalAmount - discountAmount, 0))}</strong></div>
+            </div>
+          `;
+        }
+
+        const currentOriginal = Number(order.originalAmount || 0);
+        const currentShipping = Number(order.shippingFee || 0);
+        const currentCod = order.paymentMethod === "貨到付款" ? 30 : 0;
+        const currentSubtotal = Math.max(
+          currentOriginal - currentShipping - currentCod,
+          0,
+        );
+        return `
+          <div class="admin-content-preview" data-current-original-amount="${escapeHtml(currentOriginal)}">
+            <div class="admin-content-preview-row"><span>商品金額</span><strong data-preview-subtotal>${formatAdminMoney(currentSubtotal)}</strong></div>
+            <div class="admin-content-preview-row"><span>運費</span><strong data-preview-shipping>${formatAdminMoney(currentShipping)}</strong></div>
+            <div class="admin-content-preview-row" data-preview-cod-row style="${currentCod > 0 ? "" : "display:none"}"><span>貨到付款手續費</span><strong data-preview-cod>${formatAdminMoney(currentCod)}</strong></div>
+            <div class="admin-content-preview-row"><span>優惠</span><strong data-preview-discount>${formatAdminMoney(order.discountAmount || 0)}</strong></div>
+            <div class="admin-content-preview-row"><span>應收金額</span><strong data-preview-final>${formatAdminMoney(order.finalAmount || 0)}</strong></div>
+          </div>
+        `;
+      }
+
+      function enterAdminContentEdit(card) {
+        if (!card || card.dataset.contentEditing === "true") return;
+
+        const orderNo = card.dataset.orderNo || "";
+        const order = getLatestAdminOrder(orderNo);
+        const status = String(order?.orderStatus || "");
+        const shippedOnly = status === "已寄出";
+        const host = card.querySelector(".admin-content-editor-host");
+
+        if (!order || !host || status === "已取消") return;
+        if (!shippedOnly && !adminProductsReady) {
+          alert(
+            "商品目錄尚未就緒，暫時無法安全編輯訂單內容；請重新整理後再試。",
+          );
+          return;
+        }
+
+        const parsedItems = shippedOnly
+          ? null
+          : parseAdminEditableItemsSummary(order.itemsSummary);
+        const productsEditable = !shippedOnly && Array.isArray(parsedItems);
+
+        host.innerHTML = `
+          <div class="admin-content-editor" data-products-editable="${productsEditable ? "true" : "false"}" data-shipped-only="${shippedOnly ? "true" : "false"}">
+            ${
+              shippedOnly
+                ? ""
+                : `
+                  <div class="admin-content-section">
+                    <div class="admin-content-section-title">1. 收件資料</div>
+                    <div class="admin-content-grid">
+                      <div class="admin-content-field"><label>收件人姓名</label><input class="admin-content-recipient-name" value="${escapeHtml(order.recipientName || "")}"></div>
+                      <div class="admin-content-field"><label>收件人電話</label><input class="admin-content-recipient-phone" value="${escapeHtml(order.recipientPhone || "")}"></div>
+                      <div class="admin-content-field full"><label>收件地址</label><textarea class="admin-content-recipient-address">${escapeHtml(order.recipientAddress || "")}</textarea></div>
+                    </div>
+                  </div>
+                  <div class="admin-content-section">
+                    <div class="admin-content-section-title">2. 訂購人資料</div>
+                    <div class="admin-content-grid">
+                      <div class="admin-content-field"><label>訂購人姓名</label><input class="admin-content-buyer-name" value="${escapeHtml(order.buyerName || "")}"></div>
+                      <div class="admin-content-field"><label>訂購人電話</label><input class="admin-content-buyer-phone" value="${escapeHtml(order.buyerPhone || "")}"></div>
+                    </div>
+                  </div>
+                `
+            }
+            <div class="admin-content-section">
+              <div class="admin-content-section-title">${shippedOnly ? "" : "3. "}訂單內容</div>
+              <div class="admin-content-grid">
+                <div class="admin-content-field"><label>優惠金額</label><input type="number" min="0" step="1" class="admin-content-discount-amount" value="${escapeHtml(order.discountAmount || 0)}" oninput="updateAdminContentPreview(this.closest('.card'))"></div>
+                <div class="admin-content-field"><label>優惠原因</label><input class="admin-content-discount-reason" value="${escapeHtml(order.discountReason || "")}"></div>
+                <div class="admin-content-field full"><label>管理員備註</label><textarea class="admin-content-admin-note">${escapeHtml(order.adminNote || "")}</textarea></div>
+                ${
+                  shippedOnly
+                    ? ""
+                    : `<div class="admin-content-field full"><label>客戶備註</label><textarea class="admin-content-customer-note">${escapeHtml(order.customerNote || "")}</textarea></div>`
+                }
+              </div>
+            </div>
+            ${
+              shippedOnly
+                ? ""
+                : `
+                  <div class="admin-content-section">
+                    <div class="admin-content-section-title">4. 商品內容</div>
+                    ${
+                      productsEditable
+                        ? `
+                          <div class="admin-content-product-list">
+                            ${parsedItems.map(buildAdminContentProductRow).join("")}
+                          </div>
+                          <button type="button" class="admin-content-add-item" onclick="addAdminContentProductRow(this.closest('.card'))">＋新增品項</button>
+                        `
+                        : `<div class="admin-content-lock-message">此筆歷史商品格式無法安全轉換，商品內容已鎖定；仍可修改其他允許欄位。</div>`
+                    }
+                  </div>
+                `
+            }
+            <div class="admin-content-section">
+              ${shippedOnly ? "" : '<div class="admin-content-section-title">5. 金額預覽</div>'}
+              ${buildAdminContentPreviewHtml(order, shippedOnly)}
+            </div>
+            <div class="admin-content-feedback" aria-live="polite"></div>
+            <div class="admin-content-actions">
+              <button type="button" class="admin-content-cancel" onclick="cancelAdminContentEdit()">取消</button>
+              <button type="button" class="admin-content-save" onclick="saveAdminContentEdit(this.closest('.card'))">儲存內容</button>
+            </div>
+          </div>
+        `;
+
+        card.dataset.contentEditing = "true";
+        card.querySelector(".admin-content-edit-trigger")?.setAttribute(
+          "disabled",
+          "disabled",
+        );
+        updateAdminContentPreview(card);
+      }
+
+      function addAdminContentProductRow(card) {
+        const list = card?.querySelector(".admin-content-product-list");
+        if (!list || !adminProductsReady) return;
+        list.insertAdjacentHTML("beforeend", buildAdminContentProductRow());
+        updateAdminContentPreview(card);
+      }
+
+      function removeAdminContentProductRow(button) {
+        const card = button?.closest(".card");
+        button?.closest(".admin-content-product-row")?.remove();
+        updateAdminContentPreview(card);
+      }
+
+      function updateAdminContentPreview(card) {
+        const editor = card?.querySelector(".admin-content-editor");
+        if (!editor) return;
+
+        const discount = normalizeMoney(
+          editor.querySelector(".admin-content-discount-amount")?.value || 0,
+        );
+        if (editor.dataset.shippedOnly === "true") {
+          const preview = editor.querySelector(".admin-content-preview");
+          const originalAmount = Number(
+            preview?.dataset.shippedOriginalAmount || 0,
+          );
+          preview.querySelector("[data-preview-discount]").innerText =
+            formatAdminMoney(discount);
+          preview.querySelector("[data-preview-final]").innerText =
+            formatAdminMoney(Math.max(originalAmount - discount, 0));
+          return;
+        }
+
+        if (editor.dataset.productsEditable !== "true") {
+          const preview = editor.querySelector(".admin-content-preview");
+          const originalAmount = Number(
+            preview?.dataset.currentOriginalAmount || 0,
+          );
+          preview.querySelector("[data-preview-discount]").innerText =
+            formatAdminMoney(discount);
+          preview.querySelector("[data-preview-final]").innerText =
+            formatAdminMoney(Math.max(originalAmount - discount, 0));
+          return;
+        }
+        const order = getLatestAdminOrder(card.dataset.orderNo);
+        const amount = calculateOrderAmount(
+          getAdminContentEditorItems(card).map((item) => ({
+            productCode: item.code,
+            qty: item.qty,
+          })),
+          order?.paymentMethod || "",
+          discount,
+        );
+        if (!amount.valid) return;
+
+        editor.querySelector("[data-preview-subtotal]").innerText =
+          formatAdminMoney(amount.subtotal);
+        editor.querySelector("[data-preview-shipping]").innerText =
+          formatAdminMoney(amount.shippingFee);
+        editor.querySelector("[data-preview-cod]").innerText =
+          formatAdminMoney(amount.codFee);
+        editor.querySelector("[data-preview-cod-row]").style.display =
+          amount.codFee > 0 ? "flex" : "none";
+        editor.querySelector("[data-preview-discount]").innerText =
+          formatAdminMoney(amount.discount);
+        editor.querySelector("[data-preview-final]").innerText =
+          formatAdminMoney(amount.finalTotal);
+      }
+
+      function cancelAdminContentEdit() {
+        renderAdminOrders(latestAdminOrders);
+        applyCurrentFilter();
+        applyReadOnlyModeToRealOrders();
+      }
+
+      function adminContentErrorMessage(errorCode) {
+        const messages = {
+          ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入 LINE。",
+          ORDER_CONTENT_LOCKED: "此訂單目前不可修改內容。",
+          ITEMS_SUMMARY_NOT_EDITABLE:
+            "此筆歷史商品格式無法安全轉換，商品內容已鎖定。",
+          ITEMS_INVALID: "商品或數量不正確，請重新確認。",
+          FINAL_AMOUNT_INVALID: "優惠金額不可大於原始應收金額。",
+          ORDER_CONTENT_UPDATE_BUSY: "系統忙碌，請稍後再試。",
+          ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
+          ORDER_NO_NOT_UNIQUE: "訂單資料異常，請停止操作。",
+        };
+        return messages[errorCode] || "內容儲存失敗，請稍後再試。";
+      }
+
+      async function saveAdminContentEdit(card) {
+        const editor = card?.querySelector(".admin-content-editor");
+        const saveButton = editor?.querySelector(".admin-content-save");
+        const feedback = editor?.querySelector(".admin-content-feedback");
+        const order = getLatestAdminOrder(card?.dataset.orderNo);
+        if (!editor || !saveButton || !feedback || !order) return;
+        if (saveButton.disabled) return;
+
+        const shippedOnly = editor.dataset.shippedOnly === "true";
+        const discountAmount = Number(
+          editor.querySelector(".admin-content-discount-amount")?.value || 0,
+        );
+        if (!Number.isInteger(discountAmount) || discountAmount < 0) {
+          feedback.className = "admin-content-feedback is-error";
+          feedback.innerText = "優惠金額必須是非負整數。";
+          return;
+        }
+
+        const payload = {
+          action: "adminUpdateOrderContent",
+          adminSessionToken: String(
+            sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+          ).trim(),
+          orderNo: String(order.orderNo || ""),
+          discountAmount,
+          discountReason:
+            editor.querySelector(".admin-content-discount-reason")?.value.trim() ||
+            "",
+          adminNote:
+            editor.querySelector(".admin-content-admin-note")?.value.trim() ||
+            "",
+        };
+
+        if (!shippedOnly) {
+          payload.recipientName =
+            editor.querySelector(".admin-content-recipient-name")?.value.trim() ||
+            "";
+          payload.recipientPhone =
+            editor.querySelector(".admin-content-recipient-phone")?.value.trim() ||
+            "";
+          payload.recipientAddress =
+            editor
+              .querySelector(".admin-content-recipient-address")
+              ?.value.trim() || "";
+          payload.buyerName =
+            editor.querySelector(".admin-content-buyer-name")?.value.trim() ||
+            "";
+          payload.buyerPhone =
+            editor.querySelector(".admin-content-buyer-phone")?.value.trim() ||
+            "";
+          payload.customerNote =
+            editor.querySelector(".admin-content-customer-note")?.value.trim() ||
+            "";
+
+          if (
+            !payload.recipientName ||
+            !payload.recipientPhone ||
+            !payload.recipientAddress
+          ) {
+            feedback.className = "admin-content-feedback is-error";
+            feedback.innerText = "請完整填寫收件人姓名、電話與地址。";
+            return;
+          }
+
+          if (editor.dataset.productsEditable === "true") {
+            const items = getAdminContentEditorItems(card);
+            const codes = items.map((item) => item.code);
+            if (
+              !items.length ||
+              items.some(
+                (item) =>
+                  !item.code ||
+                  !Number.isInteger(item.qty) ||
+                  item.qty <= 0,
+              ) ||
+              new Set(codes).size !== codes.length
+            ) {
+              feedback.className = "admin-content-feedback is-error";
+              feedback.innerText = "商品至少一列，SKU 不可重複，數量須為正整數。";
+              return;
+            }
+            payload.items = items;
+          }
+        }
+
+        saveButton.disabled = true;
+        saveButton.innerText = "儲存中…";
+        feedback.className = "admin-content-feedback";
+        feedback.innerText = "";
+
+        try {
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify(payload),
+          });
+          const result = await response.json();
+          if (
+            !result ||
+            result.ok !== true ||
+            result.action !== "adminUpdateOrderContent"
+          ) {
+            if (result?.errorCode === "ADMIN_SESSION_REQUIRED") {
+              sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+              showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+            }
+            throw new Error(result?.errorCode || "ORDER_CONTENT_UPDATE_FAILED");
+          }
+
+          const adminOrders = await fetchAdminOrdersFromGas();
+          if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
+            throw new Error("ORDER_CONTENT_REFRESH_FAILED");
+          }
+          updateStatsCounters();
+          applyCurrentFilter();
+          handleBatchCheckChange();
+          updateNotifyButton();
+          applyReadOnlyModeToRealOrders();
+        } catch (error) {
+          saveButton.disabled = false;
+          saveButton.innerText = "儲存內容";
+          feedback.className = "admin-content-feedback is-error";
+          feedback.innerText = adminContentErrorMessage(error.message);
+        }
       }
 
       function buildAdminNoteEditorHtml(adminNote) {
@@ -4234,6 +4919,7 @@
           return;
         }
 
+        await fetchAdminProductCatalogFromGas();
         const adminOrders = await fetchAdminOrdersFromGas();
 
         if (!Array.isArray(adminOrders)) {
@@ -4401,7 +5087,7 @@
       // ==========================================
       function calculateCardAmount(cardId) {
         const card = document.getElementById(cardId);
-        if (!card) return;
+        if (!card || !adminProductsReady) return;
 
         const isEditing =
           card.querySelector(".product-container-view").style.display ===
@@ -4416,13 +5102,8 @@
             const specText = item.querySelector("span").innerText.trim();
             const qtyText = item.querySelector(".qty-val").innerText.trim();
             items.push({
-              productId: item.dataset.productId || "",
               productCode: item.dataset.productCode || specText,
-              productName: item.dataset.productName || specText,
               qty: parseInt(qtyText || 0, 10),
-              unitPrice: item.dataset.unitPrice
-                ? Number(item.dataset.unitPrice)
-                : PRICE_MAP[specText],
             });
           });
         } else {
@@ -4432,21 +5113,9 @@
           rows.forEach((row) => {
             const specSelect = row.querySelector(".edit-select").value;
             const qtyInput = row.querySelector(".edit-qty").value;
-            const shouldKeepUnitPrice =
-              row.dataset.productCode === specSelect && row.dataset.unitPrice;
-            const product = getProductByCode(specSelect);
             items.push({
-              productId: shouldKeepUnitPrice
-                ? row.dataset.productId || ""
-                : product?.id || "",
               productCode: specSelect,
-              productName: shouldKeepUnitPrice
-                ? row.dataset.productName || specSelect
-                : product?.name || specSelect,
               qty: parseInt(qtyInput || 0, 10),
-              unitPrice: shouldKeepUnitPrice
-                ? Number(row.dataset.unitPrice)
-                : product?.price || PRICE_MAP[specSelect],
             });
           });
         }
@@ -4464,6 +5133,7 @@
           paymentMethod,
           discountAmount,
         );
+        if (!amount.valid) return;
         updateDiscountDisplay(card, amount.originalTotal, amount.finalTotal);
       }
 
@@ -4751,20 +5421,17 @@
           .replace(/'/g, "&#039;");
       }
 
-      function buildProductEditRow(spec = "14A", qty = 1, unitPrice = null) {
+      function buildProductEditRow(spec = "", qty = 1) {
+        const selectedProduct =
+          getProductByCode(spec) || getDefaultAdminProduct();
+        if (!selectedProduct) return "";
+
+        const selectedCode = selectedProduct?.code || "";
         const safeQty = Math.max(parseInt(qty || 1, 10), 1);
-        const product = getProductByCode(spec);
-        const safeUnitPrice =
-          unitPrice !== null && unitPrice !== undefined
-            ? Number(unitPrice)
-            : product?.price || PRICE_MAP[spec] || 0;
-        let selectHtml = `<select class="edit-select">`;
-        productOptions.forEach((opt) => {
-          selectHtml += `<option value="${escapeHtml(opt)}" ${opt === spec ? "selected" : ""}>${escapeHtml(opt)}</option>`;
-        });
-        selectHtml += `</select>`;
+        const safeUnitPrice = selectedProduct.price;
+        const selectHtml = `<select class="edit-select">${buildAdminProductOptionsHtml(selectedCode)}</select>`;
         return `
-          <div class="product-edit-row" data-product-id="${escapeHtml(product?.id || "")}" data-product-code="${escapeHtml(spec)}" data-product-name="${escapeHtml(product?.name || spec)}" data-unit-price="${safeUnitPrice}">
+          <div class="product-edit-row" data-product-id="${escapeHtml(selectedProduct?.id || "")}" data-product-code="${escapeHtml(selectedCode)}" data-product-name="${escapeHtml(selectedProduct?.name || selectedCode)}" data-unit-price="${safeUnitPrice}">
             ${selectHtml}
             <span style="font-size:16px; font-weight:bold; color:#64748b;">×</span>
             <input type="number" class="edit-qty" value="${safeQty}" min="1">
@@ -4798,9 +5465,6 @@
             item.dataset.productName ||
             item.querySelector("span")?.innerText.trim() ||
             "",
-          unitPrice: item.dataset.unitPrice
-            ? Number(item.dataset.unitPrice)
-            : undefined,
           spec: item.querySelector("span")?.innerText.trim() || "",
           qty: String(
             Math.max(
@@ -4817,28 +5481,18 @@
       function readProductItemsFromRows(rows) {
         return [...rows].map((row) => {
           const spec = row.querySelector(".edit-select")?.value || "";
-          const shouldKeepUnitPrice =
-            row.dataset.productCode === spec && row.dataset.unitPrice;
-          const product = getProductByCode(spec);
-          return {
-            productId: shouldKeepUnitPrice
-              ? row.dataset.productId || ""
-              : product?.id || "",
+          const item = normalizeOrderItem({
             productCode: spec,
-            productName: shouldKeepUnitPrice
-              ? row.dataset.productName || spec
-              : product?.name || spec,
-            unitPrice: shouldKeepUnitPrice
-              ? Number(row.dataset.unitPrice)
-              : product?.price || PRICE_MAP[spec] || 0,
-            spec,
-            qty: String(
-              Math.max(
-                parseInt(row.querySelector(".edit-qty")?.value || 1, 10),
-                1,
-              ),
-            ),
-          };
+            qty: row.querySelector(".edit-qty")?.value || 1,
+          });
+
+          return item
+            ? {
+                ...item,
+                spec: item.productCode,
+                qty: String(item.qty),
+              }
+            : null;
         });
       }
 
@@ -4952,12 +5606,9 @@ ${adminNote}
           productItems.forEach((item) => {
             const spec = item.querySelector("span")?.innerText.trim() || "14A";
             const qty = item.querySelector(".qty-val")?.innerText.trim() || "1";
-            const unitPrice = item.dataset.unitPrice
-              ? Number(item.dataset.unitPrice)
-              : null;
             productEditList.insertAdjacentHTML(
               "beforeend",
-              buildProductEditRow(spec, qty, unitPrice),
+              buildProductEditRow(spec, qty),
             );
           });
           if (!productEditList.children.length) {
@@ -5020,6 +5671,10 @@ ${adminNote}
         }
         if (!productRows.length) {
           alert("請至少保留一筆品項。");
+          return;
+        }
+        if (editedProducts.some((item) => !item)) {
+          alert("商品目錄中找不到所選 SKU，請重新整理後再試。");
           return;
         }
 
@@ -5087,12 +5742,10 @@ ${adminNote}
             const spec = item.spec;
             const qty = item.qty;
             const normalizedItem = normalizeOrderItem({
-              productId: item.productId,
               productCode: item.productCode || spec,
-              productName: item.productName || spec,
-              unitPrice: item.unitPrice,
               qty,
             });
+            if (!normalizedItem) return;
             productHtml += `<div class="product-item" data-product-id="${escapeHtml(normalizedItem.productId)}" data-product-code="${escapeHtml(normalizedItem.productCode)}" data-product-name="${escapeHtml(normalizedItem.productName)}" data-unit-price="${normalizedItem.unitPrice}"><span>${escapeHtml(spec)}</span> × <strong class="qty-val">${qty}</strong></div>`;
           });
           productView.innerHTML = productHtml;
@@ -5254,6 +5907,15 @@ ${adminNote}
 
       // 彈窗模組開啟關閉
       function openAddOrderModal() {
+        if (!adminProductsReady) {
+          alert(
+            "商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。",
+          );
+          return;
+        }
+        if (!document.querySelector("#modal-product-list .product-edit-row")) {
+          resetModalProductRows();
+        }
         document.getElementById("addOrderModal").classList.add("open");
         document.body.style.overflow = "hidden";
         updateNewOrderAmountPreview();
@@ -5263,23 +5925,7 @@ ${adminNote}
         document.getElementById("addOrderModal").classList.remove("open");
         document.body.style.overflow = "";
         document.getElementById("newOrderForm").reset();
-        const defaultProductOptionsHtml = productOptions
-          .map(
-            (opt) =>
-              `<option value="${escapeHtml(opt)}" ${opt === "14A" ? "selected" : ""}>${escapeHtml(opt)}</option>`,
-          )
-          .join("");
-        // 重設彈窗品項列表，恢復只有一組預設欄位
-        document.getElementById("modal-product-list").innerHTML = `
-          <div class="product-edit-row">
-            <select class="edit-select modal-spec-select" onchange="updateNewOrderAmountPreview()">
-              ${defaultProductOptionsHtml}
-            </select>
-            <span style="font-size:16px; font-weight:bold; color:#64748b;">×</span>
-            <input type="number" class="edit-qty modal-qty-input" value="1" min="1" style="text-align:center;" oninput="updateNewOrderAmountPreview()">
-            <span style="cursor:pointer; font-size:14px; padding:2px 6px; color:#ef4444;" onclick="this.parentElement.remove(); updateNewOrderAmountPreview();">🗑️</span>
-          </div>
-        `;
+        resetModalProductRows();
         updateNewOrderAmountPreview();
       }
 
@@ -5291,17 +5937,13 @@ ${adminNote}
 
         modalRows.forEach((row) => {
           const spec = row.querySelector(".modal-spec-select")?.value || "";
-          const product = getProductByCode(spec);
           const qty = Math.max(
             parseInt(row.querySelector(".modal-qty-input")?.value || 0, 10),
             0,
           );
           items.push({
-            productId: product?.id || "",
             productCode: spec,
-            productName: product?.name || spec,
             qty,
-            unitPrice: product?.price || PRICE_MAP[spec] || 0,
           });
         });
 
@@ -5322,11 +5964,14 @@ ${adminNote}
           discountAmount: amount.discount,
           originalTotal: amount.originalTotal,
           finalTotal: amount.finalTotal,
+          valid: amount.valid,
         };
       }
 
       function updateNewOrderAmountPreview() {
+        if (!adminProductsReady) return;
         const totals = calculateNewOrderPreviewTotals();
+        if (!totals.valid) return;
         const setText = (id, value) => {
           const el = document.getElementById(id);
           if (el) el.innerText = formatMoney(value);
@@ -5339,15 +5984,12 @@ ${adminNote}
 
       // 新增訂單彈窗專用的新增品項功能
       function addModalProductRow() {
+        if (!adminProductsReady) return;
         const container = document.getElementById("modal-product-list");
         const row = document.createElement("div");
         row.className = "product-edit-row";
 
-        let selectHtml = `<select class="edit-select modal-spec-select" onchange="updateNewOrderAmountPreview()">`;
-        productOptions.forEach((opt) => {
-          selectHtml += `<option value="${opt}" ${opt === "14A" ? "selected" : ""}>${opt}</option>`;
-        });
-        selectHtml += `</select>`;
+        const selectHtml = `<select class="edit-select modal-spec-select" onchange="updateNewOrderAmountPreview()">${buildAdminProductOptionsHtml()}</select>`;
 
         row.innerHTML = `
           ${selectHtml}
@@ -5380,6 +6022,13 @@ ${adminNote}
       function handleNewOrderSubmit(event) {
         event.preventDefault();
 
+        if (!adminProductsReady) {
+          alert(
+            "商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。",
+          );
+          return;
+        }
+
         const name = document.getElementById("new-name").value;
         const phone = document.getElementById("new-phone").value;
         const address = document.getElementById("new-address").value;
@@ -5411,21 +6060,23 @@ ${adminNote}
 
         modalRows.forEach((row) => {
           const spec = row.querySelector(".modal-spec-select").value;
-          const product = getProductByCode(spec);
           const qty = parseInt(
             row.querySelector(".modal-qty-input").value || 1,
             10,
           );
           const item = normalizeOrderItem({
-            productId: product?.id || "",
             productCode: spec,
-            productName: product?.name || spec,
             qty,
-            unitPrice: product?.price || PRICE_MAP[spec] || 0,
           });
+          if (!item) return;
           orderItems.push(item);
           finalViewHtml += `<div class="product-item" data-product-id="${escapeHtml(item.productId)}" data-product-code="${escapeHtml(item.productCode)}" data-product-name="${escapeHtml(item.productName)}" data-unit-price="${item.unitPrice}"><span>${escapeHtml(item.productCode)}</span> × <strong class="qty-val">${item.qty}</strong></div>`;
         });
+
+        if (orderItems.length !== modalRows.length) {
+          alert("商品目錄中找不到所選 SKU，請重新整理後再試。");
+          return;
+        }
 
         const amount = calculateOrderAmount(
           orderItems,
