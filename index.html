@@ -1108,6 +1108,60 @@
       .btn-save-shipment:active {
         background: #3d634d;
       }
+      .admin-mark-shipped-panel {
+        margin-top: 12px;
+        padding: 14px;
+        border: 1px solid #bbf7d0;
+        border-radius: 12px;
+        background: #f0fdf4;
+      }
+      .admin-mark-shipped-grid {
+        display: flex;
+        align-items: end;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .admin-mark-shipped-field {
+        flex: 1 1 180px;
+      }
+      .admin-mark-shipped-field label {
+        display: block;
+        margin-bottom: 6px;
+        color: #166534;
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .admin-mark-shipped-date {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 9px 10px;
+        border: 1px solid #86efac;
+        border-radius: 8px;
+        background: white;
+      }
+      .admin-mark-shipped-submit {
+        padding: 9px 14px;
+        border: 0;
+        border-radius: 8px;
+        background: #15803d;
+        color: white;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .admin-mark-shipped-submit:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+      .admin-mark-shipped-feedback {
+        min-height: 20px;
+        margin-top: 8px;
+        color: #166534;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .admin-mark-shipped-feedback.is-error {
+        color: #b91c1c;
+      }
 
       /* Desktop RWD Grid */
       @media screen and (min-width: 768px) {
@@ -2712,6 +2766,9 @@
         const expectedShippingDate = String(
           order?.expectedShippingDate ?? "",
         ).trim();
+        const actualShippingDate = String(
+          order?.actualShippingDate ?? "",
+        ).trim();
         const paymentStatus = String(order?.paymentStatus ?? "").trim();
         const adminWorkflowEditable =
           !!orderNo &&
@@ -2723,6 +2780,12 @@
             "月結",
             "季結",
           ].includes(paymentStatus) &&
+          adminWorkflowIsValidDate(expectedShippingDate);
+        const canMarkOrderShipped =
+          !!orderNo &&
+          orderStatus === "已安排出貨" &&
+          actualShippingDate === "" &&
+          expectedShippingDate !== "" &&
           adminWorkflowIsValidDate(expectedShippingDate);
         const recipientName = String(order?.recipientName ?? "").trim();
         const recipientPhone = String(order?.recipientPhone ?? "").trim();
@@ -2777,8 +2840,8 @@
           .toLowerCase();
         const customerNote = String(order?.customerNote ?? "").trim();
         const actualShippingDateRow = buildReadOnlyExtraRow(
-          "實際出貨日期",
-          order?.actualShippingDate,
+          "實際寄出",
+          actualShippingDate,
         );
         const trackingNoRow = buildReadOnlyExtraRow("宅配單號", order?.trackingNo);
 
@@ -2862,6 +2925,11 @@
                       orderStatus,
                     })
                   : `<div class="admin-workflow-unavailable">此筆目前不在 D1-3A 可編輯範圍。</div>`
+              }
+              ${
+                canMarkOrderShipped
+                  ? buildAdminMarkOrderShippedHtml()
+                  : ""
               }
               <div class="extra">
                 ${actualShippingDateRow}
@@ -3024,6 +3092,7 @@
         const saveButton = editor.querySelector(".admin-workflow-save");
         if (saveButton) saveButton.disabled = !isDirty;
         adminWorkflowSetFeedback(editor, isDirty ? "尚未儲存" : "");
+        adminMarkOrderShippedRefreshState(editor.closest(".card"));
       }
 
       function adminWorkflowSetSaving(editor, isSaving) {
@@ -3039,6 +3108,290 @@
         const saveButton = editor.querySelector(".admin-workflow-save");
         if (saveButton) {
           saveButton.disabled = isSaving || !adminWorkflowIsDirty(editor);
+        }
+        adminMarkOrderShippedRefreshState(editor.closest(".card"));
+      }
+
+      function getTaipeiToday() {
+        const parts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Taipei",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(new Date());
+        const values = {};
+        parts.forEach((part) => {
+          if (part.type !== "literal") values[part.type] = part.value;
+        });
+        return `${values.year}-${values.month}-${values.day}`;
+      }
+
+      function buildAdminMarkOrderShippedHtml() {
+        const taipeiToday = getTaipeiToday();
+        return `
+          <div class="admin-mark-shipped-panel" data-mark-shipped="true">
+            <div class="admin-mark-shipped-grid">
+              <div class="admin-mark-shipped-field">
+                <label>實際寄出日期</label>
+                <input
+                  type="date"
+                  class="admin-mark-shipped-date"
+                  value="${escapeHtml(taipeiToday)}"
+                  max="${escapeHtml(taipeiToday)}"
+                />
+              </div>
+              <button type="button" class="admin-mark-shipped-submit">
+                確認此筆已寄出
+              </button>
+            </div>
+            <div class="admin-mark-shipped-feedback" aria-live="polite"></div>
+          </div>
+        `;
+      }
+
+      function adminMarkOrderShippedSetFeedback(
+        panel,
+        message,
+        isError = false,
+      ) {
+        const feedback = panel?.querySelector(
+          ".admin-mark-shipped-feedback",
+        );
+        if (!feedback) return;
+        feedback.innerText = message;
+        feedback.classList.toggle("is-error", isError);
+      }
+
+      function adminMarkOrderShippedRefreshState(card) {
+        const panel = card?.querySelector(
+          '[data-mark-shipped="true"].admin-mark-shipped-panel',
+        );
+        if (!panel) return;
+
+        const editor = card.querySelector(
+          '[data-admin-workflow-editor="true"].admin-workflow-editor',
+        );
+        const isDirty = !!editor && adminWorkflowIsDirty(editor);
+        const workflowSaving = editor?.dataset.saving === "true";
+        const shippedSaving = panel.dataset.saving === "true";
+        const submitButton = panel.querySelector(
+          ".admin-mark-shipped-submit",
+        );
+        if (submitButton) {
+          submitButton.disabled =
+            isDirty || workflowSaving || shippedSaving;
+        }
+      }
+
+      function adminMarkOrderShippedSetSaving(card, panel, isSaving) {
+        panel.dataset.saving = isSaving ? "true" : "false";
+        const editor = card.querySelector(
+          '[data-admin-workflow-editor="true"].admin-workflow-editor',
+        );
+        if (editor) {
+          editor
+            .querySelectorAll(
+              ".admin-workflow-date, .admin-workflow-payment, .admin-workflow-status, .admin-workflow-save",
+            )
+            .forEach((control) => {
+              control.disabled = isSaving;
+            });
+        }
+        panel
+          .querySelectorAll(
+            ".admin-mark-shipped-date, .admin-mark-shipped-submit",
+          )
+          .forEach((control) => {
+            control.disabled = isSaving;
+          });
+
+        if (!isSaving) {
+          if (editor) adminWorkflowSetSaving(editor, false);
+          adminMarkOrderShippedRefreshState(card);
+        }
+      }
+
+      function adminMarkOrderShippedGetErrorMessage(errorCode) {
+        const messages = {
+          ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入 LINE。",
+          REQUEST_KEYS_INVALID: "送出資料格式不正確。",
+          ORDER_NO_REQUIRED: "訂單編號不存在，無法送出。",
+          ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
+          ORDER_NO_DUPLICATE: "訂單資料異常，請停止操作。",
+          ACTUAL_SHIPPING_DATE_REQUIRED: "請選擇實際寄出日期。",
+          ACTUAL_SHIPPING_DATE_INVALID: "實際寄出日期格式不正確。",
+          ACTUAL_SHIPPING_DATE_FUTURE_NOT_ALLOWED:
+            "實際寄出日期不可晚於台灣今天。",
+          EXPECTED_SHIPPING_DATE_REQUIRED: "此訂單尚未設定預計出貨日期。",
+          EXPECTED_SHIPPING_DATE_INVALID: "此訂單的預計出貨日期無效。",
+          ORDER_STATUS_TRANSITION_NOT_ALLOWED:
+            "只有已安排出貨的訂單可以確認已寄出。",
+          ACTUAL_SHIPPING_DATE_ALREADY_EXISTS:
+            "此訂單已存在實際寄出日期，不可覆寫。",
+          ORDER_SHIPPED_WRITE_VERIFY_FAILED:
+            "確認已寄出失敗，資料未能安全寫入。",
+          ORDER_SHIPPED_ROLLBACK_FAILED:
+            "結果無法確認，請停止操作並重新整理。",
+        };
+        return messages[errorCode] || "確認已寄出失敗，請重新讀取後再試。";
+      }
+
+      async function adminMarkOrderShippedSubmit(card, panel) {
+        if (
+          !card?.matches('.card[data-readonly="true"][data-order-no]') ||
+          !panel ||
+          panel.dataset.saving === "true"
+        ) {
+          return;
+        }
+
+        const editor = card.querySelector(
+          '[data-admin-workflow-editor="true"].admin-workflow-editor',
+        );
+        if (
+          (editor && adminWorkflowIsDirty(editor)) ||
+          editor?.dataset.saving === "true"
+        ) {
+          adminMarkOrderShippedSetFeedback(
+            panel,
+            "請先儲存此筆的訂單流程修改。",
+            true,
+          );
+          adminMarkOrderShippedRefreshState(card);
+          return;
+        }
+
+        const orderNo = String(card.dataset.orderNo || "").trim();
+        const actualShippingDate =
+          panel.querySelector(".admin-mark-shipped-date")?.value || "";
+        const taipeiToday = getTaipeiToday();
+
+        if (!orderNo) {
+          adminMarkOrderShippedSetFeedback(
+            panel,
+            "訂單編號不存在，無法送出。",
+            true,
+          );
+          return;
+        }
+        if (
+          !adminWorkflowIsValidDate(actualShippingDate) ||
+          actualShippingDate === ""
+        ) {
+          adminMarkOrderShippedSetFeedback(
+            panel,
+            "請選擇有效的實際寄出日期。",
+            true,
+          );
+          return;
+        }
+        if (actualShippingDate > taipeiToday) {
+          adminMarkOrderShippedSetFeedback(
+            panel,
+            "實際寄出日期不可晚於台灣今天。",
+            true,
+          );
+          return;
+        }
+
+        const confirmed = window.confirm(
+          `訂單編號：${orderNo}\n` +
+            `實際寄出日期：${actualShippingDate}\n\n` +
+            "將把訂單狀態改為「已寄出」。\n" +
+            "此包不提供前端直接回復功能，確定繼續嗎？",
+        );
+        if (!confirmed) return;
+
+        const adminSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+        if (!adminSessionToken) {
+          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+          showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+          adminMarkOrderShippedSetFeedback(
+            panel,
+            "登入已過期，請重新登入 LINE。",
+            true,
+          );
+          return;
+        }
+
+        adminMarkOrderShippedSetSaving(card, panel, true);
+        adminMarkOrderShippedSetFeedback(panel, "確認中…");
+        let actionSucceeded = false;
+
+        try {
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify({
+              action: "adminMarkOrderShipped",
+              adminSessionToken,
+              orderNo,
+              actualShippingDate,
+            }),
+          });
+          const payload = await response.json();
+          if (
+            !payload ||
+            payload.ok !== true ||
+            payload.action !== "adminMarkOrderShipped" ||
+            payload.orderNo !== orderNo ||
+            payload.orderStatus !== "已寄出" ||
+            payload.actualShippingDate !== actualShippingDate
+          ) {
+            const errorCode = String(payload?.errorCode || "");
+            if (errorCode === "ADMIN_SESSION_REQUIRED") {
+              sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+              showAdminAuthOverlay(
+                "⚠️ 登入已過期，請重新登入 LINE",
+                true,
+              );
+            }
+            adminMarkOrderShippedSetSaving(card, panel, false);
+            adminMarkOrderShippedSetFeedback(
+              panel,
+              adminMarkOrderShippedGetErrorMessage(errorCode),
+              true,
+            );
+            return;
+          }
+
+          actionSucceeded = true;
+          adminMarkOrderShippedSetFeedback(
+            panel,
+            "已寫入，正在重新讀取訂單…",
+          );
+          const adminOrders = await fetchAdminOrdersFromGas();
+          if (
+            !Array.isArray(adminOrders) ||
+            !renderAdminOrders(adminOrders)
+          ) {
+            adminMarkOrderShippedSetSaving(card, panel, false);
+            adminMarkOrderShippedSetFeedback(
+              panel,
+              "出貨狀態可能已寫入，但重新讀取失敗。請重新整理後確認。",
+              true,
+            );
+            return;
+          }
+
+          updateStatsCounters();
+          applyCurrentFilter();
+          handleBatchCheckChange();
+          updateNotifyButton();
+          applyReadOnlyModeToRealOrders();
+        } catch (error) {
+          adminMarkOrderShippedSetSaving(card, panel, false);
+          adminMarkOrderShippedSetFeedback(
+            panel,
+            actionSucceeded
+              ? "出貨狀態可能已寫入，但重新讀取失敗。請重新整理後確認。"
+              : "確認已寄出失敗，請重新讀取後再試。",
+            true,
+          );
         }
       }
 
@@ -3246,6 +3599,22 @@
         cardsContainer.addEventListener("input", handleValueChange);
         cardsContainer.addEventListener("change", handleValueChange);
         cardsContainer.addEventListener("click", (event) => {
+          const markShippedButton = event.target.closest(
+            ".admin-mark-shipped-submit",
+          );
+          if (markShippedButton && cardsContainer.contains(markShippedButton)) {
+            const panel = markShippedButton.closest(
+              '[data-mark-shipped="true"].admin-mark-shipped-panel',
+            );
+            const card = markShippedButton.closest(
+              '.card[data-readonly="true"][data-order-no]',
+            );
+            if (panel && card && card.contains(panel)) {
+              adminMarkOrderShippedSubmit(card, panel);
+            }
+            return;
+          }
+
           const saveButton = event.target.closest(".admin-workflow-save");
           if (!saveButton || !cardsContainer.contains(saveButton)) return;
 
