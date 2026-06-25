@@ -281,6 +281,7 @@
       /* 工作卡片基礎與顏色狀態樣式 */
       .card {
         position: relative;
+        scroll-margin-top: 16px;
         border-radius: 20px;
         padding: 20px;
         width: 100%;
@@ -656,18 +657,40 @@
         resize: vertical;
       }
       .admin-content-product-row {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 86px 42px;
+        display: flex;
         gap: 8px;
         align-items: center;
         margin-bottom: 8px;
+        padding: 6px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.6);
+      }
+      .admin-content-product-row select {
+        flex: 1;
+        min-width: 0;
+      }
+      .admin-content-product-row::before {
+        content: "×";
+        order: 2;
+        color: #64748b;
+        font-size: 16px;
+        font-weight: 800;
+      }
+      .admin-content-product-row input {
+        flex: 0 0 72px;
+        width: 72px;
+        text-align: center;
+        order: 3;
       }
       .admin-content-product-delete {
-        min-height: 42px;
-        border: 1px solid #fecaca;
-        border-radius: 10px;
-        background: #fff1f2;
+        order: 4;
+        min-height: auto;
+        padding: 2px 6px;
+        border: 0;
+        background: transparent;
         color: #dc2626;
+        font-size: 14px;
         cursor: pointer;
       }
       .admin-content-add-item {
@@ -691,16 +714,28 @@
         color: #b91c1c;
       }
       .admin-content-preview {
+        display: grid;
+        gap: 8px;
         margin-top: 12px;
         padding: 12px;
+        border: 1px solid #e2e8f0;
         border-radius: 12px;
-        background: #ffffff;
+        background: #f8fafc;
       }
       .admin-content-preview-row {
         display: flex;
         justify-content: space-between;
         gap: 12px;
-        padding: 4px 0;
+        color: #64748b;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .admin-content-preview-row.total {
+        padding-top: 8px;
+        border-top: 1px solid #e2e8f0;
+        color: #15803d;
+        font-size: 17px;
+        font-weight: 900;
       }
       .admin-content-actions {
         display: flex;
@@ -710,7 +745,7 @@
       }
       .admin-content-cancel,
       .admin-content-save {
-        min-height: 42px;
+        height: 40px;
         padding: 0 16px;
         border-radius: 10px;
         font-weight: 800;
@@ -730,6 +765,18 @@
         opacity: 0.58;
         cursor: not-allowed;
       }
+      .admin-content-editor [disabled] {
+        background: #e2e8f0;
+        color: #64748b;
+        cursor: not-allowed;
+        opacity: 0.72;
+      }
+      .card[data-content-editing="true"] .admin-content-readonly {
+        display: none;
+      }
+      .card[data-content-editing="true"] .row-top .payment-badge {
+        display: none;
+      }
       @media (max-width: 640px) {
         .admin-content-grid {
           grid-template-columns: 1fr;
@@ -737,11 +784,8 @@
         .admin-content-field.full {
           grid-column: auto;
         }
-        .admin-content-product-row {
-          grid-template-columns: minmax(0, 1fr) 72px 42px;
-        }
-        .admin-content-actions button {
-          flex: 1;
+        .admin-content-actions {
+          justify-content: flex-end;
         }
       }
       .autosave-msg {
@@ -850,12 +894,15 @@
         line-height: 1;
       }
       .original-amount {
-        display: none;
         margin-top: 4px;
         color: #94a3b8;
         font-size: 13px;
         font-weight: 800;
         text-decoration: line-through;
+      }
+      .original-amount:empty,
+      .discount-badge:empty {
+        display: none;
       }
 
       .payment-badge {
@@ -891,7 +938,7 @@
         font-size: 15px;
       }
       .discount-badge {
-        display: none;
+        display: inline-block;
         margin-top: 10px;
         background: rgba(21, 128, 61, 0.09);
         color: #15803d;
@@ -3124,7 +3171,15 @@
         const discountAmountNumber = Number(order?.discountAmount);
         const hasDiscount =
           Number.isFinite(discountAmountNumber) && discountAmountNumber > 0;
-        const originalAmount = formatAdminMoney(order?.originalAmount);
+        const finalAmountNumber = Number(order?.finalAmount);
+        const originalAmountNumber = Number(order?.originalAmount);
+        const displayOriginalAmount =
+          hasDiscount &&
+          Number.isFinite(originalAmountNumber) &&
+          originalAmountNumber > finalAmountNumber
+            ? originalAmountNumber
+            : Number(finalAmountNumber || 0) + discountAmountNumber;
+        const originalAmount = formatAdminMoney(displayOriginalAmount);
         const discountAmount = formatAdminMoney(order?.discountAmount);
         const discountReason = String(order?.discountReason ?? "").trim();
         const paymentLabel = formatReadOnlyPaymentLabel(
@@ -3205,6 +3260,7 @@
 
             <div class="admin-content-editor-host"></div>
 
+            <div class="admin-content-readonly">
             <div class="main-customer-block">
               <div class="customer-info-group">
                 <div class="name">${escapeHtml(recipientName || "未提供")}</div>
@@ -3216,8 +3272,8 @@
                 <div class="amount">$${escapeHtml(finalAmount)}</div>
                 ${
                   hasDiscount
-                    ? `<div class="original-amount">原始應收：$${escapeHtml(originalAmount)}</div>`
-                    : `<div class="original-amount" style="display: none"></div>`
+                    ? `<div class="original-amount">$${escapeHtml(originalAmount)}</div>`
+                    : ""
                 }
                 <div class="payment-badge ${escapeHtml(paymentClass)}">${escapeHtml(paymentLabel)}</div>
               </div>
@@ -3230,7 +3286,7 @@
             }
             ${
               hasDiscount
-                ? `<div class="discount-badge">優惠：-$${escapeHtml(discountAmount)}${discountReason ? `｜優惠原因：${escapeHtml(discountReason)}` : ""}</div>`
+                ? `<div class="discount-badge">🏷 ${escapeHtml(discountReason || "優惠")} -${escapeHtml(discountAmount)}</div>`
                 : ""
             }
 
@@ -3297,6 +3353,7 @@
                 ${buildReadOnlyExtraRow("建立時間", order?.createdAt)}
               </div>
             </details>
+            </div>
           </div>
         `;
       }
@@ -3354,18 +3411,48 @@
         return items;
       }
 
-      function buildAdminContentProductRow(item = null) {
+      function parseAdminDisplayItemsSummary(itemsSummary) {
+        const lines = String(itemsSummary || "")
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+
+        if (!lines.length) return [];
+
+        return lines.map((line) => {
+          const qtyMatch = line.match(/[×xX*]\s*(\d+)\s*盒/);
+          return {
+            label: line.replace(/[（(].*$/, "").trim() || "歷史商品",
+            qty: qtyMatch ? Number(qtyMatch[1]) : 1,
+          };
+        });
+      }
+
+      function buildLockedHistoricalProductRow(item) {
+        return `
+          <div class="admin-content-product-row">
+            <select class="admin-content-product-code" disabled>
+              <option>${escapeHtml(item.label)}</option>
+            </select>
+            <input type="number" class="admin-content-product-qty" value="${escapeHtml(item.qty)}" disabled>
+            <button type="button" class="admin-content-product-delete" disabled>🗑️</button>
+          </div>
+        `;
+      }
+
+      function buildAdminContentProductRow(item = null, disabled = false) {
         const selectedCode =
           getProductByCode(item?.code)?.code || getDefaultAdminProduct()?.code;
         if (!selectedCode) return "";
+        const disabledAttribute = disabled ? "disabled" : "";
 
         return `
           <div class="admin-content-product-row">
-            <select class="admin-content-product-code" onchange="updateAdminContentPreview(this.closest('.card'))">
+            <select class="admin-content-product-code" onchange="updateAdminContentPreview(this.closest('.card'))" ${disabledAttribute}>
               ${buildAdminProductOptionsHtml(selectedCode)}
             </select>
-            <input type="number" class="admin-content-product-qty" min="1" step="1" value="${escapeHtml(item?.qty || 1)}" oninput="updateAdminContentPreview(this.closest('.card'))">
-            <button type="button" class="admin-content-product-delete" aria-label="刪除品項" onclick="removeAdminContentProductRow(this)">🗑️</button>
+            <input type="number" class="admin-content-product-qty" min="1" step="1" value="${escapeHtml(item?.qty || 1)}" oninput="updateAdminContentPreview(this.closest('.card'))" ${disabledAttribute}>
+            <button type="button" class="admin-content-product-delete" aria-label="刪除品項" onclick="removeAdminContentProductRow(this)" ${disabledAttribute}>🗑️</button>
           </div>
         `;
       }
@@ -3383,20 +3470,31 @@
 
       function buildAdminContentPreviewHtml(order, shippedOnly) {
         if (shippedOnly) {
-          const originalAmount = Number.isFinite(Number(order.originalAmount))
-            ? Number(order.originalAmount)
-            : Number(order.finalAmount || 0) + Number(order.discountAmount || 0);
+          const finalAmount = Number(order.finalAmount || 0);
           const discountAmount = Number(order.discountAmount || 0);
+          const storedOriginalAmount = Number(order.originalAmount);
+          const originalAmount =
+            Number.isFinite(storedOriginalAmount) &&
+            storedOriginalAmount > finalAmount
+              ? storedOriginalAmount
+              : finalAmount + discountAmount;
           return `
             <div class="admin-content-preview" data-shipped-original-amount="${escapeHtml(originalAmount)}">
-              <div class="admin-content-preview-row"><span>原始應收金額</span><strong data-preview-original>${formatAdminMoney(originalAmount)}</strong></div>
-              <div class="admin-content-preview-row"><span>優惠</span><strong data-preview-discount>${formatAdminMoney(discountAmount)}</strong></div>
-              <div class="admin-content-preview-row"><span>更新後應收金額</span><strong data-preview-final>${formatAdminMoney(Math.max(originalAmount - discountAmount, 0))}</strong></div>
+            <div class="admin-content-preview-row"><span>原始應收金額</span><strong data-preview-original>$${formatAdminMoney(originalAmount)}</strong></div>
+              <div class="admin-content-preview-row"><span>優惠金額</span><strong data-preview-discount>-$${formatAdminMoney(discountAmount)}</strong></div>
+              <div class="admin-content-preview-row total"><span>更新後應收金額</span><strong data-preview-final>$${formatAdminMoney(Math.max(originalAmount - discountAmount, 0))}</strong></div>
             </div>
           `;
         }
 
-        const currentOriginal = Number(order.originalAmount || 0);
+        const finalAmount = Number(order.finalAmount || 0);
+        const discountAmount = Number(order.discountAmount || 0);
+        const storedOriginalAmount = Number(order.originalAmount);
+        const currentOriginal =
+          Number.isFinite(storedOriginalAmount) &&
+          storedOriginalAmount > finalAmount
+            ? storedOriginalAmount
+            : finalAmount + discountAmount;
         const currentShipping = Number(order.shippingFee || 0);
         const currentCod = order.paymentMethod === "貨到付款" ? 30 : 0;
         const currentSubtotal = Math.max(
@@ -3405,11 +3503,10 @@
         );
         return `
           <div class="admin-content-preview" data-current-original-amount="${escapeHtml(currentOriginal)}">
-            <div class="admin-content-preview-row"><span>商品金額</span><strong data-preview-subtotal>${formatAdminMoney(currentSubtotal)}</strong></div>
-            <div class="admin-content-preview-row"><span>運費</span><strong data-preview-shipping>${formatAdminMoney(currentShipping)}</strong></div>
-            <div class="admin-content-preview-row" data-preview-cod-row style="${currentCod > 0 ? "" : "display:none"}"><span>貨到付款手續費</span><strong data-preview-cod>${formatAdminMoney(currentCod)}</strong></div>
-            <div class="admin-content-preview-row"><span>優惠</span><strong data-preview-discount>${formatAdminMoney(order.discountAmount || 0)}</strong></div>
-            <div class="admin-content-preview-row"><span>應收金額</span><strong data-preview-final>${formatAdminMoney(order.finalAmount || 0)}</strong></div>
+            <div class="admin-content-preview-row"><span>商品金額</span><strong data-preview-subtotal>$${formatAdminMoney(currentSubtotal)}</strong></div>
+            <div class="admin-content-preview-row"><span>運費與手續費</span><strong data-preview-fees>$${formatAdminMoney(currentShipping + currentCod)}</strong></div>
+            <div class="admin-content-preview-row"><span>優惠金額</span><strong data-preview-discount>-$${formatAdminMoney(order.discountAmount || 0)}</strong></div>
+            <div class="admin-content-preview-row total"><span>應收金額</span><strong data-preview-final>$${formatAdminMoney(order.finalAmount || 0)}</strong></div>
           </div>
         `;
       }
@@ -3431,73 +3528,68 @@
           return;
         }
 
-        const parsedItems = shippedOnly
-          ? null
-          : parseAdminEditableItemsSummary(order.itemsSummary);
+        const parsedItems = adminProductsReady
+          ? parseAdminEditableItemsSummary(order.itemsSummary)
+          : null;
+        const lockedDisplayItems = parseAdminDisplayItemsSummary(
+          order.itemsSummary,
+        );
         const productsEditable = !shippedOnly && Array.isArray(parsedItems);
+        const lockedAttribute = shippedOnly ? "disabled" : "";
 
         host.innerHTML = `
           <div class="admin-content-editor" data-products-editable="${productsEditable ? "true" : "false"}" data-shipped-only="${shippedOnly ? "true" : "false"}">
-            ${
-              shippedOnly
-                ? ""
-                : `
-                  <div class="admin-content-section">
-                    <div class="admin-content-section-title">1. 收件資料</div>
-                    <div class="admin-content-grid">
-                      <div class="admin-content-field"><label>收件人姓名</label><input class="admin-content-recipient-name" value="${escapeHtml(order.recipientName || "")}"></div>
-                      <div class="admin-content-field"><label>收件人電話</label><input class="admin-content-recipient-phone" value="${escapeHtml(order.recipientPhone || "")}"></div>
-                      <div class="admin-content-field full"><label>收件地址</label><textarea class="admin-content-recipient-address">${escapeHtml(order.recipientAddress || "")}</textarea></div>
-                    </div>
-                  </div>
-                  <div class="admin-content-section">
-                    <div class="admin-content-section-title">2. 訂購人資料</div>
-                    <div class="admin-content-grid">
-                      <div class="admin-content-field"><label>訂購人姓名</label><input class="admin-content-buyer-name" value="${escapeHtml(order.buyerName || "")}"></div>
-                      <div class="admin-content-field"><label>訂購人電話</label><input class="admin-content-buyer-phone" value="${escapeHtml(order.buyerPhone || "")}"></div>
-                    </div>
-                  </div>
-                `
-            }
             <div class="admin-content-section">
-              <div class="admin-content-section-title">${shippedOnly ? "" : "3. "}訂單內容</div>
+              <div class="admin-content-section-title">1. 收件資料</div>
+              <div class="admin-content-grid">
+                <div class="admin-content-field"><label>收件人姓名</label><input class="admin-content-recipient-name" value="${escapeHtml(order.recipientName || "")}" ${lockedAttribute}></div>
+                <div class="admin-content-field"><label>收件人電話</label><input class="admin-content-recipient-phone" value="${escapeHtml(order.recipientPhone || "")}" ${lockedAttribute}></div>
+                <div class="admin-content-field full"><label>收件地址</label><input class="admin-content-recipient-address" value="${escapeHtml(order.recipientAddress || "")}" ${lockedAttribute}></div>
+                <div class="admin-content-field full"><label>客戶備註</label><textarea class="admin-content-customer-note" ${lockedAttribute}>${escapeHtml(order.customerNote || "")}</textarea></div>
+              </div>
+            </div>
+            <div class="admin-content-section">
+              <div class="admin-content-section-title">2. 訂購人資料</div>
+              <div class="admin-content-grid">
+                <div class="admin-content-field"><label>訂購人姓名</label><input class="admin-content-buyer-name" value="${escapeHtml(order.buyerName || "")}" ${lockedAttribute}></div>
+                <div class="admin-content-field"><label>訂購人電話</label><input class="admin-content-buyer-phone" value="${escapeHtml(order.buyerPhone || "")}" ${lockedAttribute}></div>
+              </div>
+            </div>
+            <div class="admin-content-section">
+              <div class="admin-content-section-title">3. 訂單內容</div>
               <div class="admin-content-grid">
                 <div class="admin-content-field"><label>優惠金額</label><input type="number" min="0" step="1" class="admin-content-discount-amount" value="${escapeHtml(order.discountAmount || 0)}" oninput="updateAdminContentPreview(this.closest('.card'))"></div>
                 <div class="admin-content-field"><label>優惠原因</label><input class="admin-content-discount-reason" value="${escapeHtml(order.discountReason || "")}"></div>
                 <div class="admin-content-field full"><label>管理員備註</label><textarea class="admin-content-admin-note">${escapeHtml(order.adminNote || "")}</textarea></div>
-                ${
-                  shippedOnly
-                    ? ""
-                    : `<div class="admin-content-field full"><label>客戶備註</label><textarea class="admin-content-customer-note">${escapeHtml(order.customerNote || "")}</textarea></div>`
-                }
               </div>
             </div>
-            ${
-              shippedOnly
-                ? ""
-                : `
-                  <div class="admin-content-section">
-                    <div class="admin-content-section-title">4. 商品內容</div>
-                    ${
-                      productsEditable
-                        ? `
-                          <div class="admin-content-product-list">
-                            ${parsedItems.map(buildAdminContentProductRow).join("")}
-                          </div>
-                          <button type="button" class="admin-content-add-item" onclick="addAdminContentProductRow(this.closest('.card'))">＋新增品項</button>
-                        `
-                        : `<div class="admin-content-lock-message">此筆歷史商品格式無法安全轉換，商品內容已鎖定；仍可修改其他允許欄位。</div>`
-                    }
-                  </div>
-                `
-            }
             <div class="admin-content-section">
-              ${shippedOnly ? "" : '<div class="admin-content-section-title">5. 金額預覽</div>'}
+              <div class="admin-content-section-title">4. 商品內容</div>
+              ${
+                Array.isArray(parsedItems)
+                  ? `
+                    <div class="admin-content-product-list">
+                      ${parsedItems.map((item) => buildAdminContentProductRow(item, shippedOnly)).join("")}
+                    </div>
+                    <button type="button" class="admin-content-add-item" onclick="addAdminContentProductRow(this.closest('.card'))" ${lockedAttribute}>＋新增品項</button>
+                  `
+                  : shippedOnly
+                    ? `
+                      <div class="admin-content-product-list">
+                        ${lockedDisplayItems.map(buildLockedHistoricalProductRow).join("")}
+                      </div>
+                      <button type="button" class="admin-content-add-item" disabled>＋新增品項</button>
+                    `
+                    : `<div class="admin-content-lock-message">此筆歷史商品格式無法安全轉換，商品內容已鎖定；仍可修改其他允許欄位。</div>`
+              }
+            </div>
+            <div class="admin-content-section">
+              <div class="admin-content-section-title">5. 金額預覽</div>
               ${buildAdminContentPreviewHtml(order, shippedOnly)}
             </div>
             <div class="admin-content-feedback" aria-live="polite"></div>
             <div class="admin-content-actions">
-              <button type="button" class="admin-content-cancel" onclick="cancelAdminContentEdit()">取消</button>
+              <button type="button" class="admin-content-cancel" onclick="cancelAdminContentEdit(this.closest('.card'))">取消</button>
               <button type="button" class="admin-content-save" onclick="saveAdminContentEdit(this.closest('.card'))">儲存內容</button>
             </div>
           </div>
@@ -3509,6 +3601,7 @@
           "disabled",
         );
         updateAdminContentPreview(card);
+        scrollAdminOrderCardIntoView(orderNo);
       }
 
       function addAdminContentProductRow(card) {
@@ -3537,9 +3630,9 @@
             preview?.dataset.shippedOriginalAmount || 0,
           );
           preview.querySelector("[data-preview-discount]").innerText =
-            formatAdminMoney(discount);
+            `-$${formatAdminMoney(discount)}`;
           preview.querySelector("[data-preview-final]").innerText =
-            formatAdminMoney(Math.max(originalAmount - discount, 0));
+            `$${formatAdminMoney(Math.max(originalAmount - discount, 0))}`;
           return;
         }
 
@@ -3549,9 +3642,9 @@
             preview?.dataset.currentOriginalAmount || 0,
           );
           preview.querySelector("[data-preview-discount]").innerText =
-            formatAdminMoney(discount);
+            `-$${formatAdminMoney(discount)}`;
           preview.querySelector("[data-preview-final]").innerText =
-            formatAdminMoney(Math.max(originalAmount - discount, 0));
+            `$${formatAdminMoney(Math.max(originalAmount - discount, 0))}`;
           return;
         }
         const order = getLatestAdminOrder(card.dataset.orderNo);
@@ -3566,23 +3659,30 @@
         if (!amount.valid) return;
 
         editor.querySelector("[data-preview-subtotal]").innerText =
-          formatAdminMoney(amount.subtotal);
-        editor.querySelector("[data-preview-shipping]").innerText =
-          formatAdminMoney(amount.shippingFee);
-        editor.querySelector("[data-preview-cod]").innerText =
-          formatAdminMoney(amount.codFee);
-        editor.querySelector("[data-preview-cod-row]").style.display =
-          amount.codFee > 0 ? "flex" : "none";
+          `$${formatAdminMoney(amount.subtotal)}`;
+        editor.querySelector("[data-preview-fees]").innerText =
+          `$${formatAdminMoney(amount.shippingFee + amount.codFee)}`;
         editor.querySelector("[data-preview-discount]").innerText =
-          formatAdminMoney(amount.discount);
+          `-$${formatAdminMoney(amount.discount)}`;
         editor.querySelector("[data-preview-final]").innerText =
-          formatAdminMoney(amount.finalTotal);
+          `$${formatAdminMoney(amount.finalTotal)}`;
       }
 
-      function cancelAdminContentEdit() {
+      function scrollAdminOrderCardIntoView(orderNo) {
+        requestAnimationFrame(() => {
+          const card = [...document.querySelectorAll(".card[data-order-no]")].find(
+            (element) => element.dataset.orderNo === String(orderNo || ""),
+          );
+          card?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+
+      function cancelAdminContentEdit(card) {
+        const orderNo = card?.dataset.orderNo || "";
         renderAdminOrders(latestAdminOrders);
         applyCurrentFilter();
         applyReadOnlyModeToRealOrders();
+        scrollAdminOrderCardIntoView(orderNo);
       }
 
       function adminContentErrorMessage(errorCode) {
@@ -3720,6 +3820,7 @@
           handleBatchCheckChange();
           updateNotifyButton();
           applyReadOnlyModeToRealOrders();
+          scrollAdminOrderCardIntoView(order.orderNo);
         } catch (error) {
           saveButton.disabled = false;
           saveButton.innerText = "儲存內容";
