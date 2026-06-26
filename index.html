@@ -1931,19 +1931,12 @@
           <div class="order-change-alert">
             <div class="order-change-title">⚠️ 以下資訊已異動</div>
             <div class="order-change-list"></div>
-            <button
-              type="button"
-              class="btn-resend-notice"
-              onclick="queueOrderForNotification('orderCard1')"
-            >
-              重新發送通知
-            </button>
           </div>
         </div>
       </div>
 
       <div class="sticky-bottom-action-bar">
-        <button id="sendBtn">發送異動通知</button>
+        <button id="sendBtn" hidden disabled aria-hidden="true">發送異動通知</button>
       </div>
     </section>
 
@@ -2783,11 +2776,6 @@
         }
       }
 
-      // ── 發送通知 ──
-      if (sendBtn) {
-        sendBtn.addEventListener("click", batchResendOrderNotifications);
-      }
-
       async function fetchOrdersFromGas() {
         const gasStatusEl = document.getElementById("gasTestStatus");
 
@@ -3377,9 +3365,11 @@
                         )
                         .join("")}
                     </div>
-                    <button type="button" class="btn-resend-notice">
-                      ${canLineNotify ? "重新發送通知" : "電話已通知"}
-                    </button>
+                    ${
+                      canLineNotify
+                        ? ""
+                        : `<button type="button" class="btn-resend-notice">電話已通知</button>`
+                    }
                     <div class="admin-workflow-feedback admin-notification-feedback" aria-live="polite"></div>
                   </div>
                 `
@@ -6430,10 +6420,7 @@ ${adminNote}
         }
 
         if (sendBtn) {
-          sendBtn.innerText = adminBatchProcessing
-            ? "發送中…"
-            : `發送異動通知（${count}）`;
-          sendBtn.disabled = adminBatchProcessing || !notifyEligible;
+          sendBtn.disabled = true;
         }
 
         if (!adminBatchProcessing && !preserveFeedback) {
