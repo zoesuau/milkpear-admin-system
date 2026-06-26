@@ -478,6 +478,20 @@
         color: #1e293b;
         font-size: 14px;
       }
+      .admin-workflow-readonly {
+        min-height: 40px;
+        padding: 10px 0;
+        color: #1e293b;
+        font-size: 14px;
+        line-height: 1.45;
+      }
+      .admin-workflow-readonly small {
+        display: block;
+        margin-top: 2px;
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 700;
+      }
       .admin-workflow-actions {
         display: flex;
         align-items: center;
@@ -3290,34 +3304,37 @@
 
             <details>
               <summary>出貨安排</summary>
-              <div class="quick-operation-panel">
-                <div class="quick-operation-grid">
-                  <div class="quick-operation-field">
-                    <label>客人希望寄出批次</label>
-                    <div>${escapeHtml(requestedShippingBatchLabel || "未指定")}</div>
-                  </div>
-                  <div class="quick-operation-field">
-                    <label>確定出貨日期</label>
-                    <div>${escapeHtml(expectedShippingDate || "未填")}</div>
-                  </div>
-                  <div class="quick-operation-field">
-                    <label>付款資訊</label>
-                    <div>${escapeHtml(paymentLabel)}</div>
-                  </div>
-                  <div class="quick-operation-field">
-                    <label>訂單狀態</label>
-                    <div>${escapeHtml(orderStatus || "未設定")}</div>
-                  </div>
-                </div>
-              </div>
               ${
                 adminWorkflowEditable
                   ? buildAdminWorkflowEditorHtml({
+                      requestedShippingBatchLabel,
                       expectedShippingDate,
                       paymentStatus,
                       orderStatus,
                     })
-                  : `<div class="admin-workflow-unavailable">此筆目前不在 D1-3A 可編輯範圍。</div>`
+                  : `
+                    <div class="quick-operation-panel">
+                      <div class="quick-operation-grid">
+                        <div class="quick-operation-field">
+                          <label>客人希望寄出批次</label>
+                          <div>${escapeHtml(requestedShippingBatchLabel || "未指定")}</div>
+                        </div>
+                        <div class="quick-operation-field">
+                          <label>確定出貨日期</label>
+                          <div>${escapeHtml(expectedShippingDate || "未填")}</div>
+                        </div>
+                        <div class="quick-operation-field">
+                          <label>付款狀態</label>
+                          <div>${escapeHtml(paymentLabel)}</div>
+                        </div>
+                        <div class="quick-operation-field">
+                          <label>訂單流程狀態</label>
+                          <div>${escapeHtml(orderStatus || "未設定")}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="admin-workflow-unavailable">此筆目前不在 D1-3A 可編輯範圍。</div>
+                  `
               }
               ${
                 canMarkOrderShipped
@@ -4434,6 +4451,7 @@
       }
 
       function buildAdminWorkflowEditorHtml({
+        requestedShippingBatchLabel,
         expectedShippingDate,
         paymentStatus,
         orderStatus,
@@ -4460,8 +4478,13 @@
             data-baseline-date="${escapeHtml(expectedShippingDate)}"
             data-baseline-payment="${escapeHtml(paymentStatus)}"
           >
-            <div class="admin-workflow-title">單筆訂單流程操作</div>
             <div class="admin-workflow-grid">
+              <div class="admin-workflow-field">
+                <label>客人希望寄出批次</label>
+                <div class="admin-workflow-readonly">
+                  <div>${escapeHtml(requestedShippingBatchLabel || "未指定")}</div>
+                </div>
+              </div>
               <div class="admin-workflow-field">
                 <label>確定出貨日期</label>
                 <input
