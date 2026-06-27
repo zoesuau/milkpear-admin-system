@@ -1244,6 +1244,21 @@
         color: #1e293b;
         font-weight: 600;
       }
+      .admin-internal-management .admin-internal-management-note-badge {
+        float: right;
+        max-width: 52%;
+        margin-left: 12px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #475569;
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1.6;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       .operation-log {
         margin-top: 10px;
         padding-top: 10px;
@@ -3293,6 +3308,7 @@
           .toLowerCase();
         const customerNote = String(order?.customerNote ?? "").trim();
         const adminNote = String(order?.adminNote ?? "");
+        const hasAdminNote = adminNote.trim().length > 0;
         const actualShippingDateRow = buildReadOnlyExtraRow(
           "實際寄出日期",
           actualShippingDate,
@@ -3432,7 +3448,6 @@
                 ${buildReadOnlyExtraRow("付款狀態", order?.paymentStatus)}
                 ${buildReadOnlyExtraRow("LINE 名稱", order?.lineDisplayName)}
                 ${buildReadOnlyExtraRow("訂單來源", order?.orderSource)}
-                ${buildReadOnlyExtraRow("管理員備註", adminNote || "無")}
                 ${buildReadOnlyExtraRow("異動欄位", order?.changedFields)}
                 ${buildReadOnlyExtraRow("通知狀態", order?.notificationStatus)}
                 ${buildReadOnlyExtraRow("最後通知類型", order?.lastNotificationType)}
@@ -3442,6 +3457,20 @@
                 ${buildReadOnlyExtraRow("最後修改時間", order?.lastUpdatedAt)}
                 ${buildReadOnlyExtraRow("建立人", order?.createdBy)}
                 ${buildReadOnlyExtraRow("建立時間", order?.createdAt)}
+              </div>
+            </details>
+
+            <details class="admin-internal-management">
+              <summary class="admin-internal-management-summary">
+                內部管理
+                ${
+                  hasAdminNote
+                    ? `<span class="admin-internal-management-note-badge">📝 1 則備註</span>`
+                    : ""
+                }
+              </summary>
+              <div class="extra">
+                ${buildReadOnlyExtraRow("管理員備註", hasAdminNote ? adminNote : "無")}
               </div>
             </details>
             </div>
