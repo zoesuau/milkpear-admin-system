@@ -1248,16 +1248,42 @@
         float: right;
         max-width: 52%;
         margin-left: 12px;
-        padding: 2px 8px;
+        min-height: 28px;
+        padding: 4px 9px;
         border-radius: 999px;
-        background: #f1f5f9;
-        color: #475569;
-        font-size: 12px;
+        border: 1px solid #b9ccec;
+        background: #eef4ff;
+        color: #37577f;
+        font-size: 14px;
         font-weight: 800;
-        line-height: 1.6;
+        line-height: 1.35;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      .admin-internal-management-note-card {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 10px;
+        padding: 12px 14px;
+        border: 1px solid #d7e2f1;
+        border-radius: 12px;
+        background: #f8fbff;
+      }
+      .admin-internal-management-note-title {
+        margin-bottom: 6px;
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .admin-internal-management-note-content {
+        color: #1e293b;
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.65;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
       .operation-log {
         margin-top: 10px;
@@ -3444,19 +3470,8 @@
               <div class="extra">
                 ${buildReadOnlyExtraRow("訂購人", order?.buyerName)}
                 ${buildReadOnlyExtraRow("訂購人電話", order?.buyerPhone)}
-                ${buildReadOnlyExtraRow("付款方式", order?.paymentMethod)}
-                ${buildReadOnlyExtraRow("付款狀態", order?.paymentStatus)}
-                ${buildReadOnlyExtraRow("LINE 名稱", order?.lineDisplayName)}
+                ${buildReadOnlyExtraRow("付款狀態", paymentLabel)}
                 ${buildReadOnlyExtraRow("訂單來源", order?.orderSource)}
-                ${buildReadOnlyExtraRow("異動欄位", order?.changedFields)}
-                ${buildReadOnlyExtraRow("通知狀態", order?.notificationStatus)}
-                ${buildReadOnlyExtraRow("最後通知類型", order?.lastNotificationType)}
-                ${buildReadOnlyExtraRow("最後通知方式", order?.lastNotificationMethod)}
-                ${buildReadOnlyExtraRow("最後通知時間", order?.lastNotificationAt)}
-                ${buildReadOnlyExtraRow("最後修改人", order?.lastUpdatedBy)}
-                ${buildReadOnlyExtraRow("最後修改時間", order?.lastUpdatedAt)}
-                ${buildReadOnlyExtraRow("建立人", order?.createdBy)}
-                ${buildReadOnlyExtraRow("建立時間", order?.createdAt)}
               </div>
             </details>
 
@@ -3470,7 +3485,24 @@
                 }
               </summary>
               <div class="extra">
-                ${buildReadOnlyExtraRow("管理員備註", hasAdminNote ? adminNote : "無")}
+                ${
+                  hasAdminNote
+                    ? `
+                      <div class="admin-internal-management-note-card">
+                        <div class="admin-internal-management-note-title">📝 管理員備註</div>
+                        <div class="admin-internal-management-note-content">${escapeHtml(adminNote)}</div>
+                      </div>
+                    `
+                    : buildReadOnlyExtraRow("管理員備註", "無")
+                }
+                ${buildReadOnlyExtraRow("異動欄位", order?.changedFields)}
+                ${buildReadOnlyExtraRow("通知狀態", order?.notificationStatus)}
+                ${buildReadOnlyExtraRow("最後通知類型", order?.lastNotificationType)}
+                ${buildReadOnlyExtraRow("最後通知方式", order?.lastNotificationMethod)}
+                ${buildReadOnlyExtraRow("最後修改人", order?.lastUpdatedBy)}
+                ${buildReadOnlyExtraRow("最後修改時間", order?.lastUpdatedAt)}
+                ${buildReadOnlyExtraRow("建立人", order?.createdBy)}
+                ${buildReadOnlyExtraRow("建立時間", order?.createdAt)}
               </div>
             </details>
             </div>
