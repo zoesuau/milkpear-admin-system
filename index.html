@@ -1269,7 +1269,7 @@
         padding: 12px 14px;
         border: 1px solid #d7e2f1;
         border-radius: 12px;
-        background: #f8fbff;
+        background: transparent;
       }
       .admin-internal-management-note-title {
         margin-bottom: 6px;
@@ -3480,7 +3480,7 @@
                 內部管理
                 ${
                   hasAdminNote
-                    ? `<span class="admin-internal-management-note-badge">📝 1 則備註</span>`
+                    ? `<span class="admin-internal-management-note-badge">1 則備註</span>`
                     : ""
                 }
               </summary>
@@ -3489,7 +3489,7 @@
                   hasAdminNote
                     ? `
                       <div class="admin-internal-management-note-card">
-                        <div class="admin-internal-management-note-title">📝 管理員備註</div>
+                        <div class="admin-internal-management-note-title">管理員備註</div>
                         <div class="admin-internal-management-note-content">${escapeHtml(adminNote)}</div>
                       </div>
                     `
@@ -4066,6 +4066,28 @@
         });
       }
 
+      function restoreAdminOrderCardViewportPosition(orderNo, previousCardTop) {
+        requestAnimationFrame(() => {
+          const targetOrderNo = String(orderNo || "");
+          if (!targetOrderNo || !Number.isFinite(previousCardTop)) return;
+
+          const nextCard = [
+            ...document.querySelectorAll(".card[data-order-no]"),
+          ].find((element) => element.dataset.orderNo === targetOrderNo);
+          if (!nextCard) return;
+
+          const nextCardTop = nextCard.getBoundingClientRect().top;
+          const offset = nextCardTop - previousCardTop;
+          if (Math.abs(offset) > 1) {
+            window.scrollBy({
+              top: offset,
+              left: 0,
+              behavior: "auto",
+            });
+          }
+        });
+      }
+
       function cancelAdminContentEdit(card) {
         const orderNo = card?.dataset.orderNo || "";
         renderAdminOrders(latestAdminOrders);
@@ -4174,6 +4196,9 @@
           }
         }
 
+        const savedOrderNo = order.orderNo;
+        const previousCardTop = card.getBoundingClientRect().top;
+
         saveButton.disabled = true;
         saveButton.innerText = "儲存中…";
         feedback.className = "admin-content-feedback";
@@ -4209,7 +4234,7 @@
           handleBatchCheckChange();
           updateNotifyButton();
           applyReadOnlyModeToRealOrders();
-          scrollAdminOrderCardIntoView(order.orderNo);
+          restoreAdminOrderCardViewportPosition(savedOrderNo, previousCardTop);
         } catch (error) {
           saveButton.disabled = false;
           saveButton.innerText = "儲存內容";
