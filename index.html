@@ -833,6 +833,24 @@
         .admin-content-actions {
           justify-content: flex-end;
         }
+        .admin-workflow-grid,
+        .admin-workflow-field {
+          min-width: 0;
+        }
+        .admin-workflow-date,
+        .admin-workflow-grid input[type="date"] {
+          width: 100%;
+          inline-size: 100%;
+          max-width: 100%;
+          max-inline-size: 100%;
+          min-width: 0;
+          min-inline-size: 0;
+          box-sizing: border-box;
+        }
+        .admin-workflow-grid input[type="date"] {
+          -webkit-appearance: none;
+          appearance: none;
+        }
       }
       .autosave-msg {
         min-height: 18px;
