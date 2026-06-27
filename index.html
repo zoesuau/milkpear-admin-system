@@ -1505,6 +1505,37 @@
         color: #b91c1c;
       }
 
+      @media (max-width: 640px) {
+        .admin-mark-shipped-panel,
+        .admin-mark-shipped-grid,
+        .admin-mark-shipped-field {
+          min-width: 0;
+          max-width: 100%;
+        }
+        .admin-mark-shipped-grid {
+          width: 100%;
+          grid-template-columns: minmax(0, 1fr) max-content;
+          gap: 6px;
+        }
+        .admin-mark-shipped-date,
+        .admin-mark-shipped-grid input[type="date"] {
+          width: 100%;
+          inline-size: 100%;
+          max-width: 100%;
+          max-inline-size: 100%;
+          min-width: 0;
+          min-inline-size: 0;
+          box-sizing: border-box;
+        }
+        .admin-mark-shipped-submit {
+          min-height: 44px;
+          padding-right: 10px;
+          padding-left: 10px;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+      }
+
       /* Desktop RWD Grid */
       @media screen and (min-width: 768px) {
         body {
