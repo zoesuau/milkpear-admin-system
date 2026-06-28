@@ -1978,12 +1978,10 @@
                     class="payment-select"
                     onchange="autoSaveShipment('orderCard1')"
                   >
-                    <option value="銀行轉帳－未付款">銀行轉帳－未付款</option>
-                    <option value="銀行轉帳－已付款" selected>
-                      銀行轉帳－已付款
-                    </option>
-                    <option value="貨到付款">貨到付款</option>
-                    <option value="月結">月結</option>
+                    <option value="bank_unpaid">銀行轉帳－未付款</option>
+                    <option value="bank_paid" selected>銀行轉帳－已付款</option>
+                    <option value="cod">貨到付款</option>
+                    <option value="other_seasonal">其他－季結</option>
                   </select>
                 </div>
                 <div class="quick-operation-field">
@@ -2227,10 +2225,10 @@
             <div class="form-group">
               <label>付款方式</label>
               <select id="new-payment-method" class="form-control" onchange="updateNewOrderAmountPreview()">
-                <option value="銀行轉帳－未付款" selected>銀行轉帳</option>
-                <option value="貨到付款">貨到付款（+30手續費）</option>
-                <option value="月結">月結</option>
-                <option value="其他">其他</option>
+                <option value="bank_unpaid" selected>銀行轉帳－未付款</option>
+                <option value="cod">貨到付款</option>
+                <option value="bank_paid">銀行轉帳－已付款</option>
+                <option value="other_seasonal">其他－季結</option>
               </select>
             </div>
             <div class="form-group">
@@ -3207,6 +3205,73 @@
         }
       }
 
+      const ADMIN_PAYMENT_STATE_OPTIONS = [
+        {
+          paymentState: "cod",
+          paymentMethod: "貨到付款",
+          paymentStatus: "貨到付款",
+          label: "貨到付款",
+          className: "pay-neutral",
+        },
+        {
+          paymentState: "bank_unpaid",
+          paymentMethod: "銀行轉帳",
+          paymentStatus: "未付款",
+          label: "銀行轉帳－未付款",
+          className: "pay-danger",
+        },
+        {
+          paymentState: "bank_paid",
+          paymentMethod: "銀行轉帳",
+          paymentStatus: "已付款",
+          label: "銀行轉帳－已付款",
+          className: "pay-success",
+        },
+        {
+          paymentState: "other_seasonal",
+          paymentMethod: "其他",
+          paymentStatus: "季結",
+          label: "其他－季結",
+          className: "pay-neutral",
+        },
+      ];
+
+      function getPaymentStateDefinition(paymentState) {
+        const state = String(paymentState ?? "").trim();
+        return (
+          ADMIN_PAYMENT_STATE_OPTIONS.find(
+            (option) => option.paymentState === state,
+          ) || null
+        );
+      }
+
+      function resolvePaymentStateFromStoredPair(paymentMethod, paymentStatus) {
+        const method = String(paymentMethod ?? "").trim();
+        const status = String(paymentStatus ?? "").trim();
+        const definition = ADMIN_PAYMENT_STATE_OPTIONS.find((option) => {
+          return option.paymentMethod === method && option.paymentStatus === status;
+        });
+        return definition ? definition.paymentState : null;
+      }
+
+      function getPaymentLabelFromState(paymentState) {
+        const definition = getPaymentStateDefinition(paymentState);
+        return definition ? definition.label : "";
+      }
+
+      function getPaymentClassFromState(paymentState) {
+        const definition = getPaymentStateDefinition(paymentState);
+        return definition ? definition.className : "pay-neutral";
+      }
+
+      function buildAdminPaymentOptionsHtml(selectedPaymentState) {
+        const selectedState = String(selectedPaymentState ?? "").trim();
+        const optionsHtml = ADMIN_PAYMENT_STATE_OPTIONS.map((option) => {
+          return `<option value="${escapeHtml(option.paymentState)}"${option.paymentState === selectedState ? " selected" : ""}>${escapeHtml(option.label)}</option>`;
+        }).join("");
+        return selectedState ? optionsHtml : `<option value=""></option>${optionsHtml}`;
+      }
+
       function buildAdminOrderCardHtml(order) {
         const statusMeta = getAdminOrderStatusMeta(order?.orderStatus);
         const orderStatus = String(order?.orderStatus ?? "").trim();
@@ -3259,13 +3324,6 @@
         const adminWorkflowEditable =
           !!orderNo &&
           ["待確認", "已安排出貨"].includes(orderStatus) &&
-          [
-            "未付款",
-            "已付款",
-            "貨到付款",
-            "月結",
-            "季結",
-          ].includes(paymentStatus) &&
           adminWorkflowIsValidDate(expectedShippingDate);
         const canMarkOrderShipped =
           !!orderNo &&
@@ -3295,11 +3353,11 @@
           order?.paymentMethod,
           order?.paymentStatus,
         );
-        const paymentClass = paymentLabel.includes("已付款")
-          ? "pay-success"
-          : paymentLabel.includes("未付款")
-            ? "pay-danger"
-            : "pay-neutral";
+        const paymentState = resolvePaymentStateFromStoredPair(
+          order?.paymentMethod,
+          order?.paymentStatus,
+        );
+        const paymentClass = getPaymentClassFromState(paymentState);
         const searchText = [
           order?.orderNo,
           order?.recipientName,
@@ -3431,6 +3489,7 @@
                   ? buildAdminWorkflowEditorHtml({
                       requestedShippingBatchLabel,
                       expectedShippingDate,
+                      paymentMethod: order?.paymentMethod,
                       paymentStatus,
                       orderStatus,
                     })
@@ -3569,7 +3628,10 @@
         const recipientName = String(order.recipientName || "").trim();
         const itemsSummary = String(order.itemsSummary || "").trim();
         const finalAmount = formatAdminMoney(order.finalAmount);
-        const paymentStatus = String(order.paymentStatus || "未提供").trim();
+        const paymentLabel = formatReadOnlyPaymentLabel(
+          order.paymentMethod,
+          order.paymentStatus,
+        );
         const expectedShippingDate = String(
           order.expectedShippingDate || "",
         ).trim();
@@ -3585,7 +3647,7 @@
             <div><strong>訂單編號：</strong>${escapeHtml(orderNo || "未提供")}</div>
             <div><strong>收件人：</strong>${escapeHtml(recipientName || "未提供")}</div>
             <div><strong>商品／應收金額：</strong>${escapeHtml(itemsSummary || "未提供").replace(/\n/g, "<br>")}<br>$${escapeHtml(finalAmount)}</div>
-            <div><strong>付款狀態：</strong>${escapeHtml(paymentStatus)}</div>
+            <div><strong>付款狀態：</strong>${escapeHtml(paymentLabel)}</div>
             <div><strong>確定出貨日期：</strong>${escapeHtml(expectedShippingDate || "尚未排定")}</div>
             <div style="margin-top:4px; padding:10px 12px; border-radius:10px; background:#fef2f2; color:#991b1b; font-weight:800">
               <div>取消後無法自行恢復。</div>
@@ -4615,30 +4677,24 @@
       function buildAdminWorkflowEditorHtml({
         requestedShippingBatchLabel,
         expectedShippingDate,
+        paymentMethod,
         paymentStatus,
         orderStatus,
       }) {
-        const paymentOptions = [
-          "未付款",
-          "已付款",
-          "貨到付款",
-          "月結",
-          "季結",
-        ];
-        const buildOptions = (options, selectedValue) =>
-          options
-            .map(
-              (option) =>
-                `<option value="${escapeHtml(option)}"${option === selectedValue ? " selected" : ""}>${escapeHtml(option)}</option>`,
-            )
-            .join("");
+        const paymentState = resolvePaymentStateFromStoredPair(
+          paymentMethod,
+          paymentStatus,
+        );
+        const paymentWarning = paymentState
+          ? ""
+          : `<div class="admin-workflow-feedback is-error">付款資料待確認</div>`;
 
         return `
           <div
             class="admin-workflow-editor"
             data-admin-workflow-editor="true"
             data-baseline-date="${escapeHtml(expectedShippingDate)}"
-            data-baseline-payment="${escapeHtml(paymentStatus)}"
+            data-baseline-payment="${escapeHtml(paymentState || "")}"
           >
             <div class="admin-workflow-grid">
               <div class="admin-workflow-field">
@@ -4658,8 +4714,9 @@
               <div class="admin-workflow-field">
                 <label>付款狀態</label>
                 <select class="admin-workflow-payment">
-                  ${buildOptions(paymentOptions, paymentStatus)}
+                  ${buildAdminPaymentOptionsHtml(paymentState)}
                 </select>
+                ${paymentWarning}
               </div>
             </div>
             <div class="admin-workflow-actions">
@@ -4711,7 +4768,7 @@
         return {
           expectedShippingDate:
             editor.querySelector(".admin-workflow-date")?.value || "",
-          paymentStatus:
+          paymentState:
             editor.querySelector(".admin-workflow-payment")?.value || "",
         };
       }
@@ -4728,7 +4785,7 @@
         const values = adminWorkflowGetValues(editor);
         return (
           values.expectedShippingDate !== (editor.dataset.baselineDate || "") ||
-          values.paymentStatus !== (editor.dataset.baselinePayment || "")
+          values.paymentState !== (editor.dataset.baselinePayment || "")
         );
       }
 
@@ -5049,8 +5106,8 @@
         if (!orderNo) return "訂單編號不存在，無法儲存。";
 
         if (
-          !["未付款", "已付款", "貨到付款", "月結", "季結"].includes(
-            values.paymentStatus,
+          !["cod", "bank_unpaid", "bank_paid", "other_seasonal"].includes(
+            values.paymentState,
           )
         ) {
           return "付款狀態不允許。";
@@ -5174,7 +5231,7 @@
               adminSessionToken,
               orderNo,
               expectedShippingDate: values.expectedShippingDate,
-              paymentStatus: values.paymentStatus,
+              paymentState: values.paymentState,
             }),
           });
           const payload = await response.json();
@@ -5186,12 +5243,12 @@
             payload.action !== "adminUpdateOrderWorkflow" ||
             !payload.saved ||
             payload.saved.orderNo !== orderNo ||
-            payload.saved.paymentStatus !== values.paymentStatus ||
+            payload.saved.paymentState !== values.paymentState ||
             !payload.order ||
             payload.order.orderNo !== orderNo ||
             payload.order.expectedShippingDate !==
               values.expectedShippingDate ||
-            payload.order.paymentStatus !== values.paymentStatus
+            payload.order.paymentState !== values.paymentState
           ) {
             const errorCode = String(payload?.errorCode || "");
 
@@ -5520,9 +5577,10 @@
       function formatReadOnlyPaymentLabel(paymentMethod, paymentStatus) {
         const method = String(paymentMethod ?? "").trim();
         const status = String(paymentStatus ?? "").trim();
+        const paymentState = resolvePaymentStateFromStoredPair(method, status);
 
-        if (status) return status;
-        if (method) return method;
+        if (paymentState) return getPaymentLabelFromState(paymentState);
+        if (method || status) return "付款資料待確認";
         return "付款資訊未填";
       }
 
@@ -5726,13 +5784,12 @@
         if (!card) return;
         const badge = card.querySelector(".payment-badge");
         if (!badge) return;
+        const paymentState = getPaymentStateDefinition(paymentValue)
+          ? paymentValue
+          : resolvePaymentStateFromStoredPair(paymentValue, paymentValue);
         badge.classList.remove("pay-success", "pay-danger", "pay-neutral");
-        badge.innerText =
-          paymentValue === "貨到付款" ? "貨到付款（+30手續費）" : paymentValue;
-        if (paymentValue.includes("已付款")) badge.classList.add("pay-success");
-        else if (paymentValue.includes("未付款"))
-          badge.classList.add("pay-danger");
-        else badge.classList.add("pay-neutral");
+        badge.innerText = getPaymentLabelFromState(paymentState) || "付款資料待確認";
+        badge.classList.add(getPaymentClassFromState(paymentState));
         calculateCardAmount(cardId);
       }
 
@@ -5776,11 +5833,13 @@
 
         const paymentSelect = card.querySelector(".payment-select");
         const paymentBadge = card.querySelector(".payment-badge");
-        const paymentMethod = paymentSelect
+        const paymentValue = paymentSelect
           ? paymentSelect.value
           : paymentBadge?.innerText.trim().includes("貨到付款")
             ? "貨到付款"
             : paymentBadge?.innerText.trim() || "";
+        const paymentMethod =
+          getPaymentStateDefinition(paymentValue)?.paymentMethod || paymentValue;
         const discountAmount = normalizeMoney(card.dataset.discountAmount || 0);
         const amount = calculateOrderAmount(
           items,
@@ -5939,8 +5998,9 @@
         const customerName = nameEl ? nameEl.innerText.trim() : "客戶";
 
         const oldDate = baseline.date || "尚未設定";
-        const oldPayment = baseline.payment || "—";
+        const oldPayment = getPaymentLabelFromState(baseline.payment) || "—";
         const oldAction = baseline.action || "正常";
+        const newPaymentLabel = getPaymentLabelFromState(newPayment) || "—";
 
         const modalTitle = document.querySelector("#shipmentConfirmModal h3");
         const cancelBtn = document.querySelector(
@@ -5973,7 +6033,7 @@
           document.getElementById("shipmentConfirmBody").innerHTML = `
             <div style="margin-bottom:8px;"><b>客戶：</b>${customerName}</div>
             <div style="margin-top:10px;"><b>出貨日期：</b><br>${oldDate}<br>↓<br><b style="color:#4f7f63">${newDate}</b></div>
-            <div style="margin-top:10px;"><b>付款狀態：</b><br>${oldPayment}<br>↓<br><b style="color:#4f7f63">${newPayment}</b></div>
+            <div style="margin-top:10px;"><b>付款狀態：</b><br>${oldPayment}<br>↓<br><b style="color:#4f7f63">${newPaymentLabel}</b></div>
             <div style="margin-top:10px;"><b>訂單處理：</b><br>${oldAction}<br>↓<br><b style="color:#4f7f63">${newAction}</b></div>
             <div style="margin-top:12px; font-size:13px; color:#b45309; background:#fef9c3; padding:8px 10px; border-radius:8px;">
               ⚠️ 此操作可能影響出貨排程與通知內容。
@@ -7025,8 +7085,10 @@ ${adminNote}
           });
         });
 
-        const paymentMethod =
+        const paymentState =
           document.getElementById("new-payment-method")?.value || "";
+        const paymentMethod =
+          getPaymentStateDefinition(paymentState)?.paymentMethod || "";
         const discountAmount = normalizeMoney(
           document.getElementById("new-discount-amount")?.value || 0,
         );
@@ -7132,7 +7194,7 @@ ${adminNote}
             document.getElementById("new-note")?.value.trim() || "",
           adminNote:
             document.getElementById("new-admin-note")?.value.trim() || "",
-          paymentMethod:
+          paymentState:
             document.getElementById("new-payment-method")?.value || "",
           requestedShippingBatchId:
             document.getElementById("new-requested-shipping-batch")?.value ||
