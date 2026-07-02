@@ -1028,10 +1028,10 @@
         display: none;
         margin-top: 12px;
         padding: 12px;
-        background: #fff0f6;
-        border: 1px solid #f9a8d4;
+        background: #fff7ed;
+        border: 1px solid #fb923c;
         border-radius: 12px;
-        color: #9d174d;
+        color: #9a3412;
       }
       .order-change-title {
         font-size: 14px;
@@ -1047,11 +1047,34 @@
       .order-change-chip {
         padding: 4px 8px;
         background: white;
-        border: 1px solid #f9a8d4;
+        border: 1px solid #fdba74;
         border-radius: 999px;
-        color: #9d174d;
+        color: #9a3412;
         font-size: 13px;
         font-weight: 800;
+      }
+      .manual-phone-notice-description {
+        margin: 0 0 10px;
+        color: #9a3412;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.6;
+      }
+      .manual-phone-notice-action {
+        width: 100%;
+        min-height: 44px;
+        margin: 2px 0 10px;
+        border: none;
+        border-radius: 10px;
+        background: #ea580c;
+        color: #ffffff;
+        font-size: 15px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .manual-phone-notice-action:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
       }
       .admin-reschedule-notice-action {
         width: 100%;
@@ -3315,14 +3338,26 @@
         const notificationStatus = String(
           order?.notificationStatus ?? "",
         ).trim();
+        const lastNotificationType = String(
+          order?.lastNotificationType ?? "",
+        ).trim();
         const notificationFieldLabels = {
+          訂購人姓名: "訂購人姓名",
+          訂購人電話: "訂購人電話",
           收件人姓名: "收件人",
           收件人: "收件人",
           收件人電話: "收件電話",
           收件電話: "收件電話",
           收件地址: "收件地址",
+          商品: "商品內容",
+          規格: "商品內容",
           商品內容: "商品內容",
+          數量: "商品數量",
           商品數量: "商品數量",
+          訂單總金額: "訂單金額",
+          訂單金額: "訂單金額",
+          付款方式: "付款方式",
+          付款狀態: "付款狀態",
           確定出貨日期: "確定出貨日期",
         };
         const pendingNoticeFields = [
@@ -3343,6 +3378,12 @@
           pendingNoticeFields.length > 0 &&
           OPEN_NOTIFICATION_STATUSES.has(notificationStatus);
         const canLineNotify = order?.canLineNotify === true;
+        const isManualPhoneNoticePending =
+          !canLineNotify &&
+          orderStatus !== "已取消" &&
+          pendingNoticeFields.length > 0 &&
+          notificationStatus === "manual_required" &&
+          lastNotificationType === "change_notice";
         const isManualRescheduleDecision =
           pendingNoticeFields.includes("確定出貨日期") &&
           orderStatus === "已安排出貨" &&
@@ -3452,13 +3493,14 @@
 
         return `
           <div
-            class="card ${escapeHtml(statusMeta.cardClass)}${shouldShowOrderChangeAlert ? " order-change-pending" : ""}"
+            class="card ${escapeHtml(statusMeta.cardClass)}${shouldShowOrderChangeAlert && !isManualPhoneNoticePending ? " order-change-pending" : ""}"
             data-status="${escapeHtml(orderStatus)}"
             data-readonly="true"
             data-order-no="${escapeHtml(orderNo)}"
             data-can-line-notify="${canLineNotify ? "true" : "false"}"
             data-notification-status="${escapeHtml(notificationStatus)}"
             data-pending-notice-fields="${escapeHtml(pendingNoticeFields.join("|"))}"
+            data-manual-phone-notice="${isManualPhoneNoticePending ? "true" : "false"}"
             data-expected-shipping-date="${escapeHtml(expectedShippingDate)}"
             ${adminWorkflowEditable ? 'data-admin-workflow-editor="true"' : ""}
             data-search-text="${escapeHtml(searchText)}"
@@ -3616,7 +3658,12 @@
               shouldShowOrderChangeAlert
                 ? `
                   <div class="order-change-alert" style="display:block">
-                    <div class="order-change-title">⚠️ 以下資訊已異動</div>
+                    <div class="order-change-title">${isManualPhoneNoticePending ? "🟠 待電話通知" : "⚠️ 以下資訊已異動"}</div>
+                    ${
+                      isManualPhoneNoticePending
+                        ? `<p class="manual-phone-notice-description">此訂單無法透過 LINE 通知，<br>請人工聯絡客戶確認以下異動。</p>`
+                        : ""
+                    }
                     <div class="order-change-list">
                       ${pendingNoticeFields
                         .map(
@@ -3628,6 +3675,11 @@
                     ${
                       shouldShowManualRescheduleNoticeButton
                         ? `<button type="button" class="admin-reschedule-notice-action">通知客戶出貨日期異動</button>`
+                        : ""
+                    }
+                    ${
+                      isManualPhoneNoticePending
+                        ? `<button type="button" class="manual-phone-notice-action">電話已通知</button>`
                         : ""
                     }
                     ${
@@ -5500,7 +5552,7 @@
         try {
           const action = canLineNotify
             ? "adminResendOrderNotification"
-            : "adminMarkOrderPhoneNotified";
+            : "adminCompleteManualPhoneChangeNotice";
           const response = await fetch(GAS_ORDERS_API_URL, {
             method: "POST",
             headers: {
@@ -5580,6 +5632,95 @@
         }
       }
 
+      async function completeManualPhoneChangeNotice(card, button) {
+        const orderNo = String(card?.dataset.orderNo || "").trim();
+        const fields = getPendingNoticeFields(card);
+        if (!card || !button || !orderNo || !fields.length) return;
+        if (button.disabled) return;
+
+        const confirmed = window.confirm(
+          `確定已透過電話通知客戶以下異動嗎？\n\n${fields
+            .map((field) => `[${field}]`)
+            .join("\n")}`,
+        );
+        if (!confirmed) return;
+
+        const feedback = card.querySelector(".admin-notification-feedback");
+        const adminSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+        if (!adminSessionToken) {
+          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+          showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+          if (feedback) {
+            feedback.classList.add("is-error");
+            feedback.innerText = "登入已過期，請重新登入 LINE。";
+          }
+          return;
+        }
+
+        button.disabled = true;
+        button.innerText = "處理中…";
+        if (feedback) {
+          feedback.classList.remove("is-error");
+          feedback.innerText = "處理中…";
+        }
+
+        try {
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify({
+              action: "adminCompleteManualPhoneChangeNotice",
+              adminSessionToken,
+              orderNo,
+            }),
+          });
+          const payload = await response.json();
+          if (
+            !response.ok ||
+            !payload ||
+            payload.ok !== true ||
+            payload.action !== "adminCompleteManualPhoneChangeNotice" ||
+            payload.orderNo !== orderNo
+          ) {
+            if (payload?.errorCode === "ADMIN_SESSION_REQUIRED") {
+              sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+              showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+            }
+            throw new Error(
+              payload?.message ||
+                payload?.errorCode ||
+                "MANUAL_PHONE_NOTICE_FAILED",
+            );
+          }
+
+          if (feedback) feedback.innerText = "已完成，正在重新讀取訂單…";
+          const adminOrders = await fetchAdminOrdersFromGas();
+          if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
+            throw new Error("MANUAL_PHONE_NOTICE_REFRESH_FAILED");
+          }
+          updateStatsCounters();
+          applyCurrentFilter();
+          handleBatchCheckChange();
+          updateNotifyButton();
+          applyReadOnlyModeToRealOrders();
+          scrollAdminOrderCardIntoView(orderNo);
+        } catch (error) {
+          button.disabled = false;
+          button.innerText = "電話已通知";
+          if (feedback) {
+            feedback.classList.add("is-error");
+            feedback.innerText =
+              error.message === "MANUAL_PHONE_NOTICE_REFRESH_FAILED"
+                ? "電話通知可能已完成，但重新讀取失敗。請重新整理後確認。"
+                : error.message || "電話通知完成失敗，請重新讀取後再試。";
+          }
+        }
+      }
+
       function bindAdminWorkflowEvents() {
         const cardsContainer = document.getElementById("cards-container");
         if (!cardsContainer || cardsContainer.dataset.adminWorkflowBound) {
@@ -5611,6 +5752,20 @@
         cardsContainer.addEventListener("input", handleValueChange);
         cardsContainer.addEventListener("change", handleValueChange);
         cardsContainer.addEventListener("click", (event) => {
+          const manualPhoneButton = event.target.closest(
+            ".manual-phone-notice-action",
+          );
+          if (
+            manualPhoneButton &&
+            cardsContainer.contains(manualPhoneButton)
+          ) {
+            const card = manualPhoneButton.closest(
+              '.card[data-readonly="true"][data-order-no]',
+            );
+            if (card) completeManualPhoneChangeNotice(card, manualPhoneButton);
+            return;
+          }
+
           const rescheduleNoticeButton = event.target.closest(
             ".admin-reschedule-notice-action",
           );
@@ -7426,6 +7581,9 @@ ${adminNote}
           }
 
           const createdOrderNo = String(result.created.orderNo).trim();
+          const adminGroupNoticeMessage = String(
+            result.created.adminGroupNoticeMessage || "",
+          ).trim();
           const adminOrders = await fetchAdminOrdersFromGas();
           if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
             throw new Error("ORDER_CREATE_REFRESH_FAILED");
@@ -7445,6 +7603,9 @@ ${adminNote}
           updateNotifyButton();
           applyReadOnlyModeToRealOrders();
           scrollAdminOrderCardIntoView(createdOrderNo);
+          if (adminGroupNoticeMessage) {
+            alert(adminGroupNoticeMessage);
+          }
         } catch (error) {
           feedback.className = "admin-content-feedback is-error";
           if (error.message === "ORDER_CREATE_REFRESH_FAILED") {
