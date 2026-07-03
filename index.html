@@ -2913,6 +2913,17 @@
         );
       }
 
+      function getOrderNotificationActionLabel(card) {
+        const canLineNotify = isLineOrder(card);
+        const notificationType = String(
+          card?.dataset.lastNotificationType || "",
+        ).trim();
+        if (notificationType === "change_notice") {
+          return canLineNotify ? "通知客戶本次變更" : "已電話通知";
+        }
+        return canLineNotify ? "重新發送通知" : "電話已通知";
+      }
+
       function updateNotifyButton() {
         syncBatchSelectionUi();
       }
@@ -2944,7 +2955,7 @@
         if (button) {
           button.hidden = false;
           button.disabled = false;
-          button.innerText = isLineOrder(card) ? "重新發送通知" : "電話已通知";
+          button.innerText = getOrderNotificationActionLabel(card);
         }
         alertBox.style.display = "block";
         updateNotifyButton();
@@ -3462,6 +3473,10 @@
           isManualRescheduleDecision && canLineNotify;
         const shouldShowManualRescheduleContactText =
           isManualRescheduleDecision && !canLineNotify;
+        const shouldShowChangeNoticeActionButton =
+          isPendingNotification &&
+          lastNotificationType === "change_notice" &&
+          pendingNoticeLabels.length > 0;
         const cancelNotificationLabel =
           orderStatus === "已取消" &&
           lastNotificationType === "cancellation_notice" &&
@@ -3562,6 +3577,7 @@
             data-order-no="${escapeHtml(orderNo)}"
             data-can-line-notify="${canLineNotify ? "true" : "false"}"
             data-notification-status="${escapeHtml(notificationStatus)}"
+            data-last-notification-type="${escapeHtml(lastNotificationType)}"
             data-pending-notice-fields="${escapeHtml(pendingNoticeFields.join("|"))}"
             data-expected-shipping-date="${escapeHtml(expectedShippingDate)}"
             ${adminWorkflowEditable ? 'data-admin-workflow-editor="true"' : ""}
@@ -3728,6 +3744,11 @@
                     ${
                       shouldShowManualRescheduleNoticeButton
                         ? `<button type="button" class="admin-reschedule-notice-action">通知客戶出貨日期異動</button>`
+                        : ""
+                    }
+                    ${
+                      shouldShowChangeNoticeActionButton
+                        ? `<button type="button" class="btn-resend-notice">${canLineNotify ? "通知客戶本次變更" : "已電話通知"}</button>`
                         : ""
                     }
                     ${
@@ -5608,9 +5629,7 @@
               button.innerText =
                 payload.result === "unconfirmed"
                   ? "通知結果待查核"
-                  : canLineNotify
-                    ? "重新發送通知"
-                    : "電話已通知";
+                  : getOrderNotificationActionLabel(card);
             }
             if (feedback) {
               feedback.classList.add("is-error");
@@ -5637,7 +5656,7 @@
           card.dataset.notificationSaving = "false";
           if (button) {
             button.disabled = false;
-            button.innerText = canLineNotify ? "重新發送通知" : "電話已通知";
+            button.innerText = getOrderNotificationActionLabel(card);
           }
           if (feedback) {
             feedback.classList.add("is-error");
@@ -5692,6 +5711,25 @@
             );
             if (rescheduleNoticeCard) {
               adminSendRescheduledShippingDateNotice(rescheduleNoticeCard);
+            }
+            return;
+          }
+
+          const changeNoticeButton = event.target.closest(
+            ".btn-resend-notice",
+          );
+          if (
+            changeNoticeButton &&
+            cardsContainer.contains(changeNoticeButton)
+          ) {
+            const changeNoticeCard = changeNoticeButton.closest(
+              '.card[data-readonly="true"][data-order-no]',
+            );
+            if (
+              changeNoticeCard &&
+              changeNoticeCard.dataset.lastNotificationType === "change_notice"
+            ) {
+              adminOrderNotificationSubmit(changeNoticeCard);
             }
             return;
           }
