@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-Hant">
   <head>
-    <meta charset="UTF-8"/>
+    <meta charset="UTF-8" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
@@ -3466,6 +3466,8 @@
         const canLineNotify = order?.canLineNotify === true;
         const shouldHideManualOrderConfirmationNotice =
           lastNotificationType === "order_confirmation" && !canLineNotify;
+        const shouldHideCancellationNotice =
+          lastNotificationType === "cancellation_notice";
         const isManualRescheduleDecision =
           lastNotificationType === "schedule_notice" &&
           orderStatus === "已安排出貨" &&
@@ -3474,6 +3476,7 @@
           actualShippingDate === "";
         const shouldShowOrderChangeAlert =
           !shouldHideManualOrderConfirmationNotice &&
+          !shouldHideCancellationNotice &&
           (isPendingNotification || isManualRescheduleDecision);
         const shouldShowManualRescheduleNoticeButton =
           isManualRescheduleDecision && canLineNotify;
@@ -3488,12 +3491,7 @@
           lastNotificationType === "schedule_notice" &&
           !canLineNotify &&
           pendingNoticeLabels.length > 0;
-        const cancelNotificationLabel =
-          orderStatus === "已取消" &&
-          lastNotificationType === "cancellation_notice" &&
-          isOpenNotificationStatus(notificationStatus)
-            ? `${getNotificationTypeLabel(lastNotificationType)}：${getNotificationStatusLabel(notificationStatus)}`
-              : "";
+        const cancelNotificationLabel = "";
         const adminWorkflowEditable =
           !!orderNo &&
           ["待確認", "已安排出貨"].includes(orderStatus) &&
@@ -3824,6 +3822,10 @@
         const expectedShippingDate = String(
           order.expectedShippingDate || "",
         ).trim();
+        const canLineNotify = order?.canLineNotify === true;
+        const cancelNoticeText = canLineNotify
+          ? "會自動發送 LINE 取消通知。"
+          : "此訂單無法透過 LINE 通知，取消後請人工聯絡客戶。";
 
         adminCancelOrderContext = {
           orderNo,
@@ -3839,10 +3841,10 @@
             <div><strong>付款狀態：</strong>${escapeHtml(paymentLabel)}</div>
             <div><strong>確定出貨日期：</strong>${escapeHtml(expectedShippingDate || "尚未排定")}</div>
             <div style="margin-top:4px; padding:10px 12px; border-radius:10px; background:#fef2f2; color:#991b1b; font-weight:800">
+              <div>${escapeHtml(cancelNoticeText)}</div>
               <div>取消後無法自行恢復。</div>
               <div>原訂單資料與付款狀態會保留。</div>
               <div>本次不會自動退款。</div>
-              <div>本次不會自動發送 LINE 取消通知。</div>
             </div>
           </div>
         `;
