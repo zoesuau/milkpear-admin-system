@@ -2942,8 +2942,9 @@
           title.innerText = "⚠️ 待處理通知事件";
         }
         if (button) {
-          button.hidden = true;
-          button.disabled = true;
+          button.hidden = false;
+          button.disabled = false;
+          button.innerText = isLineOrder(card) ? "重新發送通知" : "電話已通知";
         }
         alertBox.style.display = "block";
         updateNotifyButton();
