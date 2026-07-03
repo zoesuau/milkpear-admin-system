@@ -1510,10 +1510,6 @@
         background: #4f7f63;
         color: white;
       }
-      .btn-modal-submit.btn-modal-danger {
-        background: #dc2626;
-        color: #ffffff;
-      }
 
       .btn-save-shipment {
         padding: 8px 16px;
@@ -2177,7 +2173,7 @@
           </button>
           <button
             type="button"
-            class="btn-modal-submit btn-modal-danger"
+            class="btn-modal-submit"
             id="adminCancelOrderSubmitButton"
             onclick="adminCancelOrderSubmit()"
           >
@@ -2917,20 +2913,6 @@
         );
       }
 
-      function getOrderNotificationActionLabel(card) {
-        const canLineNotify = isLineOrder(card);
-        const notificationType = String(
-          card?.dataset.lastNotificationType || "",
-        ).trim();
-        if (notificationType === "change_notice") {
-          return canLineNotify ? "通知客戶本次變更" : "已電話通知";
-        }
-        if (notificationType === "schedule_notice" && !canLineNotify) {
-          return "已電話通知";
-        }
-        return canLineNotify ? "重新發送通知" : "電話已通知";
-      }
-
       function updateNotifyButton() {
         syncBatchSelectionUi();
       }
@@ -2960,9 +2942,8 @@
           title.innerText = "⚠️ 待處理通知事件";
         }
         if (button) {
-          button.hidden = false;
-          button.disabled = false;
-          button.innerText = getOrderNotificationActionLabel(card);
+          button.hidden = true;
+          button.disabled = true;
         }
         alertBox.style.display = "block";
         updateNotifyButton();
@@ -3468,10 +3449,6 @@
           isOpenNotificationStatus(notificationStatus) &&
           isCanonicalNotificationType(lastNotificationType);
         const canLineNotify = order?.canLineNotify === true;
-        const shouldHideManualOrderConfirmationNotice =
-          lastNotificationType === "order_confirmation" && !canLineNotify;
-        const shouldHideCancellationNotice =
-          lastNotificationType === "cancellation_notice";
         const isManualRescheduleDecision =
           lastNotificationType === "schedule_notice" &&
           orderStatus === "已安排出貨" &&
@@ -3479,23 +3456,18 @@
           adminWorkflowIsValidDate(expectedShippingDate) &&
           actualShippingDate === "";
         const shouldShowOrderChangeAlert =
-          !shouldHideManualOrderConfirmationNotice &&
-          !shouldHideCancellationNotice &&
-          (isPendingNotification || isManualRescheduleDecision);
-        const shouldShowManualRescheduleNoticeButton =
-          isManualRescheduleDecision && canLineNotify;
+          isPendingNotification || isManualRescheduleDecision;
+        const shouldShowManualRescheduleNoticeButton = false;
         const shouldShowManualRescheduleContactText =
-          isManualRescheduleDecision && !canLineNotify;
-        const shouldShowChangeNoticeActionButton =
-          isPendingNotification &&
-          lastNotificationType === "change_notice" &&
-          pendingNoticeLabels.length > 0;
-        const shouldShowManualScheduleNoticeDoneButton =
-          isPendingNotification &&
-          lastNotificationType === "schedule_notice" &&
-          !canLineNotify &&
-          pendingNoticeLabels.length > 0;
-        const cancelNotificationLabel = "";
+          isManualRescheduleDecision &&
+          !isPendingNotification &&
+          !canLineNotify;
+        const cancelNotificationLabel =
+          orderStatus === "已取消" &&
+          lastNotificationType === "cancellation_notice" &&
+          isOpenNotificationStatus(notificationStatus)
+            ? `${getNotificationTypeLabel(lastNotificationType)}：${getNotificationStatusLabel(notificationStatus)}`
+              : "";
         const adminWorkflowEditable =
           !!orderNo &&
           ["待確認", "已安排出貨"].includes(orderStatus) &&
@@ -3590,7 +3562,6 @@
             data-order-no="${escapeHtml(orderNo)}"
             data-can-line-notify="${canLineNotify ? "true" : "false"}"
             data-notification-status="${escapeHtml(notificationStatus)}"
-            data-last-notification-type="${escapeHtml(lastNotificationType)}"
             data-pending-notice-fields="${escapeHtml(pendingNoticeFields.join("|"))}"
             data-expected-shipping-date="${escapeHtml(expectedShippingDate)}"
             ${adminWorkflowEditable ? 'data-admin-workflow-editor="true"' : ""}
@@ -3760,16 +3731,6 @@
                         : ""
                     }
                     ${
-                      shouldShowChangeNoticeActionButton
-                        ? `<button type="button" class="btn-resend-notice">${canLineNotify ? "通知客戶本次變更" : "已電話通知"}</button>`
-                        : ""
-                    }
-                    ${
-                      shouldShowManualScheduleNoticeDoneButton
-                        ? `<button type="button" class="btn-resend-notice">已電話通知</button>`
-                        : ""
-                    }
-                    ${
                       shouldShowManualRescheduleContactText
                         ? `<div class="admin-reschedule-manual-contact">此訂單無法透過 LINE 通知，請人工聯絡客戶。</div>`
                         : ""
@@ -3826,10 +3787,6 @@
         const expectedShippingDate = String(
           order.expectedShippingDate || "",
         ).trim();
-        const canLineNotify = order?.canLineNotify === true;
-        const cancelNoticeText = canLineNotify
-          ? "會自動發送 LINE 取消通知。"
-          : "此訂單無法透過 LINE 通知，取消後請人工聯絡客戶。";
 
         adminCancelOrderContext = {
           orderNo,
@@ -3845,10 +3802,10 @@
             <div><strong>付款狀態：</strong>${escapeHtml(paymentLabel)}</div>
             <div><strong>確定出貨日期：</strong>${escapeHtml(expectedShippingDate || "尚未排定")}</div>
             <div style="margin-top:4px; padding:10px 12px; border-radius:10px; background:#fef2f2; color:#991b1b; font-weight:800">
-              <div>${escapeHtml(cancelNoticeText)}</div>
               <div>取消後無法自行恢復。</div>
               <div>原訂單資料與付款狀態會保留。</div>
               <div>本次不會自動退款。</div>
+              <div>本次不會自動發送 LINE 取消通知。</div>
             </div>
           </div>
         `;
@@ -5651,7 +5608,9 @@
               button.innerText =
                 payload.result === "unconfirmed"
                   ? "通知結果待查核"
-                  : getOrderNotificationActionLabel(card);
+                  : canLineNotify
+                    ? "重新發送通知"
+                    : "電話已通知";
             }
             if (feedback) {
               feedback.classList.add("is-error");
@@ -5678,7 +5637,7 @@
           card.dataset.notificationSaving = "false";
           if (button) {
             button.disabled = false;
-            button.innerText = getOrderNotificationActionLabel(card);
+            button.innerText = canLineNotify ? "重新發送通知" : "電話已通知";
           }
           if (feedback) {
             feedback.classList.add("is-error");
@@ -5733,29 +5692,6 @@
             );
             if (rescheduleNoticeCard) {
               adminSendRescheduledShippingDateNotice(rescheduleNoticeCard);
-            }
-            return;
-          }
-
-          const changeNoticeButton = event.target.closest(
-            ".btn-resend-notice",
-          );
-          if (
-            changeNoticeButton &&
-            cardsContainer.contains(changeNoticeButton)
-          ) {
-            const changeNoticeCard = changeNoticeButton.closest(
-              '.card[data-readonly="true"][data-order-no]',
-            );
-            if (
-              changeNoticeCard &&
-              (changeNoticeCard.dataset.lastNotificationType ===
-                "change_notice" ||
-                (changeNoticeCard.dataset.lastNotificationType ===
-                  "schedule_notice" &&
-                  changeNoticeCard.dataset.canLineNotify !== "true"))
-            ) {
-              adminOrderNotificationSubmit(changeNoticeCard);
             }
             return;
           }
