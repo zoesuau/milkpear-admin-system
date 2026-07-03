@@ -311,10 +311,7 @@
         opacity: 0.7;
       } /* 灰色 */
       .card.order-change-pending {
-        border-color: #f9a8d4;
-        box-shadow:
-          inset 0 4px 0 #f9a8d4,
-          0 6px 18px rgba(190, 24, 93, 0.12);
+        box-shadow: none;
       }
 
       /* 確保彈窗按鈕樣式 */
@@ -1882,11 +1879,7 @@
           <div class="search-control-left">
             <label><input type="checkbox" id="global-selectAll" /> 全選</label>
             <span id="selectedOrderCount">已選 0 張</span>
-            <button
-              id="batchShippedBtn"
-              class="btn-batch-shipped"
-              disabled
-            >
+            <button id="batchShippedBtn" class="btn-batch-shipped" disabled>
               標記已寄出（0）
             </button>
           </div>
@@ -1915,9 +1908,7 @@
         >
           <div class="row-top">
             <div class="order-no-wrapper">
-              <div class="order-no">
-                訂單編號
-              </div>
+              <div class="order-no">訂單編號</div>
             </div>
             <div class="card-edit-actions">
               <button
@@ -2156,7 +2147,10 @@
       <div class="modal-container" style="max-width: 480px">
         <div class="modal-header">
           <h3>取消訂單</h3>
-          <button class="modal-close-btn" onclick="closeAdminCancelOrderModal()">
+          <button
+            class="modal-close-btn"
+            onclick="closeAdminCancelOrderModal()"
+          >
             ×
           </button>
         </div>
@@ -2231,23 +2225,43 @@
             </div>
             <div class="form-group">
               <label>客戶備註</label>
-              <textarea id="new-note" class="form-control" placeholder="例如：管理室代收"></textarea>
+              <textarea
+                id="new-note"
+                class="form-control"
+                placeholder="例如：管理室代收"
+              ></textarea>
             </div>
 
             <div class="admin-content-section-title">二、訂購人資料</div>
             <div class="form-group">
               <label>訂購人姓名</label>
-              <input type="text" id="new-sender-name" class="form-control" required placeholder="請輸入訂購人姓名" />
+              <input
+                type="text"
+                id="new-sender-name"
+                class="form-control"
+                required
+                placeholder="請輸入訂購人姓名"
+              />
             </div>
             <div class="form-group">
               <label>訂購人電話</label>
-              <input type="tel" id="new-sender-phone" class="form-control" required placeholder="請輸入訂購人電話" />
+              <input
+                type="tel"
+                id="new-sender-phone"
+                class="form-control"
+                required
+                placeholder="請輸入訂購人電話"
+              />
             </div>
 
             <div class="admin-content-section-title">三、訂單與出貨需求</div>
             <div class="form-group">
               <label>付款方式</label>
-              <select id="new-payment-method" class="form-control" onchange="updateNewOrderAmountPreview()">
+              <select
+                id="new-payment-method"
+                class="form-control"
+                onchange="updateNewOrderAmountPreview()"
+              >
                 <option value="bank_unpaid" selected>銀行轉帳－未付款</option>
                 <option value="cod">貨到付款</option>
                 <option value="bank_paid">銀行轉帳－已付款</option>
@@ -2264,34 +2278,76 @@
             <div class="admin-content-section-title">四、優惠與管理資訊</div>
             <div class="form-group">
               <label>優惠金額</label>
-              <input type="number" id="new-discount-amount" class="form-control" min="0" value="0" placeholder="0" oninput="updateNewOrderAmountPreview()" />
+              <input
+                type="number"
+                id="new-discount-amount"
+                class="form-control"
+                min="0"
+                value="0"
+                placeholder="0"
+                oninput="updateNewOrderAmountPreview()"
+              />
             </div>
             <div class="form-group">
               <label>優惠原因</label>
-              <input type="text" id="new-discount-reason" class="form-control" placeholder="例如：熟客免運、團購優惠" />
+              <input
+                type="text"
+                id="new-discount-reason"
+                class="form-control"
+                placeholder="例如：熟客免運、團購優惠"
+              />
             </div>
             <div class="form-group">
               <label>管理員備註</label>
-              <textarea id="new-admin-note" class="edit-textarea" placeholder="僅後台可見，不會通知客戶"></textarea>
+              <textarea
+                id="new-admin-note"
+                class="edit-textarea"
+                placeholder="僅後台可見，不會通知客戶"
+              ></textarea>
             </div>
 
             <div class="admin-content-section-title">五、商品內容</div>
             <div class="form-group">
               <div id="modal-product-list" class="product-edit-list"></div>
-              <button type="button" class="btn-add-product" onclick="addModalProductRow()">➕ 新增品項</button>
+              <button
+                type="button"
+                class="btn-add-product"
+                onclick="addModalProductRow()"
+              >
+                ➕ 新增品項
+              </button>
             </div>
 
             <div class="admin-content-section-title">六、金額預覽</div>
             <div class="form-group">
               <div class="amount-preview-box">
-                <div class="amount-preview-row"><span>商品小計</span><span>$<span id="new-preview-subtotal">0</span></span></div>
-                <div class="amount-preview-row"><span>運費</span><span>$<span id="new-preview-shipping">0</span></span></div>
-                <div class="amount-preview-row" id="new-preview-cod-row"><span>貨到付款手續費</span><span>$<span id="new-preview-cod">0</span></span></div>
-                <div class="amount-preview-row"><span>優惠</span><span>-$<span id="new-preview-discount">0</span></span></div>
-                <div class="amount-preview-row total"><span>應收金額</span><span>$<span id="new-preview-total">0</span></span></div>
+                <div class="amount-preview-row">
+                  <span>商品小計</span
+                  ><span>$<span id="new-preview-subtotal">0</span></span>
+                </div>
+                <div class="amount-preview-row">
+                  <span>運費</span
+                  ><span>$<span id="new-preview-shipping">0</span></span>
+                </div>
+                <div class="amount-preview-row" id="new-preview-cod-row">
+                  <span>貨到付款手續費</span
+                  ><span>$<span id="new-preview-cod">0</span></span>
+                </div>
+                <div class="amount-preview-row">
+                  <span>優惠</span
+                  ><span>-$<span id="new-preview-discount">0</span></span>
+                </div>
+                <div class="amount-preview-row total">
+                  <span>應收金額</span
+                  ><span>$<span id="new-preview-total">0</span></span>
+                </div>
               </div>
             </div>
-            <div id="new-order-feedback" class="admin-content-feedback" aria-live="polite"></div>
+            <div
+              id="new-order-feedback"
+              class="admin-content-feedback"
+              aria-live="polite"
+            ></div>
           </form>
         </div>
         <div class="modal-footer">
@@ -2524,10 +2580,7 @@
             clearAdminAuthSession();
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
             clearAdminAuthQuery();
-            showAdminAuthOverlay(
-              "⚠️ LINE 登入驗證失敗，請重新登入 LINE",
-              true,
-            );
+            showAdminAuthOverlay("⚠️ LINE 登入驗證失敗，請重新登入 LINE", true);
             return false;
           }
 
@@ -2569,12 +2622,13 @@
         const list = document.getElementById("product-management-list");
         if (!list) return;
 
-        list.innerHTML = adminProductCatalog.map((product) => {
-          const activeText = product.active ? "啟用" : "停用";
-          const activeClass = product.active
-            ? "product-status-active"
-            : "product-status-inactive";
-          return `
+        list.innerHTML = adminProductCatalog
+          .map((product) => {
+            const activeText = product.active ? "啟用" : "停用";
+            const activeClass = product.active
+              ? "product-status-active"
+              : "product-status-inactive";
+            return `
             <tr>
               <td>${escapeHtml(product.code)}</td>
               <td>${escapeHtml(product.name)}</td>
@@ -2584,7 +2638,8 @@
               <td><span class="${activeClass}">${activeText}</span></td>
             </tr>
           `;
-        }).join("");
+          })
+          .join("");
       }
 
       function getActiveAdminProducts() {
@@ -3100,10 +3155,7 @@
         } catch (error) {
           if (String(error && error.message) === "ADMIN_SESSION_REQUIRED") {
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-            showAdminAuthOverlay(
-              "⚠️ 登入已過期，請重新登入 LINE",
-              true,
-            );
+            showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
             return null;
           }
 
@@ -3275,7 +3327,9 @@
         const method = String(paymentMethod ?? "").trim();
         const status = String(paymentStatus ?? "").trim();
         const definition = ADMIN_PAYMENT_STATE_OPTIONS.find((option) => {
-          return option.paymentMethod === method && option.paymentStatus === status;
+          return (
+            option.paymentMethod === method && option.paymentStatus === status
+          );
         });
         return definition ? definition.paymentState : null;
       }
@@ -3295,7 +3349,9 @@
         const optionsHtml = ADMIN_PAYMENT_STATE_OPTIONS.map((option) => {
           return `<option value="${escapeHtml(option.paymentState)}"${option.paymentState === selectedState ? " selected" : ""}>${escapeHtml(option.label)}</option>`;
         }).join("");
-        return selectedState ? optionsHtml : `<option value=""></option>${optionsHtml}`;
+        return selectedState
+          ? optionsHtml
+          : `<option value=""></option>${optionsHtml}`;
       }
 
       function buildAdminOrderCardHtml(order) {
@@ -3352,16 +3408,13 @@
         const shouldShowOrderChangeAlert =
           isPendingNotification || isManualRescheduleDecision;
         const shouldShowManualRescheduleNoticeButton =
-          isManualRescheduleDecision &&
-          !isPendingNotification &&
-          canLineNotify;
+          isManualRescheduleDecision && !isPendingNotification && canLineNotify;
         const shouldShowManualRescheduleContactText =
           isManualRescheduleDecision &&
           !isPendingNotification &&
           !canLineNotify;
         const cancelNotificationLabel =
-          orderStatus === "已取消" &&
-          notificationStatus === "取消通知待處理"
+          orderStatus === "已取消" && notificationStatus === "取消通知待處理"
             ? "🔔 取消通知待處理"
             : orderStatus === "已取消" &&
                 notificationStatus === "待人工取消通知"
@@ -3443,7 +3496,10 @@
           "實際寄出日期",
           actualShippingDate,
         );
-        const trackingNoRow = buildReadOnlyExtraRow("宅配單號", order?.trackingNo);
+        const trackingNoRow = buildReadOnlyExtraRow(
+          "宅配單號",
+          order?.trackingNo,
+        );
         const canEditContent = ["待確認", "已安排出貨", "已寄出"].includes(
           orderStatus,
         );
@@ -3560,11 +3616,7 @@
                     <div class="admin-workflow-unavailable">此筆目前不在 D1-3A 可編輯範圍。</div>
                   `
               }
-              ${
-                canMarkOrderShipped
-                  ? buildAdminMarkOrderShippedHtml()
-                  : ""
-              }
+              ${canMarkOrderShipped ? buildAdminMarkOrderShippedHtml() : ""}
               <div class="extra">
                 ${actualShippingDateRow}
                 ${trackingNoRow}
@@ -3746,7 +3798,8 @@
 
       function adminCancelOrderGetErrorMessage(errorCode) {
         const messages = {
-          INVALID_ADMIN_CANCEL_REQUEST: "取消請求格式不正確，請重新整理後再試。",
+          INVALID_ADMIN_CANCEL_REQUEST:
+            "取消請求格式不正確，請重新整理後再試。",
           ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入 LINE。",
           ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
           ORDER_NO_NOT_UNIQUE: "訂單資料異常，請停止操作。",
@@ -3821,17 +3874,12 @@
             payload.action !== "adminCancelOrder" ||
             payload.orderNo !== orderNo ||
             payload.orderStatus !== "已取消" ||
-            !["取消通知待處理", "待人工取消通知"].includes(
-              notificationStatus,
-            )
+            !["取消通知待處理", "待人工取消通知"].includes(notificationStatus)
           ) {
             const errorCode = String(payload?.errorCode || "");
             if (errorCode === "ADMIN_SESSION_REQUIRED") {
               sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-              showAdminAuthOverlay(
-                "⚠️ 登入已過期，請重新登入 LINE",
-                true,
-              );
+              showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
             }
             adminCancelOrderSetSaving(false);
             if (feedback) {
@@ -3961,14 +4009,14 @@
       }
 
       function getAdminContentEditorItems(card) {
-        return [
-          ...card.querySelectorAll(".admin-content-product-row"),
-        ].map((row) => ({
-          code: row.querySelector(".admin-content-product-code")?.value || "",
-          qty: Number(
-            row.querySelector(".admin-content-product-qty")?.value || 0,
-          ),
-        }));
+        return [...card.querySelectorAll(".admin-content-product-row")].map(
+          (row) => ({
+            code: row.querySelector(".admin-content-product-code")?.value || "",
+            qty: Number(
+              row.querySelector(".admin-content-product-qty")?.value || 0,
+            ),
+          }),
+        );
       }
 
       function buildAdminContentPreviewHtml(order, shippedOnly) {
@@ -4099,10 +4147,9 @@
         `;
 
         card.dataset.contentEditing = "true";
-        card.querySelector(".admin-content-edit-trigger")?.setAttribute(
-          "disabled",
-          "disabled",
-        );
+        card
+          .querySelector(".admin-content-edit-trigger")
+          ?.setAttribute("disabled", "disabled");
         updateAdminContentPreview(card);
         scrollAdminOrderCardIntoView(orderNo);
       }
@@ -4173,7 +4220,9 @@
 
       function scrollAdminOrderCardIntoView(orderNo) {
         requestAnimationFrame(() => {
-          const card = [...document.querySelectorAll(".card[data-order-no]")].find(
+          const card = [
+            ...document.querySelectorAll(".card[data-order-no]"),
+          ].find(
             (element) => element.dataset.orderNo === String(orderNo || ""),
           );
           card?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -4251,8 +4300,9 @@
           orderNo: String(order.orderNo || ""),
           discountAmount,
           discountReason:
-            editor.querySelector(".admin-content-discount-reason")?.value.trim() ||
-            "",
+            editor
+              .querySelector(".admin-content-discount-reason")
+              ?.value.trim() || "",
           adminNote:
             editor.querySelector(".admin-content-admin-note")?.value.trim() ||
             "",
@@ -4260,11 +4310,13 @@
 
         if (!shippedOnly) {
           payload.recipientName =
-            editor.querySelector(".admin-content-recipient-name")?.value.trim() ||
-            "";
+            editor
+              .querySelector(".admin-content-recipient-name")
+              ?.value.trim() || "";
           payload.recipientPhone =
-            editor.querySelector(".admin-content-recipient-phone")?.value.trim() ||
-            "";
+            editor
+              .querySelector(".admin-content-recipient-phone")
+              ?.value.trim() || "";
           payload.recipientAddress =
             editor
               .querySelector(".admin-content-recipient-address")
@@ -4276,8 +4328,9 @@
             editor.querySelector(".admin-content-buyer-phone")?.value.trim() ||
             "";
           payload.customerNote =
-            editor.querySelector(".admin-content-customer-note")?.value.trim() ||
-            "";
+            editor
+              .querySelector(".admin-content-customer-note")
+              ?.value.trim() || "";
 
           if (
             !payload.recipientName ||
@@ -4296,14 +4349,13 @@
               !items.length ||
               items.some(
                 (item) =>
-                  !item.code ||
-                  !Number.isInteger(item.qty) ||
-                  item.qty <= 0,
+                  !item.code || !Number.isInteger(item.qty) || item.qty <= 0,
               ) ||
               new Set(codes).size !== codes.length
             ) {
               feedback.className = "admin-content-feedback is-error";
-              feedback.innerText = "商品至少一列，SKU 不可重複，數量須為正整數。";
+              feedback.innerText =
+                "商品至少一列，SKU 不可重複，數量須為正整數。";
               return;
             }
             payload.items = items;
@@ -4416,8 +4468,7 @@
           '[data-admin-note-editor="true"].admin-note-editor',
         );
         return (
-          editor?.dataset.open === "true" ||
-          editor?.dataset.saving === "true"
+          editor?.dataset.open === "true" || editor?.dataset.saving === "true"
         );
       }
 
@@ -4467,9 +4518,7 @@
 
         if (workflowEditor) {
           workflowEditor
-            .querySelectorAll(
-              ".admin-workflow-date, .admin-workflow-payment",
-            )
+            .querySelectorAll(".admin-workflow-date, .admin-workflow-payment")
             .forEach((control) => {
               control.disabled = noteLocked || workflowSaving || shippedSaving;
             });
@@ -4533,7 +4582,9 @@
         if (textarea) textarea.value = editor.dataset.baselineNote || "";
         editor.dataset.open = "true";
         editor.querySelector(".admin-note-view-row")?.classList.add("hidden");
-        editor.querySelector(".admin-note-edit-panel")?.classList.remove("hidden");
+        editor
+          .querySelector(".admin-note-edit-panel")
+          ?.classList.remove("hidden");
         adminNoteSetFeedback(editor, "");
         adminNoteRefreshEditor(editor);
         adminNoteRefreshCardLocks(card);
@@ -4545,7 +4596,9 @@
         const textarea = editor.querySelector(".admin-note-textarea");
         if (textarea) textarea.value = editor.dataset.baselineNote || "";
         editor.dataset.open = "false";
-        editor.querySelector(".admin-note-view-row")?.classList.remove("hidden");
+        editor
+          .querySelector(".admin-note-view-row")
+          ?.classList.remove("hidden");
         editor.querySelector(".admin-note-edit-panel")?.classList.add("hidden");
         adminNoteSetFeedback(editor, "");
         adminNoteRefreshCardLocks(card);
@@ -4574,8 +4627,7 @@
           ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
           ORDER_NO_DUPLICATE: "訂單資料異常，請停止操作。",
           ADMIN_NOTE_UPDATE_BUSY: "系統忙碌，請稍後再試。",
-          ADMIN_NOTE_WRITE_VERIFY_FAILED:
-            "備註未能安全寫入，已嘗試還原。",
+          ADMIN_NOTE_WRITE_VERIFY_FAILED: "備註未能安全寫入，已嘗試還原。",
           ADMIN_NOTE_ROLLBACK_FAILED:
             "備註寫入結果無法確認，請停止操作並重新整理。",
           ADMIN_NOTE_UPDATE_INDETERMINATE:
@@ -4588,14 +4640,13 @@
       function adminNoteDisableForExpiredSession(card, editor) {
         editor.dataset.open = "false";
         editor.dataset.saving = "false";
-        editor.querySelector(".admin-note-view-row")?.classList.remove(
-          "hidden",
-        );
+        editor
+          .querySelector(".admin-note-view-row")
+          ?.classList.remove("hidden");
         editor.querySelector(".admin-note-edit-panel")?.classList.add("hidden");
-        editor.querySelector(".admin-note-edit-button")?.setAttribute(
-          "disabled",
-          "",
-        );
+        editor
+          .querySelector(".admin-note-edit-button")
+          ?.setAttribute("disabled", "");
         editor
           .querySelectorAll(
             ".admin-note-textarea, .admin-note-save, .admin-note-cancel",
@@ -4624,11 +4675,7 @@
           return;
         }
         if (adminNoteCharacterCount(adminNote) > 500) {
-          adminNoteSetFeedback(
-            editor,
-            "管理員備註不可超過 500 個字元。",
-            true,
-          );
+          adminNoteSetFeedback(editor, "管理員備註不可超過 500 個字元。", true);
           return;
         }
 
@@ -4671,10 +4718,7 @@
             const errorCode = String(payload?.errorCode || "");
             if (errorCode === "ADMIN_SESSION_REQUIRED") {
               sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-              showAdminAuthOverlay(
-                "⚠️ 登入已過期，請重新登入 LINE",
-                true,
-              );
+              showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
               adminNoteDisableForExpiredSession(card, editor);
               return;
             }
@@ -4690,13 +4734,8 @@
           actionSucceeded = true;
           adminNoteSetFeedback(editor, "已寫入，正在重新讀取訂單…");
           const adminOrders = await fetchAdminOrdersFromGas();
-          if (
-            !Array.isArray(adminOrders) ||
-            !renderAdminOrders(adminOrders)
-          ) {
-            if (
-              !sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY)
-            ) {
+          if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
+            if (!sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY)) {
               adminNoteDisableForExpiredSession(card, editor);
               return;
             }
@@ -4854,9 +4893,7 @@
       function adminWorkflowSetSaving(editor, isSaving) {
         editor.dataset.saving = isSaving ? "true" : "false";
         editor
-          .querySelectorAll(
-            ".admin-workflow-date, .admin-workflow-payment",
-          )
+          .querySelectorAll(".admin-workflow-date, .admin-workflow-payment")
           .forEach((control) => {
             control.disabled = isSaving;
           });
@@ -4910,9 +4947,7 @@
         message,
         isError = false,
       ) {
-        const feedback = panel?.querySelector(
-          ".admin-mark-shipped-feedback",
-        );
+        const feedback = panel?.querySelector(".admin-mark-shipped-feedback");
         if (!feedback) return;
         feedback.innerText = message;
         feedback.classList.toggle("is-error", isError);
@@ -4931,9 +4966,7 @@
         const workflowSaving = editor?.dataset.saving === "true";
         const shippedSaving = panel.dataset.saving === "true";
         const noteLocked = adminNoteIsOpen(card);
-        const submitButton = panel.querySelector(
-          ".admin-mark-shipped-submit",
-        );
+        const submitButton = panel.querySelector(".admin-mark-shipped-submit");
         if (submitButton) {
           submitButton.disabled =
             noteLocked || isDirty || workflowSaving || shippedSaving;
@@ -4988,8 +5021,7 @@
             "此訂單已存在實際寄出日期，不可覆寫。",
           ORDER_SHIPPED_WRITE_VERIFY_FAILED:
             "確認已寄出失敗，資料未能安全寫入。",
-          ORDER_SHIPPED_ROLLBACK_FAILED:
-            "結果無法確認，請停止操作並重新整理。",
+          ORDER_SHIPPED_ROLLBACK_FAILED: "結果無法確認，請停止操作並重新整理。",
         };
         return messages[errorCode] || "確認已寄出失敗，請重新讀取後再試。";
       }
@@ -5104,10 +5136,7 @@
             const errorCode = String(payload?.errorCode || "");
             if (errorCode === "ADMIN_SESSION_REQUIRED") {
               sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-              showAdminAuthOverlay(
-                "⚠️ 登入已過期，請重新登入 LINE",
-                true,
-              );
+              showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
             }
             adminMarkOrderShippedSetSaving(card, panel, false);
             adminMarkOrderShippedSetFeedback(
@@ -5119,15 +5148,9 @@
           }
 
           actionSucceeded = true;
-          adminMarkOrderShippedSetFeedback(
-            panel,
-            "已寫入，正在重新讀取訂單…",
-          );
+          adminMarkOrderShippedSetFeedback(panel, "已寫入，正在重新讀取訂單…");
           const adminOrders = await fetchAdminOrdersFromGas();
-          if (
-            !Array.isArray(adminOrders) ||
-            !renderAdminOrders(adminOrders)
-          ) {
+          if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
             adminMarkOrderShippedSetSaving(card, panel, false);
             adminMarkOrderShippedSetFeedback(
               panel,
@@ -5182,7 +5205,8 @@
           INVALID_ORDER_WORKFLOW_STATE: "已安排出貨必須選確定出貨日期。",
           PAYMENT_STATUS_NOT_ALLOWED: "付款狀態不允許。",
           ORDER_STATUS_NOT_ALLOWED: "此操作不允許的訂單狀態。",
-          ORDER_STATUS_NOT_CLIENT_WRITABLE: "訂單流程狀態改由系統判定，請重新整理後再試。",
+          ORDER_STATUS_NOT_CLIENT_WRITABLE:
+            "訂單流程狀態改由系統判定，請重新整理後再試。",
           ORDER_CANCELLED_LOCKED: "此訂單已取消，無法再修改流程資料。",
           ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
           ORDER_NO_NOT_UNIQUE: "訂單資料異常，請停止操作。",
@@ -5265,7 +5289,11 @@
         if (!adminSessionToken) {
           sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
           showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
-          adminWorkflowSetFeedback(editor, "登入已過期，請重新登入 LINE。", true);
+          adminWorkflowSetFeedback(
+            editor,
+            "登入已過期，請重新登入 LINE。",
+            true,
+          );
           return;
         }
 
@@ -5306,10 +5334,7 @@
 
             if (errorCode === "ADMIN_SESSION_REQUIRED") {
               sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-              showAdminAuthOverlay(
-                "⚠️ 登入已過期，請重新登入 LINE",
-                true,
-              );
+              showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
             }
 
             adminWorkflowSetSaving(editor, false);
@@ -5369,7 +5394,9 @@
         const orderNo = String(card.dataset.orderNo || "").trim();
         const latestOrder = getLatestAdminOrder(orderNo);
         const expectedShippingDate = String(
-          latestOrder?.expectedShippingDate || card.dataset.expectedShippingDate || "",
+          latestOrder?.expectedShippingDate ||
+            card.dataset.expectedShippingDate ||
+            "",
         ).trim();
         const adminSessionToken = String(
           sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
@@ -5427,10 +5454,7 @@
             const errorCode = String(payload?.errorCode || "");
             if (errorCode === "ADMIN_SESSION_REQUIRED") {
               sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-              showAdminAuthOverlay(
-                "⚠️ 登入已過期，請重新登入 LINE",
-                true,
-              );
+              showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
             }
             throw new Error(errorCode || "RESCHEDULE_NOTICE_FAILED");
           }
@@ -5522,10 +5546,7 @@
           ) {
             if (payload?.errorCode === "ADMIN_SESSION_REQUIRED") {
               sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-              showAdminAuthOverlay(
-                "⚠️ 登入已過期，請重新登入 LINE",
-                true,
-              );
+              showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
             }
             throw new Error(payload?.errorCode || "NOTIFICATION_FAILED");
           }
@@ -5547,8 +5568,8 @@
                 payload.result === "unconfirmed"
                   ? "通知結果無法完整確認，請先至 NotificationLogs 查核。"
                   : payload.result === "skipped"
-                  ? "通知已略過，異動仍待處理。"
-                  : "通知失敗，異動仍待處理。";
+                    ? "通知已略過，異動仍待處理。"
+                    : "通知失敗，異動仍待處理。";
             }
             return;
           }
@@ -5566,9 +5587,7 @@
           card.dataset.notificationSaving = "false";
           if (button) {
             button.disabled = false;
-            button.innerText = canLineNotify
-              ? "重新發送通知"
-              : "電話已通知";
+            button.innerText = canLineNotify ? "重新發送通知" : "電話已通知";
           }
           if (feedback) {
             feedback.classList.add("is-error");
@@ -5646,10 +5665,7 @@
           const cancelOrderButton = event.target.closest(
             ".admin-cancel-order-trigger",
           );
-          if (
-            cancelOrderButton &&
-            cardsContainer.contains(cancelOrderButton)
-          ) {
+          if (cancelOrderButton && cardsContainer.contains(cancelOrderButton)) {
             const cancelCard = cancelOrderButton.closest(
               '.card[data-readonly="true"][data-order-no]',
             );
@@ -5970,7 +5986,8 @@
           ? paymentValue
           : resolvePaymentStateFromStoredPair(paymentValue, paymentValue);
         badge.classList.remove("pay-success", "pay-danger", "pay-neutral");
-        badge.innerText = getPaymentLabelFromState(paymentState) || "付款資料待確認";
+        badge.innerText =
+          getPaymentLabelFromState(paymentState) || "付款資料待確認";
         badge.classList.add(getPaymentClassFromState(paymentState));
         calculateCardAmount(cardId);
       }
@@ -6021,7 +6038,8 @@
             ? "貨到付款"
             : paymentBadge?.innerText.trim() || "";
         const paymentMethod =
-          getPaymentStateDefinition(paymentValue)?.paymentMethod || paymentValue;
+          getPaymentStateDefinition(paymentValue)?.paymentMethod ||
+          paymentValue;
         const discountAmount = normalizeMoney(card.dataset.discountAmount || 0);
         const amount = calculateOrderAmount(
           items,
@@ -6720,7 +6738,9 @@ ${adminNote}
           ...document.querySelectorAll(
             '#cards-container .card[data-readonly="true"][data-order-no] .batch-check[data-order-no]',
           ),
-        ].filter((checkbox) => checkbox.closest(".card")?.style.display !== "none");
+        ].filter(
+          (checkbox) => checkbox.closest(".card")?.style.display !== "none",
+        );
       }
 
       function cleanupSelectedOrderNos(requireVisible = true) {
@@ -6795,12 +6815,14 @@ ${adminNote}
           selectedOrderNos.has(String(checkbox.dataset.orderNo || "").trim()),
         ).length;
 
-        document.querySelectorAll(".batch-check[data-order-no]").forEach((checkbox) => {
-          checkbox.checked = selectedOrderNos.has(
-            String(checkbox.dataset.orderNo || "").trim(),
-          );
-          checkbox.disabled = adminBatchProcessing;
-        });
+        document
+          .querySelectorAll(".batch-check[data-order-no]")
+          .forEach((checkbox) => {
+            checkbox.checked = selectedOrderNos.has(
+              String(checkbox.dataset.orderNo || "").trim(),
+            );
+            checkbox.disabled = adminBatchProcessing;
+          });
 
         const selectAll = document.getElementById("global-selectAll");
         if (selectAll) {
@@ -6822,8 +6844,7 @@ ${adminNote}
           batchShippedBtn.innerText = adminBatchProcessing
             ? "處理中…"
             : `標記已寄出（${count}）`;
-          batchShippedBtn.disabled =
-            adminBatchProcessing || !shippedEligible;
+          batchShippedBtn.disabled = adminBatchProcessing || !shippedEligible;
           batchShippedBtn.classList.toggle(
             "enabled",
             !batchShippedBtn.disabled,
@@ -6846,11 +6867,11 @@ ${adminNote}
               "選取項目含待查核通知。請先確認 NotificationLogs，再決定是否重新發送。",
               true,
             );
-          } else if (count > 20 && selectedOrders.every(isBatchNotifiableOrder)) {
-            setBatchFeedback(
-              "一次最多發送 20 張異動通知，請分批處理。",
-              true,
-            );
+          } else if (
+            count > 20 &&
+            selectedOrders.every(isBatchNotifiableOrder)
+          ) {
+            setBatchFeedback("一次最多發送 20 張異動通知，請分批處理。", true);
           } else {
             const reasons = [];
             if (!shippedEligible) {
@@ -6989,8 +7010,8 @@ ${adminNote}
             error.message === "BATCH_REFRESH_FAILED"
               ? "批次可能已完成，但列表重新讀取失敗。請重新整理確認，請勿重複送出。"
               : error.message === "BATCH_SHIPPED_WRITE_VERIFY_FAILED"
-              ? "批次結果無法完整驗證，請重新整理確認，請勿重複送出。"
-              : "批次標記已寄出失敗，未套用前端變更。",
+                ? "批次結果無法完整驗證，請重新整理確認，請勿重複送出。"
+                : "批次標記已寄出失敗，未套用前端變更。",
             true,
           );
         } finally {
@@ -7094,9 +7115,7 @@ ${adminNote}
             .filter((result) => result.result === "unconfirmed")
             .map((result) => result.orderNo);
           const incompleteOrderNos = results
-            .filter((result) =>
-              ["failed", "skipped"].includes(result.result),
-            )
+            .filter((result) => ["failed", "skipped"].includes(result.result))
             .map((result) => result.orderNo);
           selectedOrderNos.clear();
           unconfirmedNotificationOrderNos.clear();
@@ -7125,9 +7144,7 @@ ${adminNote}
               true,
             );
           } else {
-            setBatchFeedback(
-              `已成功發送 ${summary.successCount} 張異動通知。`,
-            );
+            setBatchFeedback(`已成功發送 ${summary.successCount} 張異動通知。`);
           }
         } catch (error) {
           await refreshAdminOrdersAfterBatch();
@@ -7181,9 +7198,7 @@ ${adminNote}
         adminShippingBatches = payload.batches
           .slice()
           .sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder));
-        const select = document.getElementById(
-          "new-requested-shipping-batch",
-        );
+        const select = document.getElementById("new-requested-shipping-batch");
         if (select) {
           select.innerHTML = [
             '<option value="">未指定</option>',
@@ -7197,9 +7212,7 @@ ${adminNote}
 
       async function openAddOrderModal() {
         if (!adminProductsReady) {
-          alert(
-            "商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。",
-          );
+          alert("商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。");
           return;
         }
         if (!document.querySelector("#modal-product-list .product-edit-row")) {
@@ -7325,9 +7338,7 @@ ${adminNote}
         const feedback = document.getElementById("new-order-feedback");
         const submitButton = document.getElementById("new-order-submit");
         const modalRows = [
-          ...document.querySelectorAll(
-            "#modal-product-list .product-edit-row",
-          ),
+          ...document.querySelectorAll("#modal-product-list .product-edit-row"),
         ];
         const items = modalRows.map((row) => ({
           code: row.querySelector(".modal-spec-select")?.value || "",
@@ -7363,8 +7374,7 @@ ${adminNote}
             document.getElementById("new-sender-name")?.value.trim() || "",
           buyerPhone:
             document.getElementById("new-sender-phone")?.value.trim() || "",
-          customerNote:
-            document.getElementById("new-note")?.value.trim() || "",
+          customerNote: document.getElementById("new-note")?.value.trim() || "",
           adminNote:
             document.getElementById("new-admin-note")?.value.trim() || "",
           paymentState:
