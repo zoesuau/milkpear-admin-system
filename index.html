@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-Hant">
   <head>
-    <meta charset="UTF-8"  />
+    <meta charset="UTF-8" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
@@ -2921,6 +2921,9 @@
         if (notificationType === "change_notice") {
           return canLineNotify ? "通知客戶本次變更" : "已電話通知";
         }
+        if (notificationType === "schedule_notice" && !canLineNotify) {
+          return "已電話通知";
+        }
         return canLineNotify ? "重新發送通知" : "電話已通知";
       }
 
@@ -3477,6 +3480,11 @@
           isPendingNotification &&
           lastNotificationType === "change_notice" &&
           pendingNoticeLabels.length > 0;
+        const shouldShowManualScheduleNoticeDoneButton =
+          isPendingNotification &&
+          lastNotificationType === "schedule_notice" &&
+          !canLineNotify &&
+          pendingNoticeLabels.length > 0;
         const cancelNotificationLabel =
           orderStatus === "已取消" &&
           lastNotificationType === "cancellation_notice" &&
@@ -3749,6 +3757,11 @@
                     ${
                       shouldShowChangeNoticeActionButton
                         ? `<button type="button" class="btn-resend-notice">${canLineNotify ? "通知客戶本次變更" : "已電話通知"}</button>`
+                        : ""
+                    }
+                    ${
+                      shouldShowManualScheduleNoticeDoneButton
+                        ? `<button type="button" class="btn-resend-notice">已電話通知</button>`
                         : ""
                     }
                     ${
@@ -5727,7 +5740,11 @@
             );
             if (
               changeNoticeCard &&
-              changeNoticeCard.dataset.lastNotificationType === "change_notice"
+              (changeNoticeCard.dataset.lastNotificationType ===
+                "change_notice" ||
+                (changeNoticeCard.dataset.lastNotificationType ===
+                  "schedule_notice" &&
+                  changeNoticeCard.dataset.canLineNotify !== "true"))
             ) {
               adminOrderNotificationSubmit(changeNoticeCard);
             }
