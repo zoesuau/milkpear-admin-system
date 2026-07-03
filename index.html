@@ -3464,6 +3464,8 @@
           isOpenNotificationStatus(notificationStatus) &&
           isCanonicalNotificationType(lastNotificationType);
         const canLineNotify = order?.canLineNotify === true;
+        const shouldHideManualOrderConfirmationNotice =
+          lastNotificationType === "order_confirmation" && !canLineNotify;
         const isManualRescheduleDecision =
           lastNotificationType === "schedule_notice" &&
           orderStatus === "已安排出貨" &&
@@ -3471,7 +3473,8 @@
           adminWorkflowIsValidDate(expectedShippingDate) &&
           actualShippingDate === "";
         const shouldShowOrderChangeAlert =
-          isPendingNotification || isManualRescheduleDecision;
+          !shouldHideManualOrderConfirmationNotice &&
+          (isPendingNotification || isManualRescheduleDecision);
         const shouldShowManualRescheduleNoticeButton =
           isManualRescheduleDecision && canLineNotify;
         const shouldShowManualRescheduleContactText =
