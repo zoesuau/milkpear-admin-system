@@ -352,6 +352,40 @@
         accent-color: #4f7f63;
         flex-shrink: 0;
       }
+      .batch-check:disabled {
+        cursor: not-allowed;
+        opacity: 0.32;
+        filter: grayscale(1);
+      }
+
+      .admin-pagination {
+        max-width: 500px;
+        margin: 12px auto 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        color: #475569;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .admin-pagination button {
+        height: 32px;
+        padding: 0 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+        color: #334155;
+        font-size: 13px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .admin-pagination button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
 
       .order-no {
         font-size: 14px;
@@ -1510,6 +1544,10 @@
         background: #4f7f63;
         color: white;
       }
+      .btn-modal-submit.btn-modal-danger {
+        background: #dc2626;
+        color: #ffffff;
+      }
 
       .btn-save-shipment {
         padding: 8px 16px;
@@ -1881,7 +1919,7 @@
             <label><input type="checkbox" id="global-selectAll" /> 全選</label>
             <span id="selectedOrderCount">已選 0 張</span>
             <button id="batchShippedBtn" class="btn-batch-shipped" disabled>
-              標記已寄出（0）
+              標記已寄出並通知（0）
             </button>
           </div>
           <input
@@ -1892,6 +1930,12 @@
           />
         </div>
         <div id="batchActionFeedback" class="admin-workflow-feedback"></div>
+      </div>
+
+      <div class="admin-pagination" id="adminPagination" hidden>
+        <button type="button" id="adminPrevPageBtn">上一頁</button>
+        <span id="adminPaginationInfo">第 0-0 張／共 0 張</span>
+        <button type="button" id="adminNextPageBtn">下一頁</button>
       </div>
 
       <div class="cards-container" id="cards-container">
@@ -2173,7 +2217,7 @@
           </button>
           <button
             type="button"
-            class="btn-modal-submit"
+            class="btn-modal-submit btn-modal-danger"
             id="adminCancelOrderSubmitButton"
             onclick="adminCancelOrderSubmit()"
           >
@@ -2395,6 +2439,8 @@
       let adminBatchProcessing = false;
       let adminCancelOrderContext = null;
       let adminCancelOrderSubmitting = false;
+      const ADMIN_ORDERS_PER_PAGE = 20;
+      let adminCurrentPage = 1;
       const CURRENT_ADMIN_NAME = "後台管理員";
       let currentFilterStatus = "全部";
       const OPEN_NOTIFICATION_STATUSES = new Set([
@@ -2913,6 +2959,20 @@
         );
       }
 
+      function getOrderNotificationActionLabel(card) {
+        const canLineNotify = isLineOrder(card);
+        const notificationType = String(
+          card?.dataset.lastNotificationType || "",
+        ).trim();
+        if (notificationType === "change_notice") {
+          return canLineNotify ? "通知客戶本次變更" : "已電話通知";
+        }
+        if (notificationType === "schedule_notice" && !canLineNotify) {
+          return "已電話通知";
+        }
+        return canLineNotify ? "重新發送通知" : "電話已通知";
+      }
+
       function updateNotifyButton() {
         syncBatchSelectionUi();
       }
@@ -2942,8 +3002,9 @@
           title.innerText = "⚠️ 待處理通知事件";
         }
         if (button) {
-          button.hidden = true;
-          button.disabled = true;
+          button.hidden = false;
+          button.disabled = false;
+          button.innerText = getOrderNotificationActionLabel(card);
         }
         alertBox.style.display = "block";
         updateNotifyButton();
@@ -3302,6 +3363,7 @@
             `;
             selectedOrderNos.clear();
             unconfirmedNotificationOrderNos.clear();
+            updateAdminPagination(0);
             syncBatchSelectionUi();
             return true;
           }
@@ -3449,6 +3511,10 @@
           isOpenNotificationStatus(notificationStatus) &&
           isCanonicalNotificationType(lastNotificationType);
         const canLineNotify = order?.canLineNotify === true;
+        const shouldHideManualOrderConfirmationNotice =
+          lastNotificationType === "order_confirmation" && !canLineNotify;
+        const shouldHideCancellationNotice =
+          lastNotificationType === "cancellation_notice";
         const isManualRescheduleDecision =
           lastNotificationType === "schedule_notice" &&
           orderStatus === "已安排出貨" &&
@@ -3456,18 +3522,23 @@
           adminWorkflowIsValidDate(expectedShippingDate) &&
           actualShippingDate === "";
         const shouldShowOrderChangeAlert =
-          isPendingNotification || isManualRescheduleDecision;
-        const shouldShowManualRescheduleNoticeButton = false;
+          !shouldHideManualOrderConfirmationNotice &&
+          !shouldHideCancellationNotice &&
+          (isPendingNotification || isManualRescheduleDecision);
+        const shouldShowManualRescheduleNoticeButton =
+          isManualRescheduleDecision && canLineNotify;
         const shouldShowManualRescheduleContactText =
-          isManualRescheduleDecision &&
-          !isPendingNotification &&
-          !canLineNotify;
-        const cancelNotificationLabel =
-          orderStatus === "已取消" &&
-          lastNotificationType === "cancellation_notice" &&
-          isOpenNotificationStatus(notificationStatus)
-            ? `${getNotificationTypeLabel(lastNotificationType)}：${getNotificationStatusLabel(notificationStatus)}`
-              : "";
+          isManualRescheduleDecision && !canLineNotify;
+        const shouldShowChangeNoticeActionButton =
+          isPendingNotification &&
+          lastNotificationType === "change_notice" &&
+          pendingNoticeLabels.length > 0;
+        const shouldShowManualScheduleNoticeDoneButton =
+          isPendingNotification &&
+          lastNotificationType === "schedule_notice" &&
+          !canLineNotify &&
+          pendingNoticeLabels.length > 0;
+        const cancelNotificationLabel = "";
         const adminWorkflowEditable =
           !!orderNo &&
           ["待確認", "已安排出貨"].includes(orderStatus) &&
@@ -3478,6 +3549,7 @@
           actualShippingDate === "" &&
           expectedShippingDate !== "" &&
           adminWorkflowIsValidDate(expectedShippingDate);
+        const canBatchMarkShipped = canMarkOrderShipped && canLineNotify;
         const recipientName = String(order?.recipientName ?? "").trim();
         const recipientPhone = String(order?.recipientPhone ?? "").trim();
         const recipientAddress = String(order?.recipientAddress ?? "").trim();
@@ -3551,7 +3623,7 @@
         const canEditContent = ["待確認", "已安排出貨", "已寄出"].includes(
           orderStatus,
         );
-        const canSelectOrder = ["待確認", "已安排出貨"].includes(orderStatus);
+        const canSelectOrder = orderStatus === "已安排出貨";
         const canCancelOrder = ["待確認", "已安排出貨"].includes(orderStatus);
 
         return `
@@ -3562,6 +3634,7 @@
             data-order-no="${escapeHtml(orderNo)}"
             data-can-line-notify="${canLineNotify ? "true" : "false"}"
             data-notification-status="${escapeHtml(notificationStatus)}"
+            data-last-notification-type="${escapeHtml(lastNotificationType)}"
             data-pending-notice-fields="${escapeHtml(pendingNoticeFields.join("|"))}"
             data-expected-shipping-date="${escapeHtml(expectedShippingDate)}"
             ${adminWorkflowEditable ? 'data-admin-workflow-editor="true"' : ""}
@@ -3570,10 +3643,10 @@
             <div class="row-top">
               <div class="order-no-wrapper">
                 ${
-                  canSelectOrder
-                    ? `<input type="checkbox" class="batch-check" data-order-no="${escapeHtml(orderNo)}"${selectedOrderNos.has(orderNo) ? " checked" : ""} />`
-                    : ""
-                }
+	                  canSelectOrder
+	                    ? `<input type="checkbox" class="batch-check" data-order-no="${escapeHtml(orderNo)}" data-batch-eligible="${canBatchMarkShipped ? "true" : "false"}"${canBatchMarkShipped ? "" : " disabled"}${canBatchMarkShipped ? "" : ` title="${escapeHtml(canLineNotify ? "此訂單目前不可批量已寄出" : "無 LINE，請人工通知後單筆處理")}"`}${canBatchMarkShipped && selectedOrderNos.has(orderNo) ? " checked" : ""} />`
+	                    : ""
+	                }
                 <div class="order-no">
                   訂單編號：${escapeHtml(orderNo || "未提供")}
                 </div>
@@ -3731,6 +3804,16 @@
                         : ""
                     }
                     ${
+                      shouldShowChangeNoticeActionButton
+                        ? `<button type="button" class="btn-resend-notice">${canLineNotify ? "通知客戶本次變更" : "已電話通知"}</button>`
+                        : ""
+                    }
+                    ${
+                      shouldShowManualScheduleNoticeDoneButton
+                        ? `<button type="button" class="btn-resend-notice">已電話通知</button>`
+                        : ""
+                    }
+                    ${
                       shouldShowManualRescheduleContactText
                         ? `<div class="admin-reschedule-manual-contact">此訂單無法透過 LINE 通知，請人工聯絡客戶。</div>`
                         : ""
@@ -3787,6 +3870,10 @@
         const expectedShippingDate = String(
           order.expectedShippingDate || "",
         ).trim();
+        const canLineNotify = order?.canLineNotify === true;
+        const cancelNoticeText = canLineNotify
+          ? "會自動發送 LINE 取消通知。"
+          : "此訂單無法透過 LINE 通知，取消後請人工聯絡客戶。";
 
         adminCancelOrderContext = {
           orderNo,
@@ -3802,10 +3889,10 @@
             <div><strong>付款狀態：</strong>${escapeHtml(paymentLabel)}</div>
             <div><strong>確定出貨日期：</strong>${escapeHtml(expectedShippingDate || "尚未排定")}</div>
             <div style="margin-top:4px; padding:10px 12px; border-radius:10px; background:#fef2f2; color:#991b1b; font-weight:800">
+              <div>${escapeHtml(cancelNoticeText)}</div>
               <div>取消後無法自行恢復。</div>
               <div>原訂單資料與付款狀態會保留。</div>
               <div>本次不會自動退款。</div>
-              <div>本次不會自動發送 LINE 取消通知。</div>
             </div>
           </div>
         `;
@@ -5608,9 +5695,7 @@
               button.innerText =
                 payload.result === "unconfirmed"
                   ? "通知結果待查核"
-                  : canLineNotify
-                    ? "重新發送通知"
-                    : "電話已通知";
+                  : getOrderNotificationActionLabel(card);
             }
             if (feedback) {
               feedback.classList.add("is-error");
@@ -5637,7 +5722,7 @@
           card.dataset.notificationSaving = "false";
           if (button) {
             button.disabled = false;
-            button.innerText = canLineNotify ? "重新發送通知" : "電話已通知";
+            button.innerText = getOrderNotificationActionLabel(card);
           }
           if (feedback) {
             feedback.classList.add("is-error");
@@ -5692,6 +5777,29 @@
             );
             if (rescheduleNoticeCard) {
               adminSendRescheduledShippingDateNotice(rescheduleNoticeCard);
+            }
+            return;
+          }
+
+          const changeNoticeButton = event.target.closest(
+            ".btn-resend-notice",
+          );
+          if (
+            changeNoticeButton &&
+            cardsContainer.contains(changeNoticeButton)
+          ) {
+            const changeNoticeCard = changeNoticeButton.closest(
+              '.card[data-readonly="true"][data-order-no]',
+            );
+            if (
+              changeNoticeCard &&
+              (changeNoticeCard.dataset.lastNotificationType ===
+                "change_notice" ||
+                (changeNoticeCard.dataset.lastNotificationType ===
+                  "schedule_notice" &&
+                  changeNoticeCard.dataset.canLineNotify !== "true"))
+            ) {
+              adminOrderNotificationSubmit(changeNoticeCard);
             }
             return;
           }
@@ -5995,27 +6103,72 @@
 
       function filterByStatus(status, btnElement) {
         currentFilterStatus = status;
+        adminCurrentPage = 1;
         const buttons = document.querySelectorAll("#statusFilterRow button");
         buttons.forEach((btn) => btn.classList.remove("active"));
         if (btnElement) btnElement.classList.add("active");
         applyCurrentFilter();
       }
 
-      function applyCurrentFilter() {
-        const cards = document.querySelectorAll(".cards-container .card");
-        cards.forEach((card) => {
-          const cardStatus = card.getAttribute("data-status") || "待確認";
-          const statusMatch =
-            currentFilterStatus === "全部" ||
-            cardStatus === currentFilterStatus;
-          const searchMatch = card.dataset.searchMatch !== "false";
+      function getFilteredAdminCards() {
+        return [...document.querySelectorAll(".cards-container .card")].filter(
+          (card) => {
+            const cardStatus = card.getAttribute("data-status") || "待確認";
+            const statusMatch =
+              currentFilterStatus === "全部" ||
+              cardStatus === currentFilterStatus;
+            const searchMatch = card.dataset.searchMatch !== "false";
+            return statusMatch && searchMatch;
+          },
+        );
+      }
 
-          if (statusMatch && searchMatch) {
+      function updateAdminPagination(totalCount) {
+        const pagination = document.getElementById("adminPagination");
+        const info = document.getElementById("adminPaginationInfo");
+        const prevButton = document.getElementById("adminPrevPageBtn");
+        const nextButton = document.getElementById("adminNextPageBtn");
+        if (!pagination || !info || !prevButton || !nextButton) return;
+
+        const totalPages = Math.max(
+          1,
+          Math.ceil(totalCount / ADMIN_ORDERS_PER_PAGE),
+        );
+        adminCurrentPage = Math.min(Math.max(adminCurrentPage, 1), totalPages);
+        const startIndex = totalCount
+          ? (adminCurrentPage - 1) * ADMIN_ORDERS_PER_PAGE + 1
+          : 0;
+        const endIndex = totalCount
+          ? Math.min(adminCurrentPage * ADMIN_ORDERS_PER_PAGE, totalCount)
+          : 0;
+
+        pagination.hidden = totalCount <= ADMIN_ORDERS_PER_PAGE;
+        info.innerText = `第 ${startIndex}-${endIndex} 張／共 ${totalCount} 張`;
+        prevButton.disabled = adminBatchProcessing || adminCurrentPage <= 1;
+        nextButton.disabled =
+          adminBatchProcessing || adminCurrentPage >= totalPages;
+      }
+
+      function applyCurrentFilter() {
+        const cards = [...document.querySelectorAll(".cards-container .card")];
+        const matchedCards = getFilteredAdminCards();
+        const totalPages = Math.max(
+          1,
+          Math.ceil(matchedCards.length / ADMIN_ORDERS_PER_PAGE),
+        );
+        adminCurrentPage = Math.min(Math.max(adminCurrentPage, 1), totalPages);
+        const pageStart = (adminCurrentPage - 1) * ADMIN_ORDERS_PER_PAGE;
+        const pageCards = new Set(
+          matchedCards.slice(pageStart, pageStart + ADMIN_ORDERS_PER_PAGE),
+        );
+        cards.forEach((card) => {
+          if (pageCards.has(card)) {
             card.style.display = "";
           } else {
             card.style.display = "none";
           }
         });
+        updateAdminPagination(matchedCards.length);
         cleanupSelectedOrderNos(true);
         syncBatchSelectionUi();
       }
@@ -6788,9 +6941,11 @@ ${adminNote}
           ...document.querySelectorAll(
             '#cards-container .card[data-readonly="true"][data-order-no] .batch-check[data-order-no]',
           ),
-        ].filter(
-          (checkbox) => checkbox.closest(".card")?.style.display !== "none",
-        );
+        ]
+          .filter(
+            (checkbox) => checkbox.closest(".card")?.style.display !== "none",
+          )
+          .filter((checkbox) => checkbox.dataset.batchEligible === "true");
       }
 
       function cleanupSelectedOrderNos(requireVisible = true) {
@@ -6802,8 +6957,9 @@ ${adminNote}
           ]
             .filter(
               (checkbox) =>
-                !requireVisible ||
-                checkbox.closest(".card")?.style.display !== "none",
+                checkbox.dataset.batchEligible === "true" &&
+                (!requireVisible ||
+                  checkbox.closest(".card")?.style.display !== "none"),
             )
             .map((checkbox) => String(checkbox.dataset.orderNo || "").trim())
             .filter(Boolean),
@@ -6823,16 +6979,16 @@ ${adminNote}
       }
 
       function isBatchShippableOrder(order) {
+        const expectedShippingDate = String(
+          order?.expectedShippingDate || "",
+        ).trim();
         return (
           order?.orderStatus === "已安排出貨" &&
-          !!String(order?.expectedShippingDate || "").trim() &&
-          !String(order?.changedFields || "").trim() &&
-          !isOpenNotificationStatus(order?.notificationStatus)
+          order?.canLineNotify === true &&
+          expectedShippingDate !== "" &&
+          adminWorkflowIsValidDate(expectedShippingDate) &&
+          !String(order?.actualShippingDate || "").trim()
         );
-      }
-
-      function isBatchNotifiableOrder(order) {
-        return false;
       }
 
       function setBatchFeedback(message, isError = false) {
@@ -6850,15 +7006,8 @@ ${adminNote}
           count > 0 &&
           allSelectedFound &&
           selectedOrders.every(isBatchShippableOrder);
-        const notifyEligible =
-          count > 0 &&
-          count <= 20 &&
-          allSelectedFound &&
-          [...selectedOrderNos].every(
-            (orderNo) => !unconfirmedNotificationOrderNos.has(orderNo),
-          ) &&
-          selectedOrders.every(isBatchNotifiableOrder);
         const visibleCheckboxes = getVisibleSelectableCheckboxes();
+        updateAdminPagination(getFilteredAdminCards().length);
         const visibleSelectedCount = visibleCheckboxes.filter((checkbox) =>
           selectedOrderNos.has(String(checkbox.dataset.orderNo || "").trim()),
         ).length;
@@ -6866,10 +7015,14 @@ ${adminNote}
         document
           .querySelectorAll(".batch-check[data-order-no]")
           .forEach((checkbox) => {
-            checkbox.checked = selectedOrderNos.has(
-              String(checkbox.dataset.orderNo || "").trim(),
-            );
-            checkbox.disabled = adminBatchProcessing;
+            checkbox.checked =
+              checkbox.dataset.batchEligible === "true" &&
+              selectedOrderNos.has(
+                String(checkbox.dataset.orderNo || "").trim(),
+              );
+            checkbox.disabled =
+              adminBatchProcessing ||
+              checkbox.dataset.batchEligible !== "true";
           });
 
         const selectAll = document.getElementById("global-selectAll");
@@ -6891,7 +7044,7 @@ ${adminNote}
         if (batchShippedBtn) {
           batchShippedBtn.innerText = adminBatchProcessing
             ? "處理中…"
-            : `標記已寄出（${count}）`;
+            : `標記已寄出並通知（${count}）`;
           batchShippedBtn.disabled = adminBatchProcessing || !shippedEligible;
           batchShippedBtn.classList.toggle(
             "enabled",
@@ -6906,30 +7059,11 @@ ${adminNote}
         if (!adminBatchProcessing && !preserveFeedback) {
           if (!count) {
             setBatchFeedback("");
-          } else if (
-            [...selectedOrderNos].some((orderNo) =>
-              unconfirmedNotificationOrderNos.has(orderNo),
-            )
-          ) {
-            setBatchFeedback(
-              "選取項目含待查核通知。請先確認 NotificationLogs，再決定是否重新發送。",
-              true,
-            );
-          } else if (
-            count > 20 &&
-            selectedOrders.every(isBatchNotifiableOrder)
-          ) {
-            setBatchFeedback("一次最多發送 20 張異動通知，請分批處理。", true);
           } else {
             const reasons = [];
             if (!shippedEligible) {
               reasons.push(
-                "已選訂單中包含尚未安排完成或待通知訂單，無法批次標記已寄出。",
-              );
-            }
-            if (!notifyEligible) {
-              reasons.push(
-                "已選訂單中包含無 LINE UID 或非待通知訂單，無法批次發送異動通知。",
+                "已選訂單中包含無 LINE、尚未安排完成或已寄出的訂單，無法批量已寄出並通知。",
               );
             }
             setBatchFeedback(reasons.join("\n"), reasons.length > 0);
@@ -7002,7 +7136,7 @@ ${adminNote}
         }
         if (
           !window.confirm(
-            `將 ${orderNos.length} 張訂單標為已寄出？\n\n系統會依既有規則寫入實際寄出日期。\n此操作不會發送 LINE 通知。`,
+            `將 ${orderNos.length} 張訂單標為已寄出並發送 LINE 通知？\n\n通知內容會採用訂單目前最新資料。\n若有收件資料、商品或盒數異動，會合併在本次寄出通知中，不另發異動通知。`,
           )
         ) {
           return;
@@ -7052,152 +7186,16 @@ ${adminNote}
           }
           selectedOrderNos.clear();
           unconfirmedNotificationOrderNos.clear();
-          setBatchFeedback(`已將 ${orderNos.length} 張訂單標為已寄出。`);
+          setBatchFeedback(
+            `已將 ${orderNos.length} 張訂單標為已寄出並發送 LINE 通知。`,
+          );
         } catch (error) {
           setBatchFeedback(
             error.message === "BATCH_REFRESH_FAILED"
               ? "批次可能已完成，但列表重新讀取失敗。請重新整理確認，請勿重複送出。"
               : error.message === "BATCH_SHIPPED_WRITE_VERIFY_FAILED"
                 ? "批次結果無法完整驗證，請重新整理確認，請勿重複送出。"
-                : "批次標記已寄出失敗，未套用前端變更。",
-            true,
-          );
-        } finally {
-          adminBatchProcessing = false;
-          syncBatchSelectionUi(true);
-        }
-      }
-
-      async function batchResendOrderNotifications() {
-        if (adminBatchProcessing || !selectedOrderNos.size) return;
-        const orderNos = [...selectedOrderNos];
-        const selectedOrders = getSelectedAdminOrders();
-        if (
-          orderNos.length > 20 ||
-          selectedOrders.length !== orderNos.length ||
-          !selectedOrders.every(isBatchNotifiableOrder)
-        ) {
-          syncBatchSelectionUi();
-          return;
-        }
-        if (
-          !window.confirm(
-            `將發送 ${orderNos.length} 張異動通知？\n\n通知成功的訂單會清除異動提示。\n通知失敗、略過或結果待查核的訂單，\n會保留待通知狀態與異動提示。`,
-          )
-        ) {
-          return;
-        }
-
-        const adminSessionToken = String(
-          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
-        ).trim();
-        if (!adminSessionToken) {
-          showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
-          return;
-        }
-
-        adminBatchProcessing = true;
-        setBatchFeedback("");
-        syncBatchSelectionUi();
-        try {
-          const response = await fetch(GAS_ORDERS_API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({
-              action: "adminBatchResendOrderNotifications",
-              adminSessionToken,
-              orderNos,
-            }),
-          });
-          const payload = await response.json();
-          const summary = payload?.summary;
-          const results = Array.isArray(payload?.results)
-            ? payload.results
-            : [];
-          const allowedResults = [
-            "success",
-            "failed",
-            "skipped",
-            "unconfirmed",
-          ];
-          const actualCounts = results.reduce(
-            (counts, result) => {
-              if (allowedResults.includes(result?.result)) {
-                counts[result.result] += 1;
-              }
-              return counts;
-            },
-            { success: 0, failed: 0, skipped: 0, unconfirmed: 0 },
-          );
-          const resultTotal =
-            Number(summary?.successCount || 0) +
-            Number(summary?.failedCount || 0) +
-            Number(summary?.skippedCount || 0) +
-            Number(summary?.unconfirmedCount || 0);
-          if (
-            !response.ok ||
-            payload?.ok !== true ||
-            payload?.action !== "adminBatchResendOrderNotifications" ||
-            Number(summary?.requestedCount) !== orderNos.length ||
-            resultTotal !== orderNos.length ||
-            results.length !== orderNos.length ||
-            results.some(
-              (result) =>
-                !orderNos.includes(String(result?.orderNo || "")) ||
-                !allowedResults.includes(result?.result),
-            ) ||
-            orderNos.some(
-              (orderNo) =>
-                results.filter((result) => result?.orderNo === orderNo)
-                  .length !== 1,
-            ) ||
-            actualCounts.success !== Number(summary?.successCount) ||
-            actualCounts.failed !== Number(summary?.failedCount) ||
-            actualCounts.skipped !== Number(summary?.skippedCount) ||
-            actualCounts.unconfirmed !== Number(summary?.unconfirmedCount)
-          ) {
-            throw new Error("BATCH_NOTIFICATION_RESULT_INCOMPLETE");
-          }
-
-          const unconfirmedOrderNos = results
-            .filter((result) => result.result === "unconfirmed")
-            .map((result) => result.orderNo);
-          const incompleteOrderNos = results
-            .filter((result) => ["failed", "skipped"].includes(result.result))
-            .map((result) => result.orderNo);
-          selectedOrderNos.clear();
-          unconfirmedNotificationOrderNos.clear();
-          const retainedOrderNos = unconfirmedOrderNos.length
-            ? unconfirmedOrderNos
-            : incompleteOrderNos;
-          retainedOrderNos.forEach((orderNo) =>
-            selectedOrderNos.add(String(orderNo || "")),
-          );
-          unconfirmedOrderNos.forEach((orderNo) =>
-            unconfirmedNotificationOrderNos.add(String(orderNo || "")),
-          );
-
-          if (!(await refreshAdminOrdersAfterBatch())) {
-            throw new Error("BATCH_REFRESH_FAILED");
-          }
-
-          if (unconfirmedOrderNos.length) {
-            setBatchFeedback(
-              `有 ${unconfirmedOrderNos.length} 張通知結果待查核。\n請先確認 NotificationLogs，再決定是否重新發送。`,
-              true,
-            );
-          } else if (incompleteOrderNos.length) {
-            setBatchFeedback(
-              `已成功發送 ${summary.successCount} 張；${incompleteOrderNos.length} 張未完成，已保留待通知狀態。`,
-              true,
-            );
-          } else {
-            setBatchFeedback(`已成功發送 ${summary.successCount} 張異動通知。`);
-          }
-        } catch (error) {
-          await refreshAdminOrdersAfterBatch();
-          setBatchFeedback(
-            "批次通知結果不完整，請重新整理確認，請勿立即重送。",
+                : "批量已寄出並通知失敗，未套用前端變更。",
             true,
           );
         } finally {
@@ -7209,6 +7207,22 @@ ${adminNote}
       document
         .getElementById("batchShippedBtn")
         .addEventListener("click", batchUpdateStatusToShipped);
+
+      document
+        .getElementById("adminPrevPageBtn")
+        .addEventListener("click", () => {
+          if (adminBatchProcessing || adminCurrentPage <= 1) return;
+          adminCurrentPage -= 1;
+          applyCurrentFilter();
+        });
+
+      document
+        .getElementById("adminNextPageBtn")
+        .addEventListener("click", () => {
+          if (adminBatchProcessing) return;
+          adminCurrentPage += 1;
+          applyCurrentFilter();
+        });
 
       // 搜尋功能
       function handleSearch() {
@@ -7224,6 +7238,7 @@ ${adminNote}
             !keyword || searchableText.includes(keyword) ? "true" : "false";
         });
 
+        adminCurrentPage = 1;
         applyCurrentFilter();
       }
 
