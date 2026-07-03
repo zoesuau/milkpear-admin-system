@@ -3457,11 +3457,10 @@
           actualShippingDate === "";
         const shouldShowOrderChangeAlert =
           isPendingNotification || isManualRescheduleDecision;
-        const shouldShowManualRescheduleNoticeButton = false;
+        const shouldShowManualRescheduleNoticeButton =
+          isManualRescheduleDecision && canLineNotify;
         const shouldShowManualRescheduleContactText =
-          isManualRescheduleDecision &&
-          !isPendingNotification &&
-          !canLineNotify;
+          isManualRescheduleDecision && !canLineNotify;
         const cancelNotificationLabel =
           orderStatus === "已取消" &&
           lastNotificationType === "cancellation_notice" &&
