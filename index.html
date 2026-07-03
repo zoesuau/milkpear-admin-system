@@ -10,7 +10,6 @@
 
     <style>
       * {
-
         margin: 0;
         padding: 0;
         box-sizing: border-box;
@@ -2398,6 +2397,53 @@
       let adminCancelOrderSubmitting = false;
       const CURRENT_ADMIN_NAME = "後台管理員";
       let currentFilterStatus = "全部";
+      const OPEN_NOTIFICATION_STATUSES = new Set([
+        "pending_send",
+        "failed",
+        "manual_required",
+        "review_required",
+      ]);
+      const CANONICAL_NOTIFICATION_TYPES = new Set([
+        "order_confirmation",
+        "schedule_notice",
+        "change_notice",
+        "shipment_notice",
+        "cancellation_notice",
+      ]);
+      const NOTIFICATION_STATUS_LABELS = {
+        pending_send: "待發送",
+        failed: "發送失敗／待補發",
+        manual_required: "待人工通知",
+        review_required: "待查核",
+        sent: "已發送",
+        skipped: "已略過",
+        not_required: "無通知任務",
+      };
+      const NOTIFICATION_TYPE_LABELS = {
+        order_confirmation: "下單通知",
+        schedule_notice: "出貨日期通知",
+        change_notice: "資料異動通知",
+        shipment_notice: "寄出通知",
+        cancellation_notice: "取消通知",
+      };
+
+      function getNotificationStatusLabel(status) {
+        const key = String(status || "").trim();
+        return NOTIFICATION_STATUS_LABELS[key] || key || "無";
+      }
+
+      function getNotificationTypeLabel(type) {
+        const key = String(type || "").trim();
+        return NOTIFICATION_TYPE_LABELS[key] || key || "無";
+      }
+
+      function isOpenNotificationStatus(status) {
+        return OPEN_NOTIFICATION_STATUSES.has(String(status || "").trim());
+      }
+
+      function isCanonicalNotificationType(type) {
+        return CANONICAL_NOTIFICATION_TYPES.has(String(type || "").trim());
+      }
 
       function showAdminAuthOverlay(message, showRetry) {
         const overlay = document.getElementById("adminAuthOverlay");
@@ -2893,12 +2939,11 @@
           )
           .join("");
         if (title) {
-          title.innerText = isLineOrder(card)
-            ? "⚠️ 以下資訊已異動"
-            : "⚠️ 訂單資料已異動";
+          title.innerText = "⚠️ 待處理通知事件";
         }
         if (button) {
-          button.innerText = isLineOrder(card) ? "重新發送通知" : "電話已通知";
+          button.hidden = true;
+          button.disabled = true;
         }
         alertBox.style.display = "block";
         updateNotifyButton();
@@ -3373,6 +3418,9 @@
         const notificationStatus = String(
           order?.notificationStatus ?? "",
         ).trim();
+        const lastNotificationType = String(
+          order?.lastNotificationType ?? "",
+        ).trim();
         const notificationFieldLabels = {
           收件人姓名: "收件人",
           收件人: "收件人",
@@ -3391,36 +3439,34 @@
               .filter(Boolean),
           ),
         ];
-        const OPEN_NOTIFICATION_STATUSES = new Set([
-          "pending_send",
-          "failed",
-          "manual_required",
-          "review_required",
-        ]);
+        const pendingNoticeLabels = pendingNoticeFields.length
+          ? pendingNoticeFields
+          : isOpenNotificationStatus(notificationStatus) &&
+              isCanonicalNotificationType(lastNotificationType)
+            ? [getNotificationTypeLabel(lastNotificationType)]
+            : [];
         const isPendingNotification =
-          pendingNoticeFields.length > 0 &&
-          OPEN_NOTIFICATION_STATUSES.has(notificationStatus);
+          isOpenNotificationStatus(notificationStatus) &&
+          isCanonicalNotificationType(lastNotificationType);
         const canLineNotify = order?.canLineNotify === true;
         const isManualRescheduleDecision =
-          pendingNoticeFields.includes("確定出貨日期") &&
+          lastNotificationType === "schedule_notice" &&
           orderStatus === "已安排出貨" &&
           expectedShippingDate !== "" &&
           adminWorkflowIsValidDate(expectedShippingDate) &&
           actualShippingDate === "";
         const shouldShowOrderChangeAlert =
           isPendingNotification || isManualRescheduleDecision;
-        const shouldShowManualRescheduleNoticeButton =
-          isManualRescheduleDecision && !isPendingNotification && canLineNotify;
+        const shouldShowManualRescheduleNoticeButton = false;
         const shouldShowManualRescheduleContactText =
           isManualRescheduleDecision &&
           !isPendingNotification &&
           !canLineNotify;
         const cancelNotificationLabel =
-          orderStatus === "已取消" && notificationStatus === "取消通知待處理"
-            ? "🔔 取消通知待處理"
-            : orderStatus === "已取消" &&
-                notificationStatus === "待人工取消通知"
-              ? "☎ 待人工取消通知"
+          orderStatus === "已取消" &&
+          lastNotificationType === "cancellation_notice" &&
+          isOpenNotificationStatus(notificationStatus)
+            ? `${getNotificationTypeLabel(lastNotificationType)}：${getNotificationStatusLabel(notificationStatus)}`
               : "";
         const adminWorkflowEditable =
           !!orderNo &&
@@ -3656,8 +3702,8 @@
                     : buildReadOnlyExtraRow("管理員備註", "無")
                 }
                 ${buildReadOnlyExtraRow("異動欄位", order?.changedFields)}
-                ${buildReadOnlyExtraRow("通知狀態", order?.notificationStatus)}
-                ${buildReadOnlyExtraRow("最後通知類型", order?.lastNotificationType)}
+                ${buildReadOnlyExtraRow("通知狀態", getNotificationStatusLabel(order?.notificationStatus))}
+                ${buildReadOnlyExtraRow("最後通知類型", getNotificationTypeLabel(order?.lastNotificationType))}
                 ${buildReadOnlyExtraRow("最後通知方式", order?.lastNotificationMethod)}
                 ${buildReadOnlyExtraRow("最後修改人", order?.lastUpdatedBy)}
                 ${buildReadOnlyExtraRow("最後修改時間", order?.lastUpdatedAt)}
@@ -3670,9 +3716,9 @@
               shouldShowOrderChangeAlert
                 ? `
                   <div class="order-change-alert" style="display:block">
-                    <div class="order-change-title">⚠️ 以下資訊已異動</div>
+                    <div class="order-change-title">⚠️ 待處理通知事件</div>
                     <div class="order-change-list">
-                      ${pendingNoticeFields
+                      ${pendingNoticeLabels
                         .map(
                           (field) =>
                             `<span class="order-change-chip">${escapeHtml(field)}</span>`,
@@ -3876,7 +3922,9 @@
             payload.action !== "adminCancelOrder" ||
             payload.orderNo !== orderNo ||
             payload.orderStatus !== "已取消" ||
-            !["取消通知待處理", "待人工取消通知"].includes(notificationStatus)
+            !isOpenNotificationStatus(notificationStatus) ||
+            String(payload?.lastNotificationType || "").trim() !==
+              "cancellation_notice"
           ) {
             const errorCode = String(payload?.errorCode || "");
             if (errorCode === "ADMIN_SESSION_REQUIRED") {
@@ -6779,9 +6827,7 @@ ${adminNote}
           order?.orderStatus === "已安排出貨" &&
           !!String(order?.expectedShippingDate || "").trim() &&
           !String(order?.changedFields || "").trim() &&
-          !["待送出", "待重新通知", "待人工通知"].includes(
-            String(order?.notificationStatus || "").trim(),
-          )
+          !isOpenNotificationStatus(order?.notificationStatus)
         );
       }
 
