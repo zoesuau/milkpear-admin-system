@@ -393,9 +393,15 @@
         font-size: 14px;
         color: #94a3b8;
         font-weight: 700;
-        display: flex;
-        align-items: center;
-        gap: 6px;
+        display: grid;
+        gap: 2px;
+        line-height: 1.2;
+      }
+
+      .order-no-value {
+        font-size: 20px;
+        color: #334155;
+        font-weight: 700;
       }
 
       /* 精緻狀態小標籤 */
@@ -1980,7 +1986,10 @@
         >
           <div class="row-top">
             <div class="order-no-wrapper">
-              <div class="order-no">希望出貨：2026-06-17</div>
+              <div class="order-no">
+                <div>希望出貨</div>
+                <div class="order-no-value">2026-06-17</div>
+              </div>
             </div>
             <div class="card-edit-actions">
               <button
@@ -3715,9 +3724,10 @@
 	                  canSelectOrder
 	                    ? `<input type="checkbox" class="batch-check" data-order-no="${escapeHtml(orderNo)}" data-batch-eligible="${canBatchMarkShipped ? "true" : "false"}"${canBatchMarkShipped ? "" : " disabled"}${canBatchMarkShipped ? "" : ` title="${escapeHtml(canLineNotify ? "此訂單目前不可批量已寄出" : "無 LINE，請人工通知後單筆處理")}"`}${canBatchMarkShipped && selectedOrderNos.has(orderNo) ? " checked" : ""} />`
 	                    : ""
-	                }
+                }
                 <div class="order-no">
-                  ${escapeHtml(shippingDateMeta.label)}：${escapeHtml(shippingDateMeta.value)}
+                  <div>${escapeHtml(shippingDateMeta.label)}</div>
+                  <div class="order-no-value">${escapeHtml(shippingDateMeta.value)}</div>
                 </div>
               </div>
               <div class="card-edit-actions">
