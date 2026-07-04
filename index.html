@@ -1980,7 +1980,7 @@
         >
           <div class="row-top">
             <div class="order-no-wrapper">
-              <div class="order-no">訂單編號</div>
+              <div class="order-no">希望出貨：2026-06-17</div>
             </div>
             <div class="card-edit-actions">
               <button
@@ -3492,6 +3492,35 @@
           : `<option value=""></option>${optionsHtml}`;
       }
 
+      function getAdminCardShippingDateMeta({
+        orderStatus,
+        expectedShippingDate,
+        actualShippingDate,
+        requestedShippingBatchLabel,
+      }) {
+        if (orderStatus === "已寄出") {
+          return {
+            label: "實際寄出",
+            value: actualShippingDate || expectedShippingDate || "未填",
+          };
+        }
+
+        if (orderStatus === "待確認") {
+          return {
+            label: "希望出貨",
+            value:
+              expectedShippingDate ||
+              requestedShippingBatchLabel ||
+              "未指定",
+          };
+        }
+
+        return {
+          label: "預計出貨",
+          value: expectedShippingDate || "未填",
+        };
+      }
+
       function buildAdminOrderCardHtml(order) {
         const statusMeta = getAdminOrderStatusMeta(order?.orderStatus);
         const orderStatus = String(order?.orderStatus ?? "").trim();
@@ -3606,6 +3635,12 @@
           order?.paymentStatus,
         );
         const paymentClass = getPaymentClassFromState(paymentState);
+        const shippingDateMeta = getAdminCardShippingDateMeta({
+          orderStatus,
+          expectedShippingDate,
+          actualShippingDate,
+          requestedShippingBatchLabel,
+        });
         const searchText = [
           order?.orderNo,
           order?.recipientName,
@@ -3682,7 +3717,7 @@
 	                    : ""
 	                }
                 <div class="order-no">
-                  訂單編號：${escapeHtml(orderNo || "未提供")}
+                  ${escapeHtml(shippingDateMeta.label)}：${escapeHtml(shippingDateMeta.value)}
                 </div>
               </div>
               <div class="card-edit-actions">
@@ -3798,6 +3833,7 @@
                 }
               </summary>
               <div class="extra">
+                ${buildReadOnlyExtraRow("訂單編號", orderNo || "未提供")}
                 ${
                   hasAdminNote
                     ? `
