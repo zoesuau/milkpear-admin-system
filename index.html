@@ -3742,9 +3742,14 @@
           isManualRescheduleDecision && canLineNotify;
         const shouldShowManualRescheduleContactText =
           isManualRescheduleDecision && !canLineNotify;
+        const shouldBundleChangeNoticeWithFirstSchedule =
+          orderStatus === "待確認" &&
+          lastNotificationType === "change_notice" &&
+          pendingNoticeLabels.length > 0;
         const shouldShowChangeNoticeActionButton =
           isPendingNotification &&
           lastNotificationType === "change_notice" &&
+          !shouldBundleChangeNoticeWithFirstSchedule &&
           pendingNoticeLabels.length > 0;
         const shouldShowManualScheduleNoticeDoneButton =
           isPendingNotification &&
@@ -4015,7 +4020,7 @@
               shouldShowOrderChangeAlert
                 ? `
                   <div class="order-change-alert" style="display:block">
-                    <div class="order-change-title">⚠️ 待處理通知事件</div>
+                    <div class="order-change-title">${shouldBundleChangeNoticeWithFirstSchedule ? "⚠️ 待一併通知" : "⚠️ 待處理通知事件"}</div>
                     <div class="order-change-list">
                       ${pendingNoticeLabels
                         .map(
@@ -4037,6 +4042,11 @@
                     ${
                       shouldShowManualScheduleNoticeDoneButton
                         ? `<button type="button" class="btn-resend-notice">已電話通知</button>`
+                        : ""
+                    }
+                    ${
+                      shouldBundleChangeNoticeWithFirstSchedule
+                        ? `<div class="admin-reschedule-manual-contact">確認出貨日期後會一併通知客戶。</div>`
                         : ""
                     }
                     ${
