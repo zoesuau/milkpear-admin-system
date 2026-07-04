@@ -442,6 +442,22 @@
         animation: adminCardFocusPulse 1.8s ease-out 1;
       }
 
+      .admin-card-save-toast {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        z-index: 4;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: #dcfce7;
+        border: 1px solid #86efac;
+        color: #166534;
+        font-size: 14px;
+        font-weight: 900;
+        box-shadow: 0 6px 18px rgba(22, 101, 52, 0.18);
+        pointer-events: none;
+      }
+
       @keyframes adminCardFocusPulse {
         0% {
           box-shadow: 0 0 0 0 rgba(79, 127, 99, 0.42);
@@ -4626,6 +4642,15 @@
           window.setTimeout(() => {
             nextCard.classList.remove("admin-card-focus-highlight");
           }, 1900);
+
+          nextCard.querySelector(".admin-card-save-toast")?.remove();
+          const toast = document.createElement("div");
+          toast.className = "admin-card-save-toast";
+          toast.innerText = "已儲存";
+          nextCard.appendChild(toast);
+          window.setTimeout(() => {
+            toast.remove();
+          }, 20000);
         });
       }
 
