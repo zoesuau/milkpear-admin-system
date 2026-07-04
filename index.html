@@ -10,7 +10,6 @@
 
     <style>
       * {
-		  
         margin: 0;
         padding: 0;
         box-sizing: border-box;
@@ -123,12 +122,46 @@
         justify-content: space-between;
         align-items: center;
         margin-bottom: 12px;
+        gap: 10px;
       }
 
       .top-filter-panel h2 {
         font-size: 20px;
         font-weight: 700;
         color: #2c3e50;
+      }
+
+      .admin-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .btn-refresh-orders {
+        height: 34px;
+        padding: 0 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #334155;
+        font-size: 14px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .btn-refresh-orders:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+
+      .admin-refresh-meta {
+        flex-basis: 100%;
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 700;
+        text-align: right;
       }
 
       .scroll-filter-row {
@@ -403,6 +436,24 @@
         font-size: 20px;
         color: #334155;
         font-weight: 700;
+      }
+
+      .admin-card-focus-highlight {
+        animation: adminCardFocusPulse 1.8s ease-out 1;
+      }
+
+      @keyframes adminCardFocusPulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(79, 127, 99, 0.42);
+          transform: translateY(-1px);
+        }
+        45% {
+          box-shadow: 0 0 0 6px rgba(79, 127, 99, 0.18);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(79, 127, 99, 0);
+          transform: translateY(0);
+        }
       }
 
       /* 精緻狀態小標籤 */
@@ -1885,14 +1936,26 @@
       <div class="top-filter-panel">
         <div class="panel-header-row">
           <h2>訂單作業</h2>
-          <button
-            class="btn-add-order-trigger"
-            onclick="openAddOrderModal()"
-            disabled
-            aria-disabled="true"
-          >
-            ➕ 新增訂單
-          </button>
+          <div class="admin-header-actions">
+            <button
+              type="button"
+              class="btn-refresh-orders"
+              id="adminRefreshOrdersBtn"
+            >
+              重新整理
+            </button>
+            <button
+              class="btn-add-order-trigger"
+              onclick="openAddOrderModal()"
+              disabled
+              aria-disabled="true"
+            >
+              ➕ 新增訂單
+            </button>
+            <div class="admin-refresh-meta" id="adminRefreshMeta">
+              尚未更新
+            </div>
+          </div>
         </div>
 
         <div class="scroll-filter-row" id="statusFilterRow">
@@ -2958,6 +3021,35 @@
         return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
       }
 
+      function setAdminRefreshState(isRefreshing, message) {
+        const button = document.getElementById("adminRefreshOrdersBtn");
+        const meta = document.getElementById("adminRefreshMeta");
+        if (button) {
+          button.disabled = !!isRefreshing;
+          button.innerText = isRefreshing ? "整理中..." : "重新整理";
+        }
+        if (meta && message) {
+          meta.innerText = message;
+        }
+      }
+
+      function updateAdminRefreshMeta(date = new Date()) {
+        setAdminRefreshState(false, `最後更新：${formatOperationTime(date)}`);
+      }
+
+      function hasBlockingAdminRefreshWork() {
+        if (adminBatchProcessing || adminCreateOrderSubmitting) return true;
+        return !!document.querySelector(
+          [
+            '.card[data-content-editing="true"]',
+            '.admin-workflow-editor[data-saving="true"]',
+            '.admin-note-editor[data-saving="true"]',
+            '.admin-mark-shipped-panel[data-saving="true"]',
+            '.card[data-notification-saving="true"]',
+          ].join(","),
+        );
+      }
+
       function setOperationText(card, selector, value) {
         const target = card.querySelector(selector);
         if (target) target.innerText = value;
@@ -3298,6 +3390,7 @@
             adminReadStatusEl.innerText = statusLines.join("\n");
           }
 
+          updateAdminRefreshMeta();
           return orders;
         } catch (error) {
           if (String(error && error.message) === "ADMIN_SESSION_REQUIRED") {
@@ -3319,6 +3412,33 @@
 
           return null;
         }
+      }
+
+      async function refreshAdminOrdersManually() {
+        if (hasBlockingAdminRefreshWork()) {
+          alert("目前有訂單正在編輯或處理中，請先儲存或取消後再重新整理。");
+          return;
+        }
+
+        setAdminRefreshState(true, "正在重新整理訂單...");
+        const adminOrders = await fetchAdminOrdersFromGas();
+        if (!Array.isArray(adminOrders)) {
+          setAdminRefreshState(false, "重新整理失敗，請稍後再試。");
+          return;
+        }
+
+        if (!renderAdminOrders(adminOrders)) {
+          setAdminRefreshState(false, "重新整理失敗，請稍後再試。");
+          return;
+        }
+
+        updateStatsCounters();
+        syncAdminSearchMatches();
+        applyCurrentFilter();
+        handleBatchCheckChange();
+        updateNotifyButton();
+        applyReadOnlyModeToRealOrders();
+        updateAdminRefreshMeta();
       }
 
       async function fetchAdminProductCatalogFromGas() {
@@ -3416,6 +3536,7 @@
           }
 
           cardsContainer.innerHTML = renderedHtml;
+          syncAdminSearchMatches();
           applyCurrentFilter();
           return true;
         } catch (error) {
@@ -4447,25 +4568,64 @@
         });
       }
 
-      function restoreAdminOrderCardViewportPosition(orderNo, previousCardTop) {
+      function getAdminOrderCardDetailsKey(details) {
+        return String(details?.querySelector("summary")?.innerText || "")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function captureAdminOrderCardRestoreState(card) {
+        const orderNo = String(card?.dataset.orderNo || "").trim();
+        if (!orderNo) return null;
+
+        return {
+          orderNo,
+          openDetails: [
+            ...card.querySelectorAll(":scope > .admin-content-readonly details"),
+          ]
+            .filter((details) => details.open)
+            .map(getAdminOrderCardDetailsKey)
+            .filter(Boolean),
+        };
+      }
+
+      function isElementMostlyInViewport(element) {
+        const rect = element?.getBoundingClientRect();
+        if (!rect) return false;
+        const viewportHeight =
+          window.innerHeight || document.documentElement.clientHeight || 0;
+        return rect.top >= 0 && rect.top <= viewportHeight * 0.62;
+      }
+
+      function restoreAdminOrderCardAfterRender(restoreState) {
         requestAnimationFrame(() => {
-          const targetOrderNo = String(orderNo || "");
-          if (!targetOrderNo || !Number.isFinite(previousCardTop)) return;
+          const targetOrderNo = String(restoreState?.orderNo || "");
+          if (!targetOrderNo) return;
 
           const nextCard = [
             ...document.querySelectorAll(".card[data-order-no]"),
           ].find((element) => element.dataset.orderNo === targetOrderNo);
-          if (!nextCard) return;
+          if (!nextCard || nextCard.style.display === "none") return;
 
-          const nextCardTop = nextCard.getBoundingClientRect().top;
-          const offset = nextCardTop - previousCardTop;
-          if (Math.abs(offset) > 1) {
-            window.scrollBy({
-              top: offset,
-              left: 0,
-              behavior: "auto",
+          const openDetails = new Set(restoreState.openDetails || []);
+          nextCard
+            .querySelectorAll(":scope > .admin-content-readonly details")
+            .forEach((details) => {
+              if (openDetails.has(getAdminOrderCardDetailsKey(details))) {
+                details.open = true;
+              }
             });
+
+          if (!isElementMostlyInViewport(nextCard)) {
+            nextCard.scrollIntoView({ behavior: "smooth", block: "start" });
           }
+
+          nextCard.classList.remove("admin-card-focus-highlight");
+          void nextCard.offsetWidth;
+          nextCard.classList.add("admin-card-focus-highlight");
+          window.setTimeout(() => {
+            nextCard.classList.remove("admin-card-focus-highlight");
+          }, 1900);
         });
       }
 
@@ -4581,7 +4741,7 @@
         }
 
         const savedOrderNo = order.orderNo;
-        const previousCardTop = card.getBoundingClientRect().top;
+        const restoreState = captureAdminOrderCardRestoreState(card);
 
         saveButton.disabled = true;
         saveButton.innerText = "儲存中…";
@@ -4618,7 +4778,7 @@
           handleBatchCheckChange();
           updateNotifyButton();
           applyReadOnlyModeToRealOrders();
-          restoreAdminOrderCardViewportPosition(savedOrderNo, previousCardTop);
+          restoreAdminOrderCardAfterRender(restoreState || { orderNo: savedOrderNo });
         } catch (error) {
           saveButton.disabled = false;
           saveButton.innerText = "儲存內容";
@@ -4907,6 +5067,7 @@
           return;
         }
 
+        const restoreState = captureAdminOrderCardRestoreState(card);
         adminNoteSetSaving(card, editor, true);
         adminNoteSetFeedback(editor, "儲存中…");
         let actionSucceeded = false;
@@ -4971,6 +5132,7 @@
           handleBatchCheckChange();
           updateNotifyButton();
           applyReadOnlyModeToRealOrders();
+          restoreAdminOrderCardAfterRender(restoreState);
         } catch (error) {
           adminNoteSetSaving(card, editor, false);
           adminNoteSetFeedback(
@@ -5311,6 +5473,7 @@
         );
         if (!confirmed) return;
 
+        const restoreState = captureAdminOrderCardRestoreState(card);
         const adminSessionToken = String(
           sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
         ).trim();
@@ -5383,6 +5546,7 @@
           handleBatchCheckChange();
           updateNotifyButton();
           applyReadOnlyModeToRealOrders();
+          restoreAdminOrderCardAfterRender(restoreState);
         } catch (error) {
           adminMarkOrderShippedSetSaving(card, panel, false);
           adminMarkOrderShippedSetFeedback(
@@ -5439,7 +5603,7 @@
         return messages[errorCode] || "儲存失敗，請重新讀取後再試。";
       }
 
-      async function adminWorkflowRefreshOrdersAfterSave(editor) {
+      async function adminWorkflowRefreshOrdersAfterSave(editor, restoreState) {
         const adminOrders = await fetchAdminOrdersFromGas();
         if (!Array.isArray(adminOrders)) {
           adminWorkflowSetSaving(editor, false);
@@ -5467,6 +5631,7 @@
         handleBatchCheckChange();
         updateNotifyButton();
         applyReadOnlyModeToRealOrders();
+        restoreAdminOrderCardAfterRender(restoreState);
         return true;
       }
 
@@ -5481,6 +5646,7 @@
         }
 
         const orderNo = String(card.getAttribute("data-order-no") || "").trim();
+        const restoreState = captureAdminOrderCardRestoreState(card);
         const values = adminWorkflowGetValues(editor);
         const validationMessage = adminWorkflowValidate(orderNo, values);
 
@@ -5567,7 +5733,7 @@
           }
 
           adminWorkflowSetFeedback(editor, "已儲存，正在重新讀取訂單…");
-          await adminWorkflowRefreshOrdersAfterSave(editor);
+          await adminWorkflowRefreshOrdersAfterSave(editor, restoreState);
         } catch (error) {
           adminWorkflowSetSaving(editor, false);
           adminWorkflowSetFeedback(
@@ -5643,6 +5809,7 @@
         );
         if (!confirmed) return;
 
+        const restoreState = captureAdminOrderCardRestoreState(card);
         adminRescheduleNoticeSetSaving(card, true);
         if (feedback) {
           feedback.classList.remove("is-error");
@@ -5696,6 +5863,7 @@
           handleBatchCheckChange();
           updateNotifyButton();
           applyReadOnlyModeToRealOrders();
+          restoreAdminOrderCardAfterRender(restoreState);
         } catch (error) {
           adminRescheduleNoticeSetSaving(card, false);
           if (feedback) {
@@ -5729,6 +5897,7 @@
           return;
         }
 
+        const restoreState = captureAdminOrderCardRestoreState(card);
         card.dataset.notificationSaving = "true";
         if (button) {
           button.disabled = true;
@@ -5799,6 +5968,7 @@
           handleBatchCheckChange();
           updateNotifyButton();
           applyReadOnlyModeToRealOrders();
+          restoreAdminOrderCardAfterRender(restoreState);
         } catch (error) {
           card.dataset.notificationSaving = "false";
           if (button) {
@@ -6050,6 +6220,9 @@
             startAdminAuth(true);
           });
         }
+        document
+          .getElementById("adminRefreshOrdersBtn")
+          ?.addEventListener("click", refreshAdminOrdersManually);
 
         bindAdminWorkflowEvents();
         calculateCardAmount("orderCard1");
@@ -7512,7 +7685,7 @@ ${adminNote}
         });
 
       // 搜尋功能
-      function handleSearch() {
+      function syncAdminSearchMatches() {
         const keyword = String(
           document.getElementById("searchBar")?.value ?? "",
         )
@@ -7524,7 +7697,10 @@ ${adminNote}
           card.dataset.searchMatch =
             !keyword || searchableText.includes(keyword) ? "true" : "false";
         });
+      }
 
+      function handleSearch() {
+        syncAdminSearchMatches();
         adminCurrentPage = 1;
         applyCurrentFilter();
       }
