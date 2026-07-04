@@ -3641,6 +3641,8 @@
         const customerNote = String(order?.customerNote ?? "").trim();
         const adminNote = String(order?.adminNote ?? "");
         const hasAdminNote = adminNote.trim().length > 0;
+        const createdAt = String(order?.createdAt ?? "").trim();
+        const lastUpdatedAt = String(order?.lastUpdatedAt ?? "").trim();
         const actualShippingDateRow = buildReadOnlyExtraRow(
           "實際寄出日期",
           actualShippingDate,
@@ -3667,6 +3669,8 @@
 	            data-pending-notice-fields="${escapeHtml(pendingNoticeFields.join("|"))}"
 	            data-expected-shipping-date="${escapeHtml(expectedShippingDate)}"
 	            data-actual-shipping-date="${escapeHtml(actualShippingDate)}"
+	            data-created-at="${escapeHtml(createdAt)}"
+	            data-last-updated-at="${escapeHtml(lastUpdatedAt)}"
 	            ${adminWorkflowEditable ? 'data-admin-workflow-editor="true"' : ""}
             data-search-text="${escapeHtml(searchText)}"
           >
@@ -6265,19 +6269,98 @@
 	          ? canLineNotify
 	          : !canLineNotify;
 	      }
+
+	      function parseAdminSortTime(value) {
+	        const raw = String(value || "").trim();
+	        if (!raw) return 0;
+	        const normalized = raw
+	          .replace(/\//g, "-")
+	          .replace("上午", "AM")
+	          .replace("下午", "PM");
+	        const time = Date.parse(normalized);
+	        return Number.isFinite(time) ? time : 0;
+	      }
+
+	      function compareText(a, b) {
+	        return String(a || "").localeCompare(String(b || ""), "zh-Hant");
+	      }
+
+	      function compareByDateAsc(a, b, getter) {
+	        const aDate = getter(a);
+	        const bDate = getter(b);
+	        if (aDate && bDate && aDate !== bDate) return aDate < bDate ? -1 : 1;
+	        if (aDate && !bDate) return -1;
+	        if (!aDate && bDate) return 1;
+	        return compareText(a.dataset.orderNo, b.dataset.orderNo);
+	      }
+
+	      function compareByDateDesc(a, b, getter) {
+	        return compareByDateAsc(b, a, getter);
+	      }
+
+	      function getNoticeSortPriority(card) {
+	        const notificationStatus = String(
+	          card.dataset.notificationStatus || "",
+	        ).trim();
+	        const canLineNotify = card.dataset.canLineNotify === "true";
+	        if (!canLineNotify) return 0;
+	        if (notificationStatus === "review_required") return 1;
+	        if (notificationStatus === "failed") return 2;
+	        return 3;
+	      }
+
+	      function sortAdminCardsForCurrentStatus(cards) {
+	        return cards.slice().sort((a, b) => {
+	          if (currentFilterStatus === "已安排出貨") {
+	            return compareByDateAsc(
+	              a,
+	              b,
+	              (card) => card.dataset.expectedShippingDate || "",
+	            );
+	          }
+	          if (currentFilterStatus === "待確認") {
+	            const aTime = parseAdminSortTime(a.dataset.createdAt);
+	            const bTime = parseAdminSortTime(b.dataset.createdAt);
+	            if (aTime !== bTime) return bTime - aTime;
+	            return compareText(a.dataset.orderNo, b.dataset.orderNo);
+	          }
+	          if (currentFilterStatus === "待通知") {
+	            const aPriority = getNoticeSortPriority(a);
+	            const bPriority = getNoticeSortPriority(b);
+	            if (aPriority !== bPriority) return aPriority - bPriority;
+	            const aTime = parseAdminSortTime(
+	              a.dataset.lastUpdatedAt || a.dataset.createdAt,
+	            );
+	            const bTime = parseAdminSortTime(
+	              b.dataset.lastUpdatedAt || b.dataset.createdAt,
+	            );
+	            if (aTime !== bTime) return bTime - aTime;
+	            return compareText(a.dataset.orderNo, b.dataset.orderNo);
+	          }
+	          if (currentFilterStatus === "已寄出") {
+	            return compareByDateDesc(
+	              a,
+	              b,
+	              (card) => card.dataset.actualShippingDate || "",
+	            );
+	          }
+	          return 0;
+	        });
+	      }
 	
 	      function getFilteredAdminCards() {
-	        return [...document.querySelectorAll(".cards-container .card")].filter(
-	          (card) => {
-	            const searchMatch = card.dataset.searchMatch !== "false";
-	            return (
-	              isCardStatusMatched(card) &&
-	              isCardDateMatched(card) &&
-	              isNotificationModeMatched(card) &&
-	              searchMatch
-	            );
-	          },
-	        );
+	        const filteredCards = [
+	          ...document.querySelectorAll(".cards-container .card"),
+	        ].filter((card) => {
+	          const searchMatch = card.dataset.searchMatch !== "false";
+	          return (
+	            isCardStatusMatched(card) &&
+	            isCardDateMatched(card) &&
+	            isNotificationModeMatched(card) &&
+	            searchMatch
+	          );
+	        });
+	        return sortAdminCardsForCurrentStatus(filteredCards);
 	      }
 
       function updateAdminPagination(totalCount) {
