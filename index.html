@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta
-      name="viewport" 
+      name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <title>出貨工作卡 v3 - 全自動化連動版</title>
 
-    <style>   
+    <style>
       * {
         margin: 0;
         padding: 0;
@@ -443,19 +443,15 @@
       }
 
       .admin-card-save-toast {
-        position: absolute;
-        top: 10px;
-        right: 12px;
-        z-index: 4;
-        padding: 6px 12px;
-        border-radius: 999px;
-        background: #dcfce7;
-        border: 1px solid #86efac;
-        color: #166534;
-        font-size: 14px;
-        font-weight: 900;
-        box-shadow: 0 6px 18px rgba(22, 101, 52, 0.18);
-        pointer-events: none;
+        display: inline-block;
+        max-width: 100%;
+        white-space: nowrap;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: #f1f5f9;
+        color: #334155;
+        font-size: 11px;
+        font-weight: 800;
       }
 
       @keyframes adminCardFocusPulse {
@@ -1032,6 +1028,10 @@
       }
 
       .customer-status-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
         margin-bottom: 8px;
       }
 
@@ -4647,7 +4647,12 @@
           const toast = document.createElement("div");
           toast.className = "admin-card-save-toast";
           toast.innerText = "已儲存";
-          nextCard.appendChild(toast);
+          const statusRow = nextCard.querySelector(".customer-status-row");
+          if (statusRow) {
+            statusRow.appendChild(toast);
+          } else {
+            nextCard.appendChild(toast);
+          }
           window.setTimeout(() => {
             toast.remove();
           }, 20000);
