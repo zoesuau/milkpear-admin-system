@@ -2043,7 +2043,44 @@
             全部
           </button>
           <button onclick="filterByDateRange('今日', this)">今日</button>
-          <button onclick="filterByDateRange('本週', this)">本週</button>
+          <button
+            id="currentWeekFilterButton"
+            onclick="filterByDateRange('本週', this)"
+          >本週</button>
+          <script>
+            (() => {
+              const button = document.getElementById("currentWeekFilterButton");
+              if (!button) return;
+
+              const parts = new Intl.DateTimeFormat("en-US", {
+                timeZone: "Asia/Taipei",
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+              }).formatToParts(new Date());
+
+              const getPart = (type) =>
+                parts.find((part) => part.type === type)?.value;
+
+              const year = Number(getPart("year"));
+              const month = Number(getPart("month"));
+              const day = Number(getPart("day"));
+              if (!year || !month || !day) return;
+
+              const monday = new Date(Date.UTC(year, month - 1, day));
+              const weekday = monday.getUTCDay() || 7;
+              monday.setUTCDate(monday.getUTCDate() - weekday + 1);
+
+              const sunday = new Date(monday);
+              sunday.setUTCDate(sunday.getUTCDate() + 6);
+
+              const formatMonthDay = (date) =>
+                `${date.getUTCMonth() + 1}/${date.getUTCDate()}`;
+
+              button.textContent =
+                `本週（${formatMonthDay(monday)}～${formatMonthDay(sunday)}）`;
+            })();
+          </script>
           <button onclick="filterByDateRange('本月', this)">本月</button>
           <button onclick="filterByDateRange('自訂', this)">自訂</button>
         </div>
