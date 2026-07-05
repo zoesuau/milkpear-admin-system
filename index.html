@@ -3811,6 +3811,7 @@
               .filter(Boolean),
           ),
         ];
+        const hasPendingChangedFields = pendingNoticeFields.length > 0;
         const pendingNoticeLabels = pendingNoticeFields.length
           ? pendingNoticeFields
           : isOpenNotificationStatus(notificationStatus) &&
@@ -3860,7 +3861,9 @@
         const shouldShowOrderChangeAlert =
           !shouldHideManualOrderConfirmationNotice &&
           !shouldHideCancellationNotice &&
-          (isPendingNotification || isManualRescheduleDecision);
+          (hasPendingChangedFields ||
+            isPendingNotification ||
+            isManualRescheduleDecision);
         const shouldShowManualRescheduleContactText =
           isManualRescheduleDecision && !canLineNotify;
         const shouldBundleChangeNoticeWithFirstSchedule =
@@ -3871,12 +3874,8 @@
           orderStatus === "已寄出" &&
           isPendingNotification &&
           lastNotificationType === "shipment_notice";
-        const shouldShowChangeNoticeActionButton =
-          isPendingNotification &&
-          lastNotificationType === "change_notice" &&
-          !shouldBundleChangeNoticeWithFirstSchedule &&
-          pendingNoticeLabels.length > 0 &&
-          !(hasExpectedShippingDateChange && shippingDateNoticeMode === "reschedule");
+        // 一般資料異動僅保留橘色內部提醒；日期異動改由單一出貨日期通知入口處理。
+        const shouldShowChangeNoticeActionButton = false;
         const shouldShowManualScheduleNoticeDoneButton =
           isPendingNotification &&
           lastNotificationType === "schedule_notice" &&
@@ -3900,8 +3899,21 @@
           expectedShippingDate === "";
         const canMarkOrderShipped =
           canScheduledMarkOrderShipped || canDirectMarkOrderShipped;
-        const canBatchMarkShipped =
-          canScheduledMarkOrderShipped && canLineNotify;
+        const hasAnyChangedFields =
+          String(order?.changedFields ?? "").trim() !== "";
+        const hasBatchBlockingNotificationStatus = [
+          "pending_send",
+          "failed",
+          "manual_required",
+        ].includes(notificationStatus);
+        const canBatchMarkShipped = isBatchShippableOrder(order);
+        const batchIneligibleReason = !canLineNotify
+          ? "無 LINE，請人工通知後單筆處理"
+          : hasAnyChangedFields
+            ? "有資料異動，請單筆確認已寄出並決定是否合併通知"
+            : hasBatchBlockingNotificationStatus
+              ? "此訂單仍有未完成通知，請先完成通知後再批次處理"
+              : "此訂單目前不可批量已寄出";
         const recipientName = String(order?.recipientName ?? "").trim();
         const recipientPhone = String(order?.recipientPhone ?? "").trim();
         const recipientAddress = String(order?.recipientAddress ?? "").trim();
@@ -4009,7 +4021,7 @@
               <div class="order-no-wrapper">
                 ${
                   canSelectOrder
-                    ? `<input type="checkbox" class="batch-check" data-order-no="${escapeHtml(orderNo)}" data-batch-eligible="${canBatchMarkShipped ? "true" : "false"}"${canBatchMarkShipped ? "" : " disabled"}${canBatchMarkShipped ? "" : ` title="${escapeHtml(canLineNotify ? "此訂單目前不可批量已寄出" : "無 LINE，請人工通知後單筆處理")}"`}${canBatchMarkShipped && selectedOrderNos.has(orderNo) ? " checked" : ""} />`
+                    ? `<input type="checkbox" class="batch-check" data-order-no="${escapeHtml(orderNo)}" data-batch-eligible="${canBatchMarkShipped ? "true" : "false"}"${canBatchMarkShipped ? "" : " disabled"}${canBatchMarkShipped ? "" : ` title="${escapeHtml(batchIneligibleReason)}"`}${canBatchMarkShipped && selectedOrderNos.has(orderNo) ? " checked" : ""} />`
                     : ""
                 }
                 <div class="order-no">
@@ -4176,9 +4188,11 @@
                           : shouldShowShippingDateNoticeActionButton &&
                               shippingDateNoticeMode === "reschedule"
                             ? "⚠️ 以下資訊已異動"
-                            : shouldBundleChangeNoticeWithFirstSchedule
-                              ? "⚠️ 待一併通知"
-                              : "⚠️ 待處理通知事件"
+                            : hasPendingChangedFields
+                              ? "⚠️ 以下資訊已異動"
+                              : shouldBundleChangeNoticeWithFirstSchedule
+                                ? "⚠️ 待一併通知"
+                                : "⚠️ 待處理通知事件"
                     }</div>
                     <div class="order-change-list">
                       ${pendingNoticeLabels
@@ -7767,15 +7781,32 @@ ${adminNote}
       }
 
       function isBatchShippableOrder(order) {
+        const orderNo = String(order?.orderNo || "").trim();
         const expectedShippingDate = String(
           order?.expectedShippingDate || "",
         ).trim();
+        const actualShippingDate = String(
+          order?.actualShippingDate || "",
+        ).trim();
+        const changedFields = String(order?.changedFields || "").trim();
+        const notificationStatus = String(
+          order?.notificationStatus || "",
+        ).trim();
+        const hasBatchBlockingNotificationStatus = [
+          "pending_send",
+          "failed",
+          "manual_required",
+        ].includes(notificationStatus);
+
         return (
+          !!orderNo &&
           order?.orderStatus === "已安排出貨" &&
           order?.canLineNotify === true &&
           expectedShippingDate !== "" &&
           adminWorkflowIsValidDate(expectedShippingDate) &&
-          !String(order?.actualShippingDate || "").trim()
+          actualShippingDate === "" &&
+          changedFields === "" &&
+          !hasBatchBlockingNotificationStatus
         );
       }
 
@@ -7850,7 +7881,7 @@ ${adminNote}
             const reasons = [];
             if (!shippedEligible) {
               reasons.push(
-                "已選訂單中包含無 LINE、尚未安排完成或已寄出的訂單，無法批量已寄出並通知。",
+                "已選訂單中包含無 LINE、資料異動、未完成通知、尚未安排完成或已寄出的訂單，無法批量已寄出並通知。",
               );
             }
             setBatchFeedback(reasons.join("\n"), reasons.length > 0);
