@@ -1,4 +1,4 @@
-<!doctype html>
+ <!doctype html>
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
@@ -4052,6 +4052,7 @@
                       paymentMethod: order?.paymentMethod,
                       paymentStatus,
                       orderStatus,
+                      canLineNotify,
                     })
                   : `
                     <div class="quick-operation-panel">
@@ -5330,11 +5331,17 @@
         paymentMethod,
         paymentStatus,
         orderStatus,
+        canLineNotify,
       }) {
         const paymentState = resolvePaymentStateFromStoredPair(
           paymentMethod,
           paymentStatus,
         );
+        const saveButtonLabel =
+          String(expectedShippingDate || "").trim() === "" &&
+          canLineNotify === true
+            ? "儲存並寄送 LINE 通知"
+            : "儲存此筆修改";
         const paymentWarning = paymentState
           ? ""
           : `<div class="admin-workflow-feedback is-error">付款資料待確認</div>`;
@@ -5372,7 +5379,7 @@
             <div class="admin-workflow-actions">
               <div class="admin-workflow-feedback" aria-live="polite"></div>
               <button type="button" class="admin-workflow-save" disabled>
-                儲存此筆修改
+                ${saveButtonLabel}
               </button>
             </div>
           </div>
