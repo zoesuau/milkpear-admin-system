@@ -8,7 +8,6 @@
     />
     <title>出貨工作卡 v3 - 全自動化連動版</title>
 
-	  
     <style>
       * {
         margin: 0;
@@ -2020,9 +2019,7 @@
             >
               ➕ 新增訂單
             </button>
-            <div class="admin-refresh-meta" id="adminRefreshMeta">
-              尚未更新
-            </div>
+            <div class="admin-refresh-meta" id="adminRefreshMeta">尚未更新</div>
           </div>
         </div>
 
@@ -2047,7 +2044,9 @@
           <button
             id="currentWeekFilterButton"
             onclick="filterByDateRange('本週', this)"
-          >本週</button>
+          >
+            本週
+          </button>
           <script>
             (() => {
               const button = document.getElementById("currentWeekFilterButton");
@@ -2078,8 +2077,7 @@
               const formatMonthDay = (date) =>
                 `${date.getUTCMonth() + 1}/${date.getUTCDate()}`;
 
-              button.textContent =
-                `本週（${formatMonthDay(monday)}～${formatMonthDay(sunday)}）`;
+              button.textContent = `本週（${formatMonthDay(monday)}～${formatMonthDay(sunday)}）`;
             })();
           </script>
           <button onclick="filterByDateRange('本月', this)">本月</button>
@@ -3751,9 +3749,7 @@
           return {
             label: "希望出貨",
             value:
-              expectedShippingDate ||
-              requestedShippingBatchLabel ||
-              "未指定",
+              expectedShippingDate || requestedShippingBatchLabel || "未指定",
           };
         }
 
@@ -3823,8 +3819,10 @@
           lastNotificationType === "order_confirmation" && !canLineNotify;
         const shouldHideCancellationNotice =
           lastNotificationType === "cancellation_notice";
+        const hasExpectedShippingDateChange =
+          pendingNoticeFields.includes("確定出貨日期");
         const isManualRescheduleDecision =
-          lastNotificationType === "schedule_notice" &&
+          hasExpectedShippingDateChange &&
           orderStatus === "已安排出貨" &&
           expectedShippingDate !== "" &&
           adminWorkflowIsValidDate(expectedShippingDate) &&
@@ -3873,7 +3871,8 @@
           expectedShippingDate === "";
         const canMarkOrderShipped =
           canScheduledMarkOrderShipped || canDirectMarkOrderShipped;
-        const canBatchMarkShipped = canScheduledMarkOrderShipped && canLineNotify;
+        const canBatchMarkShipped =
+          canScheduledMarkOrderShipped && canLineNotify;
         const recipientName = String(order?.recipientName ?? "").trim();
         const recipientPhone = String(order?.recipientPhone ?? "").trim();
         const recipientAddress = String(order?.recipientAddress ?? "").trim();
@@ -3979,9 +3978,9 @@
             <div class="row-top">
               <div class="order-no-wrapper">
                 ${
-	                  canSelectOrder
-	                    ? `<input type="checkbox" class="batch-check" data-order-no="${escapeHtml(orderNo)}" data-batch-eligible="${canBatchMarkShipped ? "true" : "false"}"${canBatchMarkShipped ? "" : " disabled"}${canBatchMarkShipped ? "" : ` title="${escapeHtml(canLineNotify ? "此訂單目前不可批量已寄出" : "無 LINE，請人工通知後單筆處理")}"`}${canBatchMarkShipped && selectedOrderNos.has(orderNo) ? " checked" : ""} />`
-	                    : ""
+                  canSelectOrder
+                    ? `<input type="checkbox" class="batch-check" data-order-no="${escapeHtml(orderNo)}" data-batch-eligible="${canBatchMarkShipped ? "true" : "false"}"${canBatchMarkShipped ? "" : " disabled"}${canBatchMarkShipped ? "" : ` title="${escapeHtml(canLineNotify ? "此訂單目前不可批量已寄出" : "無 LINE，請人工通知後單筆處理")}"`}${canBatchMarkShipped && selectedOrderNos.has(orderNo) ? " checked" : ""} />`
+                    : ""
                 }
                 <div class="order-no">
                   <div>${escapeHtml(shippingDateMeta.label)}</div>
@@ -4743,7 +4742,9 @@
         return {
           orderNo,
           openDetails: [
-            ...card.querySelectorAll(":scope > .admin-content-readonly details"),
+            ...card.querySelectorAll(
+              ":scope > .admin-content-readonly details",
+            ),
           ]
             .filter((details) => details.open)
             .map(getAdminOrderCardDetailsKey)
@@ -4954,7 +4955,9 @@
           handleBatchCheckChange();
           updateNotifyButton();
           applyReadOnlyModeToRealOrders();
-          restoreAdminOrderCardAfterRender(restoreState || { orderNo: savedOrderNo });
+          restoreAdminOrderCardAfterRender(
+            restoreState || { orderNo: savedOrderNo },
+          );
         } catch (error) {
           saveButton.disabled = false;
           saveButton.innerText = "儲存內容";
@@ -5478,8 +5481,7 @@
       function buildAdminMarkOrderShippedHtml(options = {}) {
         const taipeiToday = getTaipeiToday();
         const canBundleChangeNotice = options.canBundleChangeNotice === true;
-        const isDirectPendingShipment =
-          options.directPendingShipment === true;
+        const isDirectPendingShipment = options.directPendingShipment === true;
         const isBankUnpaid = options.paymentState === "bank_unpaid";
         const pendingNoticeLabels = Array.isArray(options.pendingNoticeLabels)
           ? options.pendingNoticeLabels.filter(Boolean)
@@ -5702,8 +5704,7 @@
           return;
         }
 
-        const isDirectPendingShipment =
-          panel.dataset.directShipment === "true";
+        const isDirectPendingShipment = panel.dataset.directShipment === "true";
         const isBankUnpaid =
           String(card.dataset.paymentState || "").trim() === "bank_unpaid";
         const directShipmentMessage = isDirectPendingShipment
@@ -6304,9 +6305,7 @@
             return;
           }
 
-          const changeNoticeButton = event.target.closest(
-            ".btn-resend-notice",
-          );
+          const changeNoticeButton = event.target.closest(".btn-resend-notice");
           if (
             changeNoticeButton &&
             cardsContainer.contains(changeNoticeButton)
@@ -6608,11 +6607,11 @@
         updateOperationMeta(cardId);
       }
 
-	      function updateStatsCounters() {
-	        const cards = document.querySelectorAll(".cards-container .card");
-	        let pending = 0,
-	          confirmed = 0,
-	          shipped = 0,
+      function updateStatsCounters() {
+        const cards = document.querySelectorAll(".cards-container .card");
+        let pending = 0,
+          confirmed = 0,
+          shipped = 0,
           cancelled = 0;
 
         cards.forEach((card) => {
@@ -6623,239 +6622,238 @@
           else if (status === "已取消") cancelled++;
         });
 
-	        const pendingEl = document.getElementById("stat-pending");
-	        const confirmedEl = document.getElementById("stat-confirmed");
-	        const shippedEl = document.getElementById("stat-shipped");
-	        const cancelledEl = document.getElementById("stat-cancelled");
-	        if (pendingEl) pendingEl.innerText = pending;
-	        if (confirmedEl) confirmedEl.innerText = confirmed;
-	        if (shippedEl) shippedEl.innerText = shipped;
-	        if (cancelledEl) cancelledEl.innerText = cancelled;
-	      }
-	
-	      function setActiveFilterButton(rowId, activeButton) {
-	        const row = document.getElementById(rowId);
-	        if (!row) return;
-	        row
-	          .querySelectorAll("button")
-	          .forEach((button) => button.classList.remove("active"));
-	        if (activeButton) activeButton.classList.add("active");
-	      }
+        const pendingEl = document.getElementById("stat-pending");
+        const confirmedEl = document.getElementById("stat-confirmed");
+        const shippedEl = document.getElementById("stat-shipped");
+        const cancelledEl = document.getElementById("stat-cancelled");
+        if (pendingEl) pendingEl.innerText = pending;
+        if (confirmedEl) confirmedEl.innerText = confirmed;
+        if (shippedEl) shippedEl.innerText = shipped;
+        if (cancelledEl) cancelledEl.innerText = cancelled;
+      }
 
-	      function filterByStatus(status, btnElement) {
-	        currentFilterStatus = status;
-	        adminCurrentPage = 1;
-	        setActiveFilterButton("statusFilterRow", btnElement);
-	        applyCurrentFilter();
-	      }
+      function setActiveFilterButton(rowId, activeButton) {
+        const row = document.getElementById(rowId);
+        if (!row) return;
+        row
+          .querySelectorAll("button")
+          .forEach((button) => button.classList.remove("active"));
+        if (activeButton) activeButton.classList.add("active");
+      }
 
-	      function filterByDateRange(range, btnElement) {
-	        currentDateFilter = range;
-	        adminCurrentPage = 1;
-	        setActiveFilterButton("dateFilterRow", btnElement);
-	        document
-	          .getElementById("customDateRange")
-	          ?.classList.toggle("active", range === "自訂");
-	        applyCurrentFilter();
-	      }
+      function filterByStatus(status, btnElement) {
+        currentFilterStatus = status;
+        adminCurrentPage = 1;
+        setActiveFilterButton("statusFilterRow", btnElement);
+        applyCurrentFilter();
+      }
 
-	      function handleCustomDateRangeChange() {
-	        currentDateFilter = "自訂";
-	        adminCurrentPage = 1;
-	        document.getElementById("customDateRange")?.classList.add("active");
-	        applyCurrentFilter();
-	      }
+      function filterByDateRange(range, btnElement) {
+        currentDateFilter = range;
+        adminCurrentPage = 1;
+        setActiveFilterButton("dateFilterRow", btnElement);
+        document
+          .getElementById("customDateRange")
+          ?.classList.toggle("active", range === "自訂");
+        applyCurrentFilter();
+      }
 
-	      function filterByNotificationMode(mode, btnElement) {
-	        currentNotificationFilter = mode;
-	        adminCurrentPage = 1;
-	        setActiveFilterButton("notificationFilterRow", btnElement);
-	        applyCurrentFilter();
-	      }
+      function handleCustomDateRangeChange() {
+        currentDateFilter = "自訂";
+        adminCurrentPage = 1;
+        document.getElementById("customDateRange")?.classList.add("active");
+        applyCurrentFilter();
+      }
 
-	      function getAdminFilterCardDate(card) {
-	        const status = card.getAttribute("data-status") || "";
-	        const actualShippingDate = String(
-	          card.dataset.actualShippingDate || "",
-	        ).trim();
-	        const expectedShippingDate = String(
-	          card.dataset.expectedShippingDate || "",
-	        ).trim();
-	        return status === "已寄出" && actualShippingDate
-	          ? actualShippingDate
-	          : expectedShippingDate;
-	      }
+      function filterByNotificationMode(mode, btnElement) {
+        currentNotificationFilter = mode;
+        adminCurrentPage = 1;
+        setActiveFilterButton("notificationFilterRow", btnElement);
+        applyCurrentFilter();
+      }
 
-	      function addDaysToDateString(dateString, days) {
-	        const date = new Date(`${dateString}T00:00:00+08:00`);
-	        date.setDate(date.getDate() + days);
-	        return date.toISOString().slice(0, 10);
-	      }
+      function getAdminFilterCardDate(card) {
+        const status = card.getAttribute("data-status") || "";
+        const actualShippingDate = String(
+          card.dataset.actualShippingDate || "",
+        ).trim();
+        const expectedShippingDate = String(
+          card.dataset.expectedShippingDate || "",
+        ).trim();
+        return status === "已寄出" && actualShippingDate
+          ? actualShippingDate
+          : expectedShippingDate;
+      }
 
-	      function getCurrentMonthRange() {
-	        const today = getTaipeiToday();
-	        return {
-	          start: `${today.slice(0, 7)}-01`,
-	          end: `${today.slice(0, 7)}-31`,
-	        };
-	      }
+      function addDaysToDateString(dateString, days) {
+        const date = new Date(`${dateString}T00:00:00+08:00`);
+        date.setDate(date.getDate() + days);
+        return date.toISOString().slice(0, 10);
+      }
 
-	      function getCurrentWeekRange() {
-	        const today = getTaipeiToday();
-	        const date = new Date(`${today}T00:00:00+08:00`);
-	        const day = date.getDay() || 7;
-	        return {
-	          start: addDaysToDateString(today, 1 - day),
-	          end: addDaysToDateString(today, 7 - day),
-	        };
-	      }
+      function getCurrentMonthRange() {
+        const today = getTaipeiToday();
+        return {
+          start: `${today.slice(0, 7)}-01`,
+          end: `${today.slice(0, 7)}-31`,
+        };
+      }
 
-	      function isCardDateMatched(card) {
-	        if (currentDateFilter === "全部") return true;
-	        const cardDate = getAdminFilterCardDate(card);
-	        if (!adminWorkflowIsValidDate(cardDate)) return false;
-	        if (currentDateFilter === "今日") {
-	          return cardDate === getTaipeiToday();
-	        }
-	        if (currentDateFilter === "本週") {
-	          const range = getCurrentWeekRange();
-	          return cardDate >= range.start && cardDate <= range.end;
-	        }
-	        if (currentDateFilter === "本月") {
-	          const range = getCurrentMonthRange();
-	          return cardDate >= range.start && cardDate <= range.end;
-	        }
-	        if (currentDateFilter === "自訂") {
-	          const start = document.getElementById("customDateStart")?.value || "";
-	          const end = document.getElementById("customDateEnd")?.value || "";
-	          if (start && cardDate < start) return false;
-	          if (end && cardDate > end) return false;
-	          return !!(start || end);
-	        }
-	        return true;
-	      }
+      function getCurrentWeekRange() {
+        const today = getTaipeiToday();
+        const date = new Date(`${today}T00:00:00+08:00`);
+        const day = date.getDay() || 7;
+        return {
+          start: addDaysToDateString(today, 1 - day),
+          end: addDaysToDateString(today, 7 - day),
+        };
+      }
 
-	      function isNoticeWorkCard(card) {
-	        const notificationStatus = String(
-	          card.dataset.notificationStatus || "",
-	        ).trim();
-	        const pendingFields = String(
-	          card.dataset.pendingNoticeFields || "",
-	        ).trim();
-	        return (
-	          isOpenNotificationStatus(notificationStatus) ||
-	          pendingFields !== ""
-	        );
-	      }
+      function isCardDateMatched(card) {
+        if (currentDateFilter === "全部") return true;
+        const cardDate = getAdminFilterCardDate(card);
+        if (!adminWorkflowIsValidDate(cardDate)) return false;
+        if (currentDateFilter === "今日") {
+          return cardDate === getTaipeiToday();
+        }
+        if (currentDateFilter === "本週") {
+          const range = getCurrentWeekRange();
+          return cardDate >= range.start && cardDate <= range.end;
+        }
+        if (currentDateFilter === "本月") {
+          const range = getCurrentMonthRange();
+          return cardDate >= range.start && cardDate <= range.end;
+        }
+        if (currentDateFilter === "自訂") {
+          const start = document.getElementById("customDateStart")?.value || "";
+          const end = document.getElementById("customDateEnd")?.value || "";
+          if (start && cardDate < start) return false;
+          if (end && cardDate > end) return false;
+          return !!(start || end);
+        }
+        return true;
+      }
 
-	      function isCardStatusMatched(card) {
-	        if (currentFilterStatus === "全部") return true;
-	        if (currentFilterStatus === "待通知") return isNoticeWorkCard(card);
-	        return (
-	          (card.getAttribute("data-status") || "待確認") === currentFilterStatus
-	        );
-	      }
+      function isNoticeWorkCard(card) {
+        const notificationStatus = String(
+          card.dataset.notificationStatus || "",
+        ).trim();
+        const pendingFields = String(
+          card.dataset.pendingNoticeFields || "",
+        ).trim();
+        return (
+          isOpenNotificationStatus(notificationStatus) || pendingFields !== ""
+        );
+      }
 
-	      function isNotificationModeMatched(card) {
-	        if (currentNotificationFilter === "全部") return true;
-	        const canLineNotify = card.dataset.canLineNotify === "true";
-	        return currentNotificationFilter === "line"
-	          ? canLineNotify
-	          : !canLineNotify;
-	      }
+      function isCardStatusMatched(card) {
+        if (currentFilterStatus === "全部") return true;
+        if (currentFilterStatus === "待通知") return isNoticeWorkCard(card);
+        return (
+          (card.getAttribute("data-status") || "待確認") === currentFilterStatus
+        );
+      }
 
-	      function parseAdminSortTime(value) {
-	        const raw = String(value || "").trim();
-	        if (!raw) return 0;
-	        const normalized = raw
-	          .replace(/\//g, "-")
-	          .replace("上午", "AM")
-	          .replace("下午", "PM");
-	        const time = Date.parse(normalized);
-	        return Number.isFinite(time) ? time : 0;
-	      }
+      function isNotificationModeMatched(card) {
+        if (currentNotificationFilter === "全部") return true;
+        const canLineNotify = card.dataset.canLineNotify === "true";
+        return currentNotificationFilter === "line"
+          ? canLineNotify
+          : !canLineNotify;
+      }
 
-	      function compareText(a, b) {
-	        return String(a || "").localeCompare(String(b || ""), "zh-Hant");
-	      }
+      function parseAdminSortTime(value) {
+        const raw = String(value || "").trim();
+        if (!raw) return 0;
+        const normalized = raw
+          .replace(/\//g, "-")
+          .replace("上午", "AM")
+          .replace("下午", "PM");
+        const time = Date.parse(normalized);
+        return Number.isFinite(time) ? time : 0;
+      }
 
-	      function compareByDateAsc(a, b, getter) {
-	        const aDate = getter(a);
-	        const bDate = getter(b);
-	        if (aDate && bDate && aDate !== bDate) return aDate < bDate ? -1 : 1;
-	        if (aDate && !bDate) return -1;
-	        if (!aDate && bDate) return 1;
-	        return compareText(a.dataset.orderNo, b.dataset.orderNo);
-	      }
+      function compareText(a, b) {
+        return String(a || "").localeCompare(String(b || ""), "zh-Hant");
+      }
 
-	      function compareByDateDesc(a, b, getter) {
-	        return compareByDateAsc(b, a, getter);
-	      }
+      function compareByDateAsc(a, b, getter) {
+        const aDate = getter(a);
+        const bDate = getter(b);
+        if (aDate && bDate && aDate !== bDate) return aDate < bDate ? -1 : 1;
+        if (aDate && !bDate) return -1;
+        if (!aDate && bDate) return 1;
+        return compareText(a.dataset.orderNo, b.dataset.orderNo);
+      }
 
-	      function getNoticeSortPriority(card) {
-	        const notificationStatus = String(
-	          card.dataset.notificationStatus || "",
-	        ).trim();
-	        const canLineNotify = card.dataset.canLineNotify === "true";
-	        if (!canLineNotify) return 0;
-	        if (notificationStatus === "review_required") return 1;
-	        if (notificationStatus === "failed") return 2;
-	        return 3;
-	      }
+      function compareByDateDesc(a, b, getter) {
+        return compareByDateAsc(b, a, getter);
+      }
 
-	      function sortAdminCardsForCurrentStatus(cards) {
-	        return cards.slice().sort((a, b) => {
-	          if (currentFilterStatus === "已安排出貨") {
-	            return compareByDateAsc(
-	              a,
-	              b,
-	              (card) => card.dataset.expectedShippingDate || "",
-	            );
-	          }
-	          if (currentFilterStatus === "待確認") {
-	            const aTime = parseAdminSortTime(a.dataset.createdAt);
-	            const bTime = parseAdminSortTime(b.dataset.createdAt);
-	            if (aTime !== bTime) return bTime - aTime;
-	            return compareText(a.dataset.orderNo, b.dataset.orderNo);
-	          }
-	          if (currentFilterStatus === "待通知") {
-	            const aPriority = getNoticeSortPriority(a);
-	            const bPriority = getNoticeSortPriority(b);
-	            if (aPriority !== bPriority) return aPriority - bPriority;
-	            const aTime = parseAdminSortTime(
-	              a.dataset.lastUpdatedAt || a.dataset.createdAt,
-	            );
-	            const bTime = parseAdminSortTime(
-	              b.dataset.lastUpdatedAt || b.dataset.createdAt,
-	            );
-	            if (aTime !== bTime) return bTime - aTime;
-	            return compareText(a.dataset.orderNo, b.dataset.orderNo);
-	          }
-	          if (currentFilterStatus === "已寄出") {
-	            return compareByDateDesc(
-	              a,
-	              b,
-	              (card) => card.dataset.actualShippingDate || "",
-	            );
-	          }
-	          return 0;
-	        });
-	      }
-	
-	      function getFilteredAdminCards() {
-	        const filteredCards = [
-	          ...document.querySelectorAll(".cards-container .card"),
-	        ].filter((card) => {
-	          const searchMatch = card.dataset.searchMatch !== "false";
-	          return (
-	            isCardStatusMatched(card) &&
-	            isCardDateMatched(card) &&
-	            isNotificationModeMatched(card) &&
-	            searchMatch
-	          );
-	        });
-	        return sortAdminCardsForCurrentStatus(filteredCards);
-	      }
+      function getNoticeSortPriority(card) {
+        const notificationStatus = String(
+          card.dataset.notificationStatus || "",
+        ).trim();
+        const canLineNotify = card.dataset.canLineNotify === "true";
+        if (!canLineNotify) return 0;
+        if (notificationStatus === "review_required") return 1;
+        if (notificationStatus === "failed") return 2;
+        return 3;
+      }
+
+      function sortAdminCardsForCurrentStatus(cards) {
+        return cards.slice().sort((a, b) => {
+          if (currentFilterStatus === "已安排出貨") {
+            return compareByDateAsc(
+              a,
+              b,
+              (card) => card.dataset.expectedShippingDate || "",
+            );
+          }
+          if (currentFilterStatus === "待確認") {
+            const aTime = parseAdminSortTime(a.dataset.createdAt);
+            const bTime = parseAdminSortTime(b.dataset.createdAt);
+            if (aTime !== bTime) return bTime - aTime;
+            return compareText(a.dataset.orderNo, b.dataset.orderNo);
+          }
+          if (currentFilterStatus === "待通知") {
+            const aPriority = getNoticeSortPriority(a);
+            const bPriority = getNoticeSortPriority(b);
+            if (aPriority !== bPriority) return aPriority - bPriority;
+            const aTime = parseAdminSortTime(
+              a.dataset.lastUpdatedAt || a.dataset.createdAt,
+            );
+            const bTime = parseAdminSortTime(
+              b.dataset.lastUpdatedAt || b.dataset.createdAt,
+            );
+            if (aTime !== bTime) return bTime - aTime;
+            return compareText(a.dataset.orderNo, b.dataset.orderNo);
+          }
+          if (currentFilterStatus === "已寄出") {
+            return compareByDateDesc(
+              a,
+              b,
+              (card) => card.dataset.actualShippingDate || "",
+            );
+          }
+          return 0;
+        });
+      }
+
+      function getFilteredAdminCards() {
+        const filteredCards = [
+          ...document.querySelectorAll(".cards-container .card"),
+        ].filter((card) => {
+          const searchMatch = card.dataset.searchMatch !== "false";
+          return (
+            isCardStatusMatched(card) &&
+            isCardDateMatched(card) &&
+            isNotificationModeMatched(card) &&
+            searchMatch
+          );
+        });
+        return sortAdminCardsForCurrentStatus(filteredCards);
+      }
 
       function updateAdminPagination(totalCount) {
         const pagination = document.getElementById("adminPagination");
@@ -7755,8 +7753,7 @@ ${adminNote}
                 String(checkbox.dataset.orderNo || "").trim(),
               );
             checkbox.disabled =
-              adminBatchProcessing ||
-              checkbox.dataset.batchEligible !== "true";
+              adminBatchProcessing || checkbox.dataset.batchEligible !== "true";
           });
 
         const selectAll = document.getElementById("global-selectAll");
