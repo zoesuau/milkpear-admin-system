@@ -1,4 +1,4 @@
- <!doctype html>
+<!doctype html>
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
@@ -7,7 +7,7 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <title>出貨工作卡 v3 - 全自動化連動版</title>
- 
+
     <style>
       * {
         margin: 0;
@@ -1161,25 +1161,31 @@
         font-size: 13px;
         font-weight: 800;
       }
-      .admin-reschedule-notice-action {
+      .admin-shipping-date-notice-preview {
+        margin: 2px 0 8px;
+        color: #9a3412;
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .admin-shipping-date-notice-action {
         width: 100%;
         min-height: 44px;
         margin: 2px 0 10px;
         border: none;
         border-radius: 10px;
-        background: #be185d;
+        background: #e68a4e;
         color: #ffffff;
         font-size: 15px;
         font-weight: 800;
         cursor: pointer;
       }
-      .admin-reschedule-notice-action:disabled {
+      .admin-shipping-date-notice-action:disabled {
         opacity: 0.65;
         cursor: not-allowed;
       }
       .admin-reschedule-manual-contact {
         margin: 2px 0 10px;
-        color: #9d174d;
+        color: #9a3412;
         font-size: 13px;
         font-weight: 800;
       }
@@ -3821,18 +3827,40 @@
           lastNotificationType === "cancellation_notice";
         const hasExpectedShippingDateChange =
           pendingNoticeFields.includes("確定出貨日期");
+        const shippingDateNoticeMode = String(
+          order?.shippingDateNoticeMode ?? "",
+        ).trim();
         const isManualRescheduleDecision =
           hasExpectedShippingDateChange &&
           orderStatus === "已安排出貨" &&
           expectedShippingDate !== "" &&
           adminWorkflowIsValidDate(expectedShippingDate) &&
           actualShippingDate === "";
+        const hasOpenInitialScheduleNotice =
+          isPendingNotification && lastNotificationType === "schedule_notice";
+        const shouldSendInitialShippingDateNotice =
+          shippingDateNoticeMode === "initial" &&
+          canLineNotify &&
+          orderStatus === "已安排出貨" &&
+          expectedShippingDate !== "" &&
+          adminWorkflowIsValidDate(expectedShippingDate) &&
+          actualShippingDate === "" &&
+          hasOpenInitialScheduleNotice;
+        const shouldSendRescheduledShippingDateNotice =
+          shippingDateNoticeMode === "reschedule" &&
+          canLineNotify &&
+          isManualRescheduleDecision;
+        const shouldShowShippingDateNoticeActionButton =
+          shouldSendInitialShippingDateNotice ||
+          shouldSendRescheduledShippingDateNotice;
+        const shippingDateNoticePreviewLabel =
+          shippingDateNoticeMode === "reschedule"
+            ? "出貨日期異動"
+            : "出貨日期已確認";
         const shouldShowOrderChangeAlert =
           !shouldHideManualOrderConfirmationNotice &&
           !shouldHideCancellationNotice &&
           (isPendingNotification || isManualRescheduleDecision);
-        const shouldShowManualRescheduleNoticeButton =
-          isManualRescheduleDecision && canLineNotify;
         const shouldShowManualRescheduleContactText =
           isManualRescheduleDecision && !canLineNotify;
         const shouldBundleChangeNoticeWithFirstSchedule =
@@ -3847,7 +3875,8 @@
           isPendingNotification &&
           lastNotificationType === "change_notice" &&
           !shouldBundleChangeNoticeWithFirstSchedule &&
-          pendingNoticeLabels.length > 0;
+          pendingNoticeLabels.length > 0 &&
+          !(hasExpectedShippingDateChange && shippingDateNoticeMode === "reschedule");
         const shouldShowManualScheduleNoticeDoneButton =
           isPendingNotification &&
           lastNotificationType === "schedule_notice" &&
@@ -3967,6 +3996,7 @@
             data-payment-state="${escapeHtml(paymentState || "")}"
             data-notification-status="${escapeHtml(notificationStatus)}"
             data-last-notification-type="${escapeHtml(lastNotificationType)}"
+            data-shipping-date-notice-mode="${escapeHtml(shippingDateNoticeMode)}"
 	            data-pending-notice-fields="${escapeHtml(pendingNoticeFields.join("|"))}"
 	            data-expected-shipping-date="${escapeHtml(expectedShippingDate)}"
 	            data-actual-shipping-date="${escapeHtml(actualShippingDate)}"
@@ -4140,9 +4170,15 @@
                     <div class="order-change-title">${
                       shouldShowShipmentNoticeActionButton
                         ? "⚠️ 寄出通知尚未完成"
-                        : shouldBundleChangeNoticeWithFirstSchedule
-                          ? "⚠️ 待一併通知"
-                          : "⚠️ 待處理通知事件"
+                        : shouldShowShippingDateNoticeActionButton &&
+                            shippingDateNoticeMode === "initial"
+                          ? "⚠️ 出貨日期通知尚未完成"
+                          : shouldShowShippingDateNoticeActionButton &&
+                              shippingDateNoticeMode === "reschedule"
+                            ? "⚠️ 以下資訊已異動"
+                            : shouldBundleChangeNoticeWithFirstSchedule
+                              ? "⚠️ 待一併通知"
+                              : "⚠️ 待處理通知事件"
                     }</div>
                     <div class="order-change-list">
                       ${pendingNoticeLabels
@@ -4153,8 +4189,11 @@
                         .join("")}
                     </div>
                     ${
-                      shouldShowManualRescheduleNoticeButton
-                        ? `<button type="button" class="admin-reschedule-notice-action">通知客戶出貨日期異動</button>`
+                      shouldShowShippingDateNoticeActionButton
+                        ? `
+                          <div class="admin-shipping-date-notice-preview">將發送：${escapeHtml(shippingDateNoticePreviewLabel)}</div>
+                          <button type="button" class="admin-shipping-date-notice-action">發送出貨日期通知</button>
+                        `
                         : ""
                     }
                     ${
@@ -6013,18 +6052,16 @@
         }
       }
 
-      function adminRescheduleNoticeGetErrorMessage(errorCode) {
+      function adminShippingDateNoticeGetErrorMessage(errorCode) {
         const messages = {
           ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入 LINE。",
-          RESCHEDULE_NOTICE_NOT_ELIGIBLE:
-            "此訂單目前不符合出貨日期異動通知資格，請重新讀取確認。",
-          RESCHEDULE_NOTICE_LINE_UID_REQUIRED:
+          SHIPPING_DATE_NOTICE_NOT_ELIGIBLE:
+            "此訂單目前不符合出貨日期通知資格，請重新讀取確認。",
+          SHIPPING_DATE_NOTICE_LINE_UID_REQUIRED:
             "此訂單無法透過 LINE 通知，請人工聯絡客戶。",
-          RESCHEDULE_NOTICE_ALREADY_IN_PROGRESS:
-            "此訂單已有未結案通知任務，請先重新讀取確認狀態。",
-          RESCHEDULE_NOTICE_SUPERSEDED:
+          SHIPPING_DATE_NOTICE_SUPERSEDED:
             "出貨日期已再次變更，本次通知未送出，請重新讀取。",
-          RESCHEDULE_NOTICE_BUSY: "系統忙碌，請稍後再試。",
+          SHIPPING_DATE_NOTICE_BUSY: "系統忙碌，請稍後再試。",
           REQUEST_KEYS_INVALID: "通知請求格式不正確，請重新整理後再試。",
           ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
           ORDER_NO_NOT_UNIQUE: "訂單資料異常，請停止操作。",
@@ -6032,15 +6069,19 @@
         return messages[errorCode] || "通知送出失敗，請重新讀取後再試。";
       }
 
-      function adminRescheduleNoticeSetSaving(card, isSaving) {
-        const button = card?.querySelector(".admin-reschedule-notice-action");
+      function adminShippingDateNoticeSetSaving(card, isSaving) {
+        const button = card?.querySelector(
+          ".admin-shipping-date-notice-action",
+        );
         if (!button) return;
         button.disabled = !!isSaving;
-        button.innerText = isSaving ? "通知發送中…" : "通知客戶出貨日期異動";
+        button.innerText = isSaving ? "通知發送中…" : "發送出貨日期通知";
       }
 
-      async function adminSendRescheduledShippingDateNotice(card) {
-        const button = card?.querySelector(".admin-reschedule-notice-action");
+      async function adminSendShippingDateNotice(card) {
+        const button = card?.querySelector(
+          ".admin-shipping-date-notice-action",
+        );
         const feedback = card?.querySelector(".admin-notification-feedback");
         if (!card || !button || button.disabled) return;
 
@@ -6051,6 +6092,13 @@
             card.dataset.expectedShippingDate ||
             "",
         ).trim();
+        const noticeMode = String(
+          latestOrder?.shippingDateNoticeMode ||
+            card.dataset.shippingDateNoticeMode ||
+            "",
+        ).trim();
+        const previewLabel =
+          noticeMode === "reschedule" ? "出貨日期異動" : "出貨日期已確認";
         const adminSessionToken = String(
           sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
         ).trim();
@@ -6074,25 +6122,26 @@
         }
 
         const confirmed = window.confirm(
-          `確定要通知客戶最新出貨日期嗎？\n\n最新確定出貨日期：${expectedShippingDate || "未填"}`,
+          `確定要發送「${previewLabel}」嗎？\n\n確定出貨日期：${expectedShippingDate || "未填"}`,
         );
         if (!confirmed) return;
 
         const restoreState = captureAdminOrderCardRestoreState(card);
-        adminRescheduleNoticeSetSaving(card, true);
+        adminShippingDateNoticeSetSaving(card, true);
         if (feedback) {
           feedback.classList.remove("is-error");
           feedback.innerText = "通知發送中…";
         }
 
         try {
+          const action = "adminSendShippingDateNotice";
           const response = await fetch(GAS_ORDERS_API_URL, {
             method: "POST",
             headers: {
               "Content-Type": "text/plain;charset=utf-8",
             },
             body: JSON.stringify({
-              action: "adminSendRescheduledShippingDateNotice",
+              action,
               adminSessionToken,
               orderNo,
             }),
@@ -6102,7 +6151,7 @@
             !response.ok ||
             !payload ||
             payload.ok !== true ||
-            payload.action !== "adminSendRescheduledShippingDateNotice" ||
+            payload.action !== action ||
             payload.orderNo !== orderNo
           ) {
             const errorCode = String(payload?.errorCode || "");
@@ -6110,7 +6159,7 @@
               sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
               showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
             }
-            throw new Error(errorCode || "RESCHEDULE_NOTICE_FAILED");
+            throw new Error(errorCode || "SHIPPING_DATE_NOTICE_FAILED");
           }
 
           if (feedback) {
@@ -6119,7 +6168,7 @@
           }
           const adminOrders = await fetchAdminOrdersFromGas();
           if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
-            adminRescheduleNoticeSetSaving(card, false);
+            adminShippingDateNoticeSetSaving(card, false);
             if (feedback) {
               feedback.classList.add("is-error");
               feedback.innerText =
@@ -6134,10 +6183,10 @@
           applyReadOnlyModeToRealOrders();
           restoreAdminOrderCardAfterRender(restoreState);
         } catch (error) {
-          adminRescheduleNoticeSetSaving(card, false);
+          adminShippingDateNoticeSetSaving(card, false);
           if (feedback) {
             feedback.classList.add("is-error");
-            feedback.innerText = adminRescheduleNoticeGetErrorMessage(
+            feedback.innerText = adminShippingDateNoticeGetErrorMessage(
               error?.message || "",
             );
           }
@@ -6296,18 +6345,18 @@
         cardsContainer.addEventListener("input", handleValueChange);
         cardsContainer.addEventListener("change", handleValueChange);
         cardsContainer.addEventListener("click", (event) => {
-          const rescheduleNoticeButton = event.target.closest(
-            ".admin-reschedule-notice-action",
+          const shippingDateNoticeButton = event.target.closest(
+            ".admin-shipping-date-notice-action",
           );
           if (
-            rescheduleNoticeButton &&
-            cardsContainer.contains(rescheduleNoticeButton)
+            shippingDateNoticeButton &&
+            cardsContainer.contains(shippingDateNoticeButton)
           ) {
-            const rescheduleNoticeCard = rescheduleNoticeButton.closest(
+            const shippingDateNoticeCard = shippingDateNoticeButton.closest(
               '.card[data-readonly="true"][data-order-no]',
             );
-            if (rescheduleNoticeCard) {
-              adminSendRescheduledShippingDateNotice(rescheduleNoticeCard);
+            if (shippingDateNoticeCard) {
+              adminSendShippingDateNotice(shippingDateNoticeCard);
             }
             return;
           }
