@@ -1730,6 +1730,25 @@
         font-weight: 700;
         line-height: 1.5;
       }
+      .admin-mark-shipped-direct-note,
+      .admin-mark-shipped-payment-warning {
+        grid-column: 1 / -1;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 800;
+        line-height: 1.55;
+      }
+      .admin-mark-shipped-direct-note {
+        border: 1px solid #bbf7d0;
+        background: #ffffff;
+        color: #166534;
+      }
+      .admin-mark-shipped-payment-warning {
+        border: 1px solid #f59e0b;
+        background: #fffbeb;
+        color: #92400e;
+      }
 
       @media (max-width: 640px) {
         .admin-mark-shipped-panel,
@@ -3803,13 +3822,20 @@
           !!orderNo &&
           ["待確認", "已安排出貨"].includes(orderStatus) &&
           adminWorkflowIsValidDate(expectedShippingDate);
-        const canMarkOrderShipped =
+        const canScheduledMarkOrderShipped =
           !!orderNo &&
           orderStatus === "已安排出貨" &&
           actualShippingDate === "" &&
           expectedShippingDate !== "" &&
           adminWorkflowIsValidDate(expectedShippingDate);
-        const canBatchMarkShipped = canMarkOrderShipped && canLineNotify;
+        const canDirectMarkOrderShipped =
+          !!orderNo &&
+          orderStatus === "待確認" &&
+          actualShippingDate === "" &&
+          expectedShippingDate === "";
+        const canMarkOrderShipped =
+          canScheduledMarkOrderShipped || canDirectMarkOrderShipped;
+        const canBatchMarkShipped = canScheduledMarkOrderShipped && canLineNotify;
         const recipientName = String(order?.recipientName ?? "").trim();
         const recipientPhone = String(order?.recipientPhone ?? "").trim();
         const recipientAddress = String(order?.recipientAddress ?? "").trim();
@@ -3901,6 +3927,7 @@
             data-readonly="true"
             data-order-no="${escapeHtml(orderNo)}"
             data-can-line-notify="${canLineNotify ? "true" : "false"}"
+            data-payment-state="${escapeHtml(paymentState || "")}"
             data-notification-status="${escapeHtml(notificationStatus)}"
             data-last-notification-type="${escapeHtml(lastNotificationType)}"
 	            data-pending-notice-fields="${escapeHtml(pendingNoticeFields.join("|"))}"
@@ -4015,6 +4042,8 @@
                       canBundleChangeNotice:
                         canLineNotify && pendingNoticeFields.length > 0,
                       pendingNoticeLabels,
+                      directPendingShipment: canDirectMarkOrderShipped,
+                      paymentState,
                     })
                   : ""
               }
@@ -5411,16 +5440,45 @@
       function buildAdminMarkOrderShippedHtml(options = {}) {
         const taipeiToday = getTaipeiToday();
         const canBundleChangeNotice = options.canBundleChangeNotice === true;
+        const isDirectPendingShipment =
+          options.directPendingShipment === true;
+        const isBankUnpaid = options.paymentState === "bank_unpaid";
         const pendingNoticeLabels = Array.isArray(options.pendingNoticeLabels)
           ? options.pendingNoticeLabels.filter(Boolean)
           : [];
         const changedLabelText = pendingNoticeLabels.length
           ? pendingNoticeLabels.join("、")
           : "本次資料異動";
+        const submitLabel = isDirectPendingShipment
+          ? "直接確認已寄出"
+          : "確認此筆已寄出";
 
         return `
-          <div class="admin-mark-shipped-panel" data-mark-shipped="true">
+          <div
+            class="admin-mark-shipped-panel"
+            data-mark-shipped="true"
+            data-direct-shipment="${isDirectPendingShipment ? "true" : "false"}"
+          >
             <div class="admin-mark-shipped-grid">
+              ${
+                isDirectPendingShipment
+                  ? `
+                    <div class="admin-mark-shipped-direct-note">
+                      此訂單尚未安排出貨。確認後將略過「出貨日期已確認」通知，
+                      直接標記為已寄出；確定出貨日期會同步寫為實際寄出日期。
+                    </div>
+                  `
+                  : ""
+              }
+              ${
+                isDirectPendingShipment && isBankUnpaid
+                  ? `
+                    <div class="admin-mark-shipped-payment-warning">
+                      ⚠ 目前尚未確認銀行轉帳款項，請確認已收到款項後再寄出。
+                    </div>
+                  `
+                  : ""
+              }
               <div class="admin-mark-shipped-field">
                 <label>實際寄出日期</label>
                 <input
@@ -5431,7 +5489,7 @@
                 />
               </div>
               <button type="button" class="admin-mark-shipped-submit">
-                確認此筆已寄出
+                ${submitLabel}
               </button>
               ${
                 canBundleChangeNotice
@@ -5534,7 +5592,7 @@
           EXPECTED_SHIPPING_DATE_REQUIRED: "此訂單尚未設定確定出貨日期。",
           EXPECTED_SHIPPING_DATE_INVALID: "此訂單的確定出貨日期無效。",
           ORDER_STATUS_TRANSITION_NOT_ALLOWED:
-            "只有已安排出貨的訂單可以確認已寄出。",
+            "此訂單目前無法確認已寄出，請重新讀取後再試。",
           ACTUAL_SHIPPING_DATE_ALREADY_EXISTS:
             "此訂單已存在實際寄出日期，不可覆寫。",
           ORDER_SHIPPED_WRITE_VERIFY_FAILED:
@@ -5606,6 +5664,19 @@
           return;
         }
 
+        const isDirectPendingShipment =
+          panel.dataset.directShipment === "true";
+        const isBankUnpaid =
+          String(card.dataset.paymentState || "").trim() === "bank_unpaid";
+        const directShipmentMessage = isDirectPendingShipment
+          ? "此訂單尚未安排出貨。\n" +
+            "確認後將略過「出貨日期已確認」通知，\n" +
+            "並把確定出貨日期同步寫為實際寄出日期。\n\n"
+          : "";
+        const paymentWarningMessage =
+          isDirectPendingShipment && isBankUnpaid
+            ? "⚠ 目前尚未確認銀行轉帳款項。\n請確認已收到款項後再寄出。\n\n"
+            : "";
         const bundleMessage = panel.querySelector(
           ".admin-mark-shipped-bundle-change",
         )
@@ -5616,6 +5687,8 @@
         const confirmed = window.confirm(
           `訂單編號：${orderNo}\n` +
             `實際寄出日期：${actualShippingDate}\n\n` +
+            directShipmentMessage +
+            paymentWarningMessage +
             bundleMessage +
             "將把訂單狀態改為「已寄出」。\n" +
             "此包不提供前端直接回復功能，確定繼續嗎？",
