@@ -3900,18 +3900,8 @@
           expectedShippingDate === "";
         const canMarkOrderShipped =
           canScheduledMarkOrderShipped || canDirectMarkOrderShipped;
-        const hasPendingChangedFields =
-          String(order?.changedFields ?? "").trim() !== "";
-        const batchBlockedNotificationStatuses = [
-          "pending_send",
-          "failed",
-          "manual_required",
-        ];
         const canBatchMarkShipped =
-          canScheduledMarkOrderShipped &&
-          canLineNotify &&
-          !hasPendingChangedFields &&
-          !batchBlockedNotificationStatuses.includes(notificationStatus);
+          canScheduledMarkOrderShipped && canLineNotify;
         const recipientName = String(order?.recipientName ?? "").trim();
         const recipientPhone = String(order?.recipientPhone ?? "").trim();
         const recipientAddress = String(order?.recipientAddress ?? "").trim();
@@ -7777,31 +7767,15 @@ ${adminNote}
       }
 
       function isBatchShippableOrder(order) {
-        const orderNo = String(order?.orderNo || "").trim();
         const expectedShippingDate = String(
           order?.expectedShippingDate || "",
         ).trim();
-        const actualShippingDate = String(
-          order?.actualShippingDate || "",
-        ).trim();
-        const changedFields = String(order?.changedFields || "").trim();
-        const notificationStatus = String(
-          order?.notificationStatus || "",
-        ).trim();
-        const batchBlockedNotificationStatuses = [
-          "pending_send",
-          "failed",
-          "manual_required",
-        ];
         return (
-          !!orderNo &&
           order?.orderStatus === "已安排出貨" &&
           order?.canLineNotify === true &&
           expectedShippingDate !== "" &&
           adminWorkflowIsValidDate(expectedShippingDate) &&
-          actualShippingDate === "" &&
-          changedFields === "" &&
-          !batchBlockedNotificationStatuses.includes(notificationStatus)
+          !String(order?.actualShippingDate || "").trim()
         );
       }
 
@@ -7876,7 +7850,7 @@ ${adminNote}
             const reasons = [];
             if (!shippedEligible) {
               reasons.push(
-                "已選訂單中包含不符合批次資格的訂單，無法批量已寄出並通知。",
+                "已選訂單中包含無 LINE、尚未安排完成或已寄出的訂單，無法批量已寄出並通知。",
               );
             }
             setBatchFeedback(reasons.join("\n"), reasons.length > 0);
