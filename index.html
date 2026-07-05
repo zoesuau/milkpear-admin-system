@@ -1135,8 +1135,8 @@
         display: none;
         margin-top: 12px;
         padding: 12px;
-        background: #fff0f6;
-        border: 1px solid#fb923c;
+        background: #fffbeb;
+        border: 1px solid #fb923c;
         border-radius: 12px;
         color: #c2410c;
       }
@@ -1154,7 +1154,7 @@
       }
       .order-change-chip {
         padding: 4px 8px;
-        background: #fff0f6;
+        background: #fff7ed;
         border: 1px solid #fb923c;
         border-radius: 999px;
         color: #c2410c;
@@ -1992,7 +1992,12 @@
             全部
           </button>
           <button onclick="filterByDateRange('今日', this)">今日</button>
-          <button onclick="filterByDateRange('本週', this)">本週</button>
+          <button
+            id="currentWeekFilterButton"
+            onclick="filterByDateRange('本週', this)"
+          >
+            本週
+          </button>
           <button onclick="filterByDateRange('本月', this)">本月</button>
           <button onclick="filterByDateRange('自訂', this)">自訂</button>
         </div>
@@ -3114,6 +3119,9 @@
         if (notificationType === "change_notice") {
           return canLineNotify ? "通知客戶本次變更" : "已電話通知";
         }
+        if (notificationType === "shipment_notice") {
+          return canLineNotify ? "重新發送寄出通知" : "已電話通知";
+        }
         if (notificationType === "schedule_notice" && !canLineNotify) {
           return "已電話通知";
         }
@@ -3146,7 +3154,10 @@
           )
           .join("");
         if (title) {
-          title.innerText = "⚠️ 待處理通知事件";
+          title.innerText =
+            card.dataset.lastNotificationType === "shipment_notice"
+              ? "⚠️ 寄出通知尚未完成"
+              : "⚠️ 待處理通知事件";
         }
         if (button) {
           button.hidden = false;
@@ -3746,6 +3757,10 @@
           orderStatus === "待確認" &&
           lastNotificationType === "change_notice" &&
           pendingNoticeLabels.length > 0;
+        const shouldShowShipmentNoticeActionButton =
+          orderStatus === "已寄出" &&
+          isPendingNotification &&
+          lastNotificationType === "shipment_notice";
         const shouldShowChangeNoticeActionButton =
           isPendingNotification &&
           lastNotificationType === "change_notice" &&
@@ -4020,7 +4035,13 @@
               shouldShowOrderChangeAlert
                 ? `
                   <div class="order-change-alert" style="display:block">
-                    <div class="order-change-title">${shouldBundleChangeNoticeWithFirstSchedule ? "⚠️ 待一併通知" : "⚠️ 待處理通知事件"}</div>
+                    <div class="order-change-title">${
+                      shouldShowShipmentNoticeActionButton
+                        ? "⚠️ 寄出通知尚未完成"
+                        : shouldBundleChangeNoticeWithFirstSchedule
+                          ? "⚠️ 待一併通知"
+                          : "⚠️ 待處理通知事件"
+                    }</div>
                     <div class="order-change-list">
                       ${pendingNoticeLabels
                         .map(
@@ -4037,6 +4058,11 @@
                     ${
                       shouldShowChangeNoticeActionButton
                         ? `<button type="button" class="btn-resend-notice">${canLineNotify ? "通知客戶本次變更" : "已電話通知"}</button>`
+                        : ""
+                    }
+                    ${
+                      shouldShowShipmentNoticeActionButton
+                        ? `<button type="button" class="btn-resend-notice">${canLineNotify ? "重新發送寄出通知" : "已電話通知"}</button>`
                         : ""
                     }
                     ${
@@ -5933,6 +5959,9 @@
 
         const orderNo = String(card.dataset.orderNo || "").trim();
         const canLineNotify = card.dataset.canLineNotify === "true";
+        const notificationType = String(
+          card.dataset.lastNotificationType || "",
+        ).trim();
         const button = card.querySelector(".btn-resend-notice");
         const feedback = card.querySelector(".admin-notification-feedback");
         const adminSessionToken = String(
@@ -5997,12 +6026,16 @@
             }
             if (feedback) {
               feedback.classList.add("is-error");
+              const pendingText =
+                notificationType === "shipment_notice"
+                  ? "寄出通知仍待處理。"
+                  : "異動仍待處理。";
               feedback.innerText =
                 payload.result === "unconfirmed"
                   ? "通知結果無法完整確認，請先至 NotificationLogs 查核。"
                   : payload.result === "skipped"
-                    ? "通知已略過，異動仍待處理。"
-                    : "通知失敗，異動仍待處理。";
+                    ? "通知已略過，" + pendingText
+                    : "通知失敗，" + pendingText;
             }
             return;
           }
@@ -6025,10 +6058,14 @@
           }
           if (feedback) {
             feedback.classList.add("is-error");
+            const pendingText =
+              notificationType === "shipment_notice"
+                ? "寄出通知仍待處理。"
+                : "異動仍待通知。";
             feedback.innerText =
               error.message === "NOTIFICATION_REFRESH_FAILED"
                 ? "通知可能已完成，但重新讀取失敗，請重新整理確認。"
-                : "處理失敗，異動仍待通知。";
+                : "處理失敗，" + pendingText;
           }
         }
       }
@@ -6094,6 +6131,8 @@
               changeNoticeCard &&
               (changeNoticeCard.dataset.lastNotificationType ===
                 "change_notice" ||
+                changeNoticeCard.dataset.lastNotificationType ===
+                  "shipment_notice" ||
                 (changeNoticeCard.dataset.lastNotificationType ===
                   "schedule_notice" &&
                   changeNoticeCard.dataset.canLineNotify !== "true"))
@@ -6273,6 +6312,7 @@
           ?.addEventListener("click", refreshAdminOrdersManually);
 
         bindAdminWorkflowEvents();
+        updateCurrentWeekFilterLabel();
         calculateCardAmount("orderCard1");
         updateStatsCounters();
         handleBatchCheckChange();
@@ -6461,8 +6501,18 @@
 	      }
 
 	      function addDaysToDateString(dateString, days) {
-	        const date = new Date(`${dateString}T00:00:00+08:00`);
-	        date.setDate(date.getDate() + days);
+	        const matched = String(dateString || "").match(
+	          /^(\d{4})-(\d{2})-(\d{2})$/,
+	        );
+	        if (!matched) return "";
+
+	        const date = new Date(
+	          Date.UTC(
+	            Number(matched[1]),
+	            Number(matched[2]) - 1,
+	            Number(matched[3]) + Number(days || 0),
+	          ),
+	        );
 	        return date.toISOString().slice(0, 10);
 	      }
 
@@ -6476,12 +6526,46 @@
 
 	      function getCurrentWeekRange() {
 	        const today = getTaipeiToday();
-	        const date = new Date(`${today}T00:00:00+08:00`);
-	        const day = date.getDay() || 7;
+	        const matched = String(today || "").match(
+	          /^(\d{4})-(\d{2})-(\d{2})$/,
+	        );
+	        if (!matched) return { start: today, end: today };
+
+	        const date = new Date(
+	          Date.UTC(
+	            Number(matched[1]),
+	            Number(matched[2]) - 1,
+	            Number(matched[3]),
+	          ),
+	        );
+	        const day = date.getUTCDay() || 7;
 	        return {
 	          start: addDaysToDateString(today, 1 - day),
 	          end: addDaysToDateString(today, 7 - day),
 	        };
+	      }
+
+	      function formatAdminMonthDay(dateString) {
+	        const matched = String(dateString || "").match(
+	          /^(\d{4})-(\d{2})-(\d{2})$/,
+	        );
+	        if (!matched) return "";
+	        return `${Number(matched[2])}/${Number(matched[3])}`;
+	      }
+
+	      function updateCurrentWeekFilterLabel() {
+	        const button = document.getElementById("currentWeekFilterButton");
+	        if (!button) return;
+
+	        const range = getCurrentWeekRange();
+	        const startLabel = formatAdminMonthDay(range.start);
+	        const endLabel = formatAdminMonthDay(range.end);
+
+	        button.textContent =
+	          startLabel && endLabel
+	            ? `本週（${startLabel}～${endLabel}）`
+	            : "本週";
+	        button.setAttribute("aria-label", `本週 ${range.start} 至 ${range.end}`);
 	      }
 
 	      function isCardDateMatched(card) {
@@ -7644,7 +7728,7 @@ ${adminNote}
         }
         if (
           !window.confirm(
-            `將 ${orderNos.length} 張訂單標為已寄出並發送 LINE 通知？\n\n通知內容會採用訂單目前最新資料。\n若有收件資料、商品或盒數異動，會合併在本次寄出通知中，不另發異動通知。`,
+            `將 ${orderNos.length} 張訂單標為已寄出，並建立 LINE 寄出通知？\n\n通知內容會採用訂單目前最新資料。\n若有收件資料、商品或盒數異動，會合併在本次寄出通知中，不另發異動通知。\n\n通知結果請以各訂單卡片的通知狀態為準。`,
           )
         ) {
           return;
@@ -7695,7 +7779,7 @@ ${adminNote}
           selectedOrderNos.clear();
           unconfirmedNotificationOrderNos.clear();
           setBatchFeedback(
-            `已將 ${orderNos.length} 張訂單標為已寄出並發送 LINE 通知。`,
+            `已將 ${orderNos.length} 張訂單標為已寄出，系統已建立並嘗試發送 LINE 寄出通知。請以各訂單卡片的通知狀態為準。`,
           );
         } catch (error) {
           setBatchFeedback(
