@@ -3900,8 +3900,10 @@
           expectedShippingDate === "";
         const canMarkOrderShipped =
           canScheduledMarkOrderShipped || canDirectMarkOrderShipped;
-        const canBatchMarkShipped =
-          canScheduledMarkOrderShipped && canLineNotify;
+        const canBatchMarkShipped = isBatchShippableOrder(order);
+        const batchDisabledReason = canBatchMarkShipped
+          ? ""
+          : getBatchShippedDisabledReason(order);
         const recipientName = String(order?.recipientName ?? "").trim();
         const recipientPhone = String(order?.recipientPhone ?? "").trim();
         const recipientAddress = String(order?.recipientAddress ?? "").trim();
@@ -4009,7 +4011,7 @@
               <div class="order-no-wrapper">
                 ${
                   canSelectOrder
-                    ? `<input type="checkbox" class="batch-check" data-order-no="${escapeHtml(orderNo)}" data-batch-eligible="${canBatchMarkShipped ? "true" : "false"}"${canBatchMarkShipped ? "" : " disabled"}${canBatchMarkShipped ? "" : ` title="${escapeHtml(canLineNotify ? "此訂單目前不可批量已寄出" : "無 LINE，請人工通知後單筆處理")}"`}${canBatchMarkShipped && selectedOrderNos.has(orderNo) ? " checked" : ""} />`
+                    ? `<input type="checkbox" class="batch-check" data-order-no="${escapeHtml(orderNo)}" data-batch-eligible="${canBatchMarkShipped ? "true" : "false"}"${canBatchMarkShipped ? "" : " disabled"}${canBatchMarkShipped ? "" : ` title="${escapeHtml(batchDisabledReason)}"`}${canBatchMarkShipped && selectedOrderNos.has(orderNo) ? " checked" : ""} />`
                     : ""
                 }
                 <div class="order-no">
@@ -7766,16 +7768,61 @@ ${adminNote}
           .filter(Boolean);
       }
 
+      function getBatchOpenNotificationBlockReason(order) {
+        const notificationStatus = String(
+          order?.notificationStatus || "",
+        ).trim();
+        const lastNotificationType = String(
+          order?.lastNotificationType || "",
+        ).trim();
+        const canLineNotify = order?.canLineNotify === true;
+        if (!isOpenNotificationStatus(notificationStatus)) return "";
+        if (
+          !canLineNotify &&
+          notificationStatus === "manual_required" &&
+          lastNotificationType === "order_confirmation"
+        ) {
+          return "";
+        }
+        if (lastNotificationType === "change_notice") {
+          return "此訂單有待通知資料異動，請先單筆處理。";
+        }
+        if (notificationStatus === "manual_required") {
+          return "此訂單有待人工電話通知，請先完成通知或改用單筆處理。";
+        }
+        return "此訂單通知尚未完成或發送失敗，請先處理通知後再批量寄出。";
+      }
+
+      function getBatchShippedDisabledReason(order) {
+        const expectedShippingDate = String(
+          order?.expectedShippingDate || "",
+        ).trim();
+        if (order?.orderStatus !== "已安排出貨") {
+          return "只有已安排出貨的訂單可以批量標記已寄出。";
+        }
+        if (!expectedShippingDate || !adminWorkflowIsValidDate(expectedShippingDate)) {
+          return "此訂單尚未設定有效的確定出貨日期。";
+        }
+        if (String(order?.actualShippingDate || "").trim()) {
+          return "此訂單已經有實際寄出日期。";
+        }
+        if (String(order?.changedFields || "").trim()) {
+          return "此訂單有待通知資料異動，請先單筆處理。";
+        }
+        return getBatchOpenNotificationBlockReason(order);
+      }
+
       function isBatchShippableOrder(order) {
         const expectedShippingDate = String(
           order?.expectedShippingDate || "",
         ).trim();
         return (
           order?.orderStatus === "已安排出貨" &&
-          order?.canLineNotify === true &&
           expectedShippingDate !== "" &&
           adminWorkflowIsValidDate(expectedShippingDate) &&
-          !String(order?.actualShippingDate || "").trim()
+          !String(order?.actualShippingDate || "").trim() &&
+          !String(order?.changedFields || "").trim() &&
+          !getBatchOpenNotificationBlockReason(order)
         );
       }
 
@@ -7850,7 +7897,7 @@ ${adminNote}
             const reasons = [];
             if (!shippedEligible) {
               reasons.push(
-                "已選訂單中包含無 LINE、尚未安排完成或已寄出的訂單，無法批量已寄出並通知。",
+                "已選訂單中包含尚未安排完成、已寄出、待資料異動通知或通知尚未完成的訂單，無法批量已寄出。",
               );
             }
             setBatchFeedback(reasons.join("\n"), reasons.length > 0);
@@ -7923,7 +7970,7 @@ ${adminNote}
         }
         if (
           !window.confirm(
-            `將 ${orderNos.length} 張訂單標為已寄出，並建立 LINE 寄出通知？\n\n通知內容會採用訂單目前最新資料。\n批次功能僅處理沒有待通知資料異動的訂單；有異動的訂單請使用單筆「確認已寄出」，自行選擇是否合併通知。\n\n通知結果請以各訂單卡片的通知狀態為準。`,
+            `將 ${orderNos.length} 張訂單標為已寄出，並建立寄出通知？\n\n有 LINE 的訂單會嘗試自動發送；無 LINE／管理員新增的訂單會留下待人工電話通知。\n批次功能僅處理沒有待通知資料異動的訂單；有異動的訂單請使用單筆「確認已寄出」，自行選擇是否合併通知。\n\n通知結果請以各訂單卡片的通知狀態為準。`,
           )
         ) {
           return;
@@ -7974,7 +8021,7 @@ ${adminNote}
           selectedOrderNos.clear();
           unconfirmedNotificationOrderNos.clear();
           setBatchFeedback(
-            `已將 ${orderNos.length} 張訂單標為已寄出，系統已建立並嘗試發送 LINE 寄出通知。請以各訂單卡片的通知狀態為準。`,
+            `已將 ${orderNos.length} 張訂單標為已寄出，系統已建立寄出通知；無 LINE 訂單請依卡片提示完成電話通知。`,
           );
         } catch (error) {
           setBatchFeedback(
