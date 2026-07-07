@@ -2114,10 +2114,10 @@
             全部
           </button>
           <button onclick="filterByNotificationMode('line', this)">
-            可 LINE 通知
+            LINE客戶訂單
           </button>
           <button onclick="filterByNotificationMode('phone', this)">
-            需電話通知
+            管理員新增的訂單
           </button>
         </div>
 
@@ -3026,7 +3026,8 @@
         const normalizedCode = normalizeAdminProductCode(code);
         return (
           adminProductCatalog.find(
-            (product) => normalizeAdminProductCode(product.code) === normalizedCode,
+            (product) =>
+              normalizeAdminProductCode(product.code) === normalizedCode,
           ) || null
         );
       }
@@ -4130,12 +4131,12 @@
               ${
                 canMarkOrderShipped
                   ? buildAdminMarkOrderShippedHtml({
-	                      canBundleChangeNotice:
-	                        canLineNotify && pendingNoticeFields.length > 0,
-	                      canLineNotify,
-	                      pendingNoticeLabels,
-	                      directPendingShipment: canDirectMarkOrderShipped,
-	                      paymentState,
+                      canBundleChangeNotice:
+                        canLineNotify && pendingNoticeFields.length > 0,
+                      canLineNotify,
+                      pendingNoticeLabels,
+                      directPendingShipment: canDirectMarkOrderShipped,
+                      paymentState,
                     })
                   : ""
               }
