@@ -1913,7 +1913,7 @@
       .product-management-table {
         width: 100%;
         border-collapse: collapse;
-        min-width: 640px;
+        min-width: 980px;
       }
 
       .product-management-table th,
@@ -1940,6 +1940,10 @@
       .product-status-inactive {
         color: #94a3b8;
         font-weight: 800;
+      }
+
+      .product-muted {
+        color: #94a3b8;
       }
 
       @media screen and (min-width: 768px) {
@@ -2346,12 +2350,16 @@
           <table class="product-management-table">
             <thead>
               <tr>
-                <th>商品代碼</th>
-                <th>商品名稱</th>
-                <th>重量</th>
+                <th>排序</th>
+                <th>品種</th>
+                <th>分類</th>
+                <th>A數 / 等級</th>
+                <th>重量區間</th>
                 <th>顆數</th>
                 <th>價格</th>
+                <th>庫存</th>
                 <th>狀態</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody id="product-management-list"></tbody>
@@ -2930,14 +2938,22 @@
             const activeClass = product.active
               ? "product-status-active"
               : "product-status-inactive";
+            const stockText =
+              Number.isInteger(product.stock) && product.stock >= 0
+                ? `${product.stock}盒`
+                : "未控管";
             return `
             <tr>
-              <td>${escapeHtml(product.code)}</td>
-              <td>${escapeHtml(product.name)}</td>
+              <td>${escapeHtml(product.sortOrder || "")}</td>
+              <td>${escapeHtml(product.variety || "")}</td>
+              <td>${escapeHtml(product.category || "")}</td>
+              <td>${escapeHtml(product.grade || product.name || product.code)}</td>
               <td>${escapeHtml(product.weight || "")}</td>
               <td>${escapeHtml(product.count || "")}</td>
               <td>$${formatMoney(product.price)}</td>
+              <td class="${stockText === "未控管" ? "product-muted" : ""}">${escapeHtml(stockText)}</td>
               <td><span class="${activeClass}">${activeText}</span></td>
+              <td class="product-muted">第一版暫不編輯</td>
             </tr>
           `;
           })
@@ -2965,7 +2981,7 @@
         return products
           .map(
             (product) =>
-              `<option value="${escapeHtml(product.code)}" ${product.code === selectedProduct ? "selected" : ""}>${escapeHtml(product.name)}｜${escapeHtml(product.count)}裝｜$${escapeHtml(formatAdminMoney(product.price))}</option>`,
+              `<option value="${escapeHtml(product.code)}" ${product.code === selectedProduct ? "selected" : ""}>${escapeHtml(product.variety || "")} ${escapeHtml(product.category || "")}｜${escapeHtml(product.grade || product.name)}｜${escapeHtml(product.count)}｜$${escapeHtml(formatAdminMoney(product.price))}</option>`,
           )
           .join("");
       }
