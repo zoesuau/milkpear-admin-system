@@ -1765,8 +1765,8 @@
         }
         .admin-mark-shipped-grid {
           width: 100%;
-          grid-template-columns: minmax(0, 1fr) max-content;
-          gap: 6px;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 8px;
         }
         .admin-mark-shipped-date,
         .admin-mark-shipped-grid input[type="date"] {
@@ -1783,9 +1783,10 @@
           appearance: none;
         }
         .admin-mark-shipped-submit {
+          width: 100%;
           min-height: 44px;
-          padding-right: 10px;
-          padding-left: 10px;
+          padding-right: 12px;
+          padding-left: 12px;
           white-space: nowrap;
           flex-shrink: 0;
         }
@@ -4129,11 +4130,12 @@
               ${
                 canMarkOrderShipped
                   ? buildAdminMarkOrderShippedHtml({
-                      canBundleChangeNotice:
-                        canLineNotify && pendingNoticeFields.length > 0,
-                      pendingNoticeLabels,
-                      directPendingShipment: canDirectMarkOrderShipped,
-                      paymentState,
+	                      canBundleChangeNotice:
+	                        canLineNotify && pendingNoticeFields.length > 0,
+	                      canLineNotify,
+	                      pendingNoticeLabels,
+	                      directPendingShipment: canDirectMarkOrderShipped,
+	                      paymentState,
                     })
                   : ""
               }
@@ -5563,6 +5565,7 @@
         const taipeiToday = getTaipeiToday();
         const canBundleChangeNotice = options.canBundleChangeNotice === true;
         const isDirectPendingShipment = options.directPendingShipment === true;
+        const canLineNotify = options.canLineNotify === true;
         const isBankUnpaid = options.paymentState === "bank_unpaid";
         const pendingNoticeLabels = Array.isArray(options.pendingNoticeLabels)
           ? options.pendingNoticeLabels.filter(Boolean)
@@ -5570,9 +5573,10 @@
         const changedLabelText = pendingNoticeLabels.length
           ? pendingNoticeLabels.join("、")
           : "本次資料異動";
-        const submitLabel = isDirectPendingShipment
-          ? "直接確認已寄出"
-          : "確認此筆已寄出";
+        const submitLabel = canLineNotify ? "發送已寄出通知" : "標記已寄出";
+        const directNoteText = canLineNotify
+          ? "發送已寄出通知，並標記為已寄出。"
+          : "標記為已寄出，稍後請電話通知客人。";
 
         return `
           <div
@@ -5585,8 +5589,7 @@
                 isDirectPendingShipment
                   ? `
                     <div class="admin-mark-shipped-direct-note">
-                      此訂單尚未安排出貨。確認後將略過「出貨日期已確認」通知，
-                      直接標記為已寄出；確定出貨日期會同步寫為實際寄出日期。
+                      ${escapeHtml(directNoteText)}
                     </div>
                   `
                   : ""
@@ -5595,7 +5598,7 @@
                 isDirectPendingShipment && isBankUnpaid
                   ? `
                     <div class="admin-mark-shipped-payment-warning">
-                      ⚠ 目前尚未確認銀行轉帳款項，請確認已收到款項後再寄出。
+                      ⚠ 銀行轉帳未確認，請先確認收款。
                     </div>
                   `
                   : ""
@@ -5786,16 +5789,17 @@
         }
 
         const isDirectPendingShipment = panel.dataset.directShipment === "true";
+        const canLineNotify = card.dataset.canLineNotify === "true";
         const isBankUnpaid =
           String(card.dataset.paymentState || "").trim() === "bank_unpaid";
         const directShipmentMessage = isDirectPendingShipment
-          ? "此訂單尚未安排出貨。\n" +
-            "確認後將略過「出貨日期已確認」通知，\n" +
-            "並把確定出貨日期同步寫為實際寄出日期。\n\n"
+          ? canLineNotify
+            ? "將發送已寄出通知，並標記為已寄出。\n\n"
+            : "將標記為已寄出，稍後請電話通知客人。\n\n"
           : "";
         const paymentWarningMessage =
           isDirectPendingShipment && isBankUnpaid
-            ? "⚠ 目前尚未確認銀行轉帳款項。\n請確認已收到款項後再寄出。\n\n"
+            ? "⚠ 銀行轉帳未確認，請先確認收款。\n\n"
             : "";
         const bundleMessage = panel.querySelector(
           ".admin-mark-shipped-bundle-change",
