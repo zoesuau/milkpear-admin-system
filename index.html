@@ -2033,11 +2033,11 @@
           <button class="active" onclick="filterByStatus('全部', this)">
             全部
           </button>
-          <button onclick="filterByStatus('待確認', this)">新訂單</button>
+          <button onclick="filterByStatus('待確認', this)">待確認</button>
           <button onclick="filterByStatus('已安排出貨', this)">
-            已安排出貨日期
+            已安排出貨
           </button>
-          <button onclick="filterByStatus('待通知', this)">改單再通知</button>
+          <button onclick="filterByStatus('待通知', this)">待通知</button>
           <button onclick="filterByStatus('已寄出', this)">已寄出</button>
           <button onclick="filterByStatus('已取消', this)">已取消</button>
         </div>
@@ -2113,10 +2113,10 @@
             全部
           </button>
           <button onclick="filterByNotificationMode('line', this)">
-            LINE 客戶
+            可 LINE 通知
           </button>
           <button onclick="filterByNotificationMode('phone', this)">
-            管理員新增訂單
+            需電話通知
           </button>
         </div>
 
@@ -5427,10 +5427,23 @@
         `;
       }
 
-      function adminWorkflowIsValidDate(value) {
-        if (value === "") return true;
+      function normalizeAdminDateValue(value) {
+        const text = String(value ?? "").trim();
+        if (!text) return "";
 
-        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        const match =
+          /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text) ||
+          /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/.exec(text);
+        if (!match) return text;
+
+        return `${match[1]}-${String(Number(match[2])).padStart(2, "0")}-${String(Number(match[3])).padStart(2, "0")}`;
+      }
+
+      function adminWorkflowIsValidDate(value) {
+        const normalizedValue = normalizeAdminDateValue(value);
+        if (normalizedValue === "") return true;
+
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalizedValue);
         if (!match) return false;
 
         const year = Number(match[1]);
@@ -6470,10 +6483,10 @@
           return {
             cardClass: "status-pending",
             badgeClass: "state-badge-pending",
-            badgeText: "新訂單",
+            badgeText: "待確認",
           };
         }
-        if (status === "已安排出貨日期") {
+        if (status === "已安排出貨") {
           return {
             cardClass: "status-confirmed",
             badgeClass: "state-badge-confirmed",
@@ -6732,20 +6745,25 @@
 
       function getAdminFilterCardDate(card) {
         const status = card.getAttribute("data-status") || "";
-        const actualShippingDate = String(
+        const actualShippingDate = normalizeAdminDateValue(
           card.dataset.actualShippingDate || "",
-        ).trim();
-        const expectedShippingDate = String(
+        );
+        const expectedShippingDate = normalizeAdminDateValue(
           card.dataset.expectedShippingDate || "",
-        ).trim();
+        );
         return status === "已寄出" && actualShippingDate
           ? actualShippingDate
           : expectedShippingDate;
       }
 
       function addDaysToDateString(dateString, days) {
-        const date = new Date(`${dateString}T00:00:00+08:00`);
-        date.setDate(date.getDate() + days);
+        const normalizedDate = normalizeAdminDateValue(dateString);
+        if (!adminWorkflowIsValidDate(normalizedDate) || !normalizedDate) {
+          return "";
+        }
+        const [year, month, day] = normalizedDate.split("-").map(Number);
+        const date = new Date(Date.UTC(year, month - 1, day));
+        date.setUTCDate(date.getUTCDate() + days);
         return date.toISOString().slice(0, 10);
       }
 
@@ -6759,8 +6777,9 @@
 
       function getCurrentWeekRange() {
         const today = getTaipeiToday();
-        const date = new Date(`${today}T00:00:00+08:00`);
-        const day = date.getDay() || 7;
+        const [year, month, dateOfMonth] = today.split("-").map(Number);
+        const date = new Date(Date.UTC(year, month - 1, dateOfMonth));
+        const day = date.getUTCDay() || 7;
         return {
           start: addDaysToDateString(today, 1 - day),
           end: addDaysToDateString(today, 7 - day),
