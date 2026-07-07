@@ -2034,11 +2034,11 @@
           <button class="active" onclick="filterByStatus('全部', this)">
             全部
           </button>
-          <button onclick="filterByStatus('待確認', this)">待確認</button>
+          <button onclick="filterByStatus('待確認', this)">新訂單</button>
           <button onclick="filterByStatus('已安排出貨', this)">
-            已安排出貨
+            已安排出貨日期
           </button>
-          <button onclick="filterByStatus('待通知', this)">待通知</button>
+          <button onclick="filterByStatus('待通知', this)">改單再通知</button>
           <button onclick="filterByStatus('已寄出', this)">已寄出</button>
           <button onclick="filterByStatus('已取消', this)">已取消</button>
         </div>
@@ -6507,14 +6507,14 @@
           return {
             cardClass: "status-pending",
             badgeClass: "state-badge-pending",
-            badgeText: "待確認",
+            badgeText: "新訂單",
           };
         }
         if (status === "已安排出貨") {
           return {
             cardClass: "status-confirmed",
             badgeClass: "state-badge-confirmed",
-            badgeText: "已安排出貨",
+            badgeText: "已安排出貨日期",
           };
         }
         if (status === "已寄出") {
