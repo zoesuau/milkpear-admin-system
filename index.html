@@ -1995,10 +1995,6 @@
 
     <section id="order-page-section">
       <div class="gas-test-panel" aria-live="polite">
-        <div class="gas-test-title">GAS 連線測試區</div>
-        <div class="gas-test-status" id="gasTestStatus">
-          準備讀取 GAS 訂單資料...
-        </div>
         <div class="gas-test-status" id="adminReadStatus">
           等待管理員完整訂單讀取…
         </div>
@@ -3359,96 +3355,6 @@
         const amountDiv = card.querySelector(".amount");
         if (amountDiv) {
           amountDiv.innerText = `$${formatMoney(finalTotal)}`;
-        }
-      }
-
-      async function fetchOrdersFromGas() {
-        const gasStatusEl = document.getElementById("gasTestStatus");
-
-        try {
-          const baseUrl = String(GAS_ORDERS_API_URL || "").trim();
-
-          if (!baseUrl || baseUrl === "PASTE_YOUR_GAS_WEB_APP_URL_HERE") {
-            throw new Error("尚未設定 GAS Web App /exec 網址。");
-          }
-
-          if (gasStatusEl) {
-            gasStatusEl.className = "gas-test-status";
-            gasStatusEl.innerText = "讀取 GAS 訂單摘要中...";
-          }
-
-          // 固定只呼叫安全摘要讀取入口。
-          const requestUrl = new URL(baseUrl);
-          requestUrl.searchParams.set("action", "readOrders");
-
-          // 避免 GitHub Pages 或瀏覽器拿到舊快取。
-          requestUrl.searchParams.set("_", String(Date.now()));
-
-          const response = await fetch(requestUrl.toString(), {
-            method: "GET",
-            cache: "no-store",
-          });
-
-          if (!response.ok) {
-            throw new Error(`GAS 回應失敗：HTTP ${response.status}`);
-          }
-
-          const payload = await response.json();
-
-          // 這包只接受固定 JSON 格式，不再猜測不同欄位名稱。
-          if (!payload || payload.ok !== true) {
-            throw new Error(payload?.error || "GAS 回傳失敗或格式不正確。");
-          }
-
-          if (payload.action !== "readOrders") {
-            throw new Error("GAS 回傳 action 不正確。");
-          }
-
-          if (!Array.isArray(payload.orders)) {
-            throw new Error("GAS 沒有回傳 orders 陣列。");
-          }
-
-          const orders = payload.orders;
-          const firstOrder = orders[0] || null;
-          const returnedCount = Number.isFinite(Number(payload.count))
-            ? Number(payload.count)
-            : orders.length;
-
-          const statusLines = ["✅ 已成功連線", `回傳筆數：${returnedCount}`];
-
-          if (firstOrder) {
-            const rawAmount = String(firstOrder.amount ?? "").trim();
-            const amountNumber = Number(rawAmount.replace(/[^\d.-]/g, ""));
-
-            const displayAmount =
-              rawAmount && Number.isFinite(amountNumber)
-                ? `$${amountNumber.toLocaleString("zh-TW")}`
-                : "未提供";
-
-            statusLines.push(
-              `第一筆訂單編號：${firstOrder.orderNo || "未提供"}`,
-              `遮罩收件人：${firstOrder.recipientMasked || "未提供"}`,
-              `金額：${displayAmount}`,
-            );
-          } else {
-            statusLines.push("目前 Orders 尚無可讀取的正式訂單。");
-          }
-
-          if (gasStatusEl) {
-            gasStatusEl.className = "gas-test-status success";
-            gasStatusEl.innerText = statusLines.join("\n");
-          }
-
-          return orders;
-        } catch (error) {
-          console.error("GAS 訂單讀取失敗", error);
-
-          if (gasStatusEl) {
-            gasStatusEl.className = "gas-test-status error";
-            gasStatusEl.innerText = `GAS 連線失敗：${error.message}`;
-          }
-
-          return [];
         }
       }
 
