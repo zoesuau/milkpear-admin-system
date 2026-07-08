@@ -2673,6 +2673,15 @@
                   oninput="previewProductBannerImage()"
                 />
               </div>
+              <div class="product-field">
+                <label for="productBannerImageFile">直接上傳新圖片</label>
+                <input
+                  id="productBannerImageFile"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onchange="previewSelectedProductBannerFile()"
+                />
+              </div>
               <div class="product-banner-preview">
                 <img
                   id="productBannerPreview"
@@ -2682,10 +2691,17 @@
               </div>
               <button
                 type="button"
+                class="product-action-btn secondary"
+                onclick="uploadProductBannerImage()"
+              >
+                上傳並套用圖片
+              </button>
+              <button
+                type="button"
                 class="product-action-btn primary"
                 onclick="saveProductBannerSettings()"
               >
-                儲存廣告圖
+                儲存圖片網址
               </button>
             </div>
           </div>
@@ -3313,7 +3329,7 @@
 
         const sortedProducts = adminProductCatalog
           .slice()
-          .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+          .sort(compareAdminProductsForAutoSort);
         const varieties = ["牛奶梨", "蔗香梨"];
         const extraVarieties = [
           ...new Set(
@@ -3358,7 +3374,6 @@
               <div class="product-admin-summary">
                 <div class="product-admin-topline">
                   <div class="product-admin-chips">
-                    ${product.active ? `<span class="product-chip">排序 ${escapeHtml(product.sortOrder || "")}</span>` : ""}
                     <span class="${activeClass}">${activeText}</span>
                     ${
                       Number.isInteger(product.stock) && product.stock >= 0
@@ -3421,12 +3436,6 @@
             <input data-product-field="stock" type="number" min="0" step="1" placeholder="空白＝不限量" value="${Number.isInteger(product.stock) ? escapeHtml(product.stock) : ""}">
           </div>
           <div class="product-field">
-            <label>排序</label>
-            <select data-product-field="sortOrder">
-              ${renderProductSortOptions(product.sortOrder, product.isNew)}
-            </select>
-          </div>
-          <div class="product-field">
             <label>狀態</label>
             <select data-product-field="status">
               ${renderSimpleOptions(["上架", "停售"], product.active ? "上架" : "停售")}
@@ -3458,23 +3467,58 @@
           .join("");
       }
 
-      function renderProductSortOptions(selectedValue, includeNewSlot = false) {
-        const maxSort = Math.max(adminProductCatalog.length + (includeNewSlot ? 1 : 0), 1);
-        const selected = Number(selectedValue || maxSort);
-        return Array.from({ length: maxSort }, (_, index) => index + 1)
-          .map(
-            (value) =>
-              `<option value="${value}"${value === selected ? " selected" : ""}>排序 ${value}</option>`,
-          )
-          .join("");
-      }
-
       function normalizeAdminProductCategory(category) {
         const text = String(category || "").trim();
         if (text === "兩粒裝" || text === "兩顆裝" || text === "兩顆禮盒") {
           return "兩粒禮盒";
         }
         return text || "一般禮盒";
+      }
+
+      function getAdminProductVarietyRank(product) {
+        if (product?.variety === "牛奶梨") return 1;
+        if (product?.variety === "蔗香梨") return 2;
+        return 99;
+      }
+
+      function getAdminProductGradeNumber(product) {
+        const text = String(product?.grade || product?.code || "");
+        const match = text.match(/\d+/);
+        return match ? Number(match[0]) : 9999;
+      }
+
+      function getAdminProductCategoryRank(product) {
+        return normalizeAdminProductCategory(product?.category) === "兩粒禮盒"
+          ? 2
+          : 1;
+      }
+
+      function compareAdminProductsForAutoSort(a, b) {
+        if (a.active !== b.active) return a.active ? -1 : 1;
+
+        const varietyDiff =
+          getAdminProductVarietyRank(a) - getAdminProductVarietyRank(b);
+        if (varietyDiff !== 0) return varietyDiff;
+
+        const gradeDiff =
+          getAdminProductGradeNumber(a) - getAdminProductGradeNumber(b);
+        if (gradeDiff !== 0) return gradeDiff;
+
+        const categoryDiff =
+          getAdminProductCategoryRank(a) - getAdminProductCategoryRank(b);
+        if (categoryDiff !== 0) return categoryDiff;
+
+        return String(a.code || "").localeCompare(String(b.code || ""));
+      }
+
+      function applyAdminProductAutoSort(products) {
+        return products
+          .slice()
+          .sort(compareAdminProductsForAutoSort)
+          .map((product, index) => ({
+            ...product,
+            sortOrder: index + 1,
+          }));
       }
 
       function getAdminProductDisplayName(product) {
@@ -3501,6 +3545,108 @@
         if (preview) preview.src = bannerUrl || "assets/sanheyuan-banner.png";
       }
 
+      function previewSelectedProductBannerFile() {
+        const input = document.getElementById("productBannerImageFile");
+        const preview = document.getElementById("productBannerPreview");
+        const file = input?.files?.[0] || null;
+        if (!file || !preview) return;
+
+        if (!file.type.startsWith("image/")) {
+          setProductManagementFeedback("請選擇圖片檔。", "error");
+          input.value = "";
+          return;
+        }
+
+        preview.src = URL.createObjectURL(file);
+        setProductManagementFeedback("已選擇圖片，請按「上傳並套用圖片」。");
+      }
+
+      function readFileAsBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = String(reader.result || "");
+            resolve(result.includes(",") ? result.split(",").pop() : result);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function uploadProductBannerImage() {
+        const input = document.getElementById("productBannerImageFile");
+        const file = input?.files?.[0] || null;
+        const adminSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+
+        if (!adminSessionToken) {
+          setProductManagementFeedback("登入已過期，請重新登入 LINE。", "error");
+          return;
+        }
+
+        if (!file) {
+          setProductManagementFeedback("請先選擇一張圖片。", "error");
+          return;
+        }
+
+        if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
+          setProductManagementFeedback("只支援 PNG、JPG、WEBP、GIF 圖片。", "error");
+          return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+          setProductManagementFeedback("圖片請小於 5MB。", "error");
+          return;
+        }
+
+        setProductManagementFeedback("圖片上傳中...");
+
+        try {
+          const base64Data = await readFileAsBase64(file);
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify({
+              action: "adminUploadBannerImage",
+              adminSessionToken,
+              fileName: file.name,
+              mimeType: file.type,
+              base64Data,
+            }),
+          });
+          const result = await response.json();
+
+          if (
+            !response.ok ||
+            result?.ok !== true ||
+            result?.action !== "adminUploadBannerImage" ||
+            !String(result.imageUrl || "").trim()
+          ) {
+            throw new Error(result?.error || "BANNER_IMAGE_UPLOAD_FAILED");
+          }
+
+          adminSiteSettings = {
+            ...adminSiteSettings,
+            ...(result.siteSettings || {}),
+            bannerImageUrl: result.imageUrl,
+          };
+          const urlInput = document.getElementById("productBannerImageUrl");
+          if (urlInput) urlInput.value = result.imageUrl;
+          renderProductBannerSettings();
+          setProductManagementFeedback("✅ 已上傳並套用廣告圖", "success");
+          if (input) input.value = "";
+        } catch (error) {
+          console.error("廣告圖上傳失敗", error);
+          setProductManagementFeedback(
+            "圖片上傳失敗，請換一張較小的圖片再試。",
+            "error",
+          );
+        }
+      }
+
       function setProductManagementFeedback(message, type = "") {
         const feedback = document.getElementById("productManagementFeedback");
         if (!feedback) return;
@@ -3516,11 +3662,6 @@
       }
 
       function addProductManagementCard() {
-        const nextSort =
-          adminProductCatalog.reduce(
-            (max, product) => Math.max(max, Number(product.sortOrder || 0)),
-            0,
-          ) + 1;
         const draft = {
           id: `p${Date.now()}`,
           code: "",
@@ -3532,7 +3673,7 @@
           stock: null,
           active: false,
           status: "停售",
-          sortOrder: nextSort,
+          sortOrder: adminProductCatalog.length + 1,
           isNew: true,
         };
 
@@ -3555,9 +3696,9 @@
         if (!fields) return;
 
         const product = readProductManagementCard(fields);
-        const products = adminProductCatalog.concat(product).sort((a, b) => {
-          return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
-        });
+        const products = applyAdminProductAutoSort(
+          adminProductCatalog.concat(product),
+        );
         const validationMessage = validateProductManagementProducts(products);
         if (validationMessage) {
           if (feedback) {
@@ -3595,7 +3736,7 @@
           stock,
           active: getValue("status") === "上架",
           status: getValue("status") === "上架" ? "上架" : "停售",
-          sortOrder: Number(getValue("sortOrder")),
+          sortOrder: 0,
         };
       }
 
@@ -3623,9 +3764,6 @@
           ) {
             return "庫存需為 0 以上整數，或留空代表不限量。";
           }
-          if (!Number.isInteger(product.sortOrder) || product.sortOrder <= 0) {
-            return "排序需為正整數。";
-          }
           if (seenIds.has(product.id) || seenCodes.has(product.code)) {
             return "id 和 code 不可重複。";
           }
@@ -3640,9 +3778,7 @@
         const existingProducts = adminProductCatalog.filter(
           (product) => product.id !== cardProductId,
         );
-        return existingProducts.concat(nextProduct).sort((a, b) => {
-          return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
-        });
+        return applyAdminProductAutoSort(existingProducts.concat(nextProduct));
       }
 
       async function saveProductManagementCard(button) {
