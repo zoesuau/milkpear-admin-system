@@ -2022,6 +2022,36 @@
         gap: 10px;
       }
 
+      .product-variety-group {
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        overflow: hidden;
+      }
+
+      .product-variety-group summary {
+        align-items: center;
+        background: #f8fafc;
+        color: #334155;
+        cursor: pointer;
+        display: flex;
+        font-size: 16px;
+        font-weight: 900;
+        justify-content: space-between;
+        padding: 12px 14px;
+      }
+
+      .product-variety-count {
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .product-variety-body {
+        display: grid;
+        gap: 10px;
+        padding: 10px;
+      }
+
       .product-admin-card {
         border: 1px solid #e2e8f0;
         border-radius: 12px;
@@ -2039,6 +2069,13 @@
         display: flex;
         justify-content: space-between;
         gap: 10px;
+      }
+
+      .product-admin-topline {
+        align-items: flex-start;
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
       }
 
       .product-admin-title {
@@ -2095,6 +2132,7 @@
       .product-admin-card-actions {
         display: flex;
         gap: 8px;
+        justify-content: flex-end;
       }
 
       .product-admin-edit {
@@ -2107,6 +2145,27 @@
 
       .product-admin-card.editing .product-admin-edit {
         display: grid;
+      }
+
+      .product-code-details {
+        border: 1px dashed #cbd5e1;
+        border-radius: 10px;
+        grid-column: 1 / -1;
+        padding: 8px;
+      }
+
+      .product-code-details summary {
+        color: #64748b;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .product-code-grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 10px;
       }
 
       .product-field.full {
@@ -2138,7 +2197,7 @@
           max-width: 1024px;
         }
 
-        .product-card-list {
+        .product-variety-body {
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
@@ -3170,15 +3229,41 @@
           return;
         }
 
-        list.innerHTML = adminProductCatalog
+        const sortedProducts = adminProductCatalog
           .slice()
-          .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
-          .map((product) => renderProductManagementCard(product))
+          .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+        const varieties = ["牛奶梨", "蔗香梨"];
+        const extraVarieties = [
+          ...new Set(
+            sortedProducts
+              .map((product) => product.variety)
+              .filter((variety) => !varieties.includes(variety)),
+          ),
+        ];
+        list.innerHTML = varieties
+          .concat(extraVarieties)
+          .map((variety) => {
+            const products = sortedProducts.filter(
+              (product) => product.variety === variety,
+            );
+            if (!products.length) return "";
+            return `
+              <details class="product-variety-group" open>
+                <summary>
+                  <span>${escapeHtml(variety)}</span>
+                  <span class="product-variety-count">${products.length} 項商品</span>
+                </summary>
+                <div class="product-variety-body">
+                  ${products.map((product) => renderProductManagementCard(product)).join("")}
+                </div>
+              </details>
+            `;
+          })
           .join("");
       }
 
       function renderProductManagementCard(product) {
-            const activeText = product.active ? "啟用" : "停用";
+            const activeText = product.active ? "上架" : "停售";
             const activeClass = product.active
               ? "product-status-active"
               : "product-status-inactive";
@@ -3189,10 +3274,16 @@
             return `
             <article class="product-admin-card" data-product-id="${escapeHtml(product.id)}">
               <div class="product-admin-summary">
+                <div class="product-admin-topline">
+                  <span class="${activeClass}">${activeText}</span>
+                  <div class="product-admin-card-actions">
+                    <button type="button" class="product-action-btn secondary" onclick="toggleProductManagementEdit(this)">編輯</button>
+                  </div>
+                </div>
                 <div class="product-admin-main">
                   <div>
-                    <div class="product-admin-title">${escapeHtml(product.variety || "")} ${escapeHtml(product.grade || product.name || product.code)}</div>
-                    <div class="product-admin-meta">${escapeHtml(product.category || "")}｜${escapeHtml(product.weight || "")}｜${escapeHtml(product.count || "")}</div>
+                    <div class="product-admin-title">${escapeHtml(getAdminProductDisplayName(product))}</div>
+                    <div class="product-admin-meta">${escapeHtml(product.category || "")}｜${escapeHtml(product.count || "")}</div>
                   </div>
                   <div class="product-admin-price">$${formatMoney(product.price)}</div>
                 </div>
@@ -3200,11 +3291,6 @@
                   <span class="product-chip">排序 ${escapeHtml(product.sortOrder || "")}</span>
                   <span class="product-chip">代碼 ${escapeHtml(product.code || "")}</span>
                   <span class="product-chip ${stockText === "未控管" ? "product-muted" : ""}">庫存 ${escapeHtml(stockText)}</span>
-                  <span class="product-chip ${activeClass}">${activeText}</span>
-                </div>
-                <div class="product-admin-card-actions">
-                  <button type="button" class="product-action-btn secondary" onclick="toggleProductManagementEdit(this)">編輯</button>
-                  <button type="button" class="product-action-btn danger" onclick="deactivateProductManagementCard(this.closest('.product-admin-card')?.dataset.productId || '')">下架</button>
                 </div>
               </div>
               <div class="product-admin-edit">
@@ -3220,36 +3306,26 @@
       function renderProductManagementFields(product) {
         return `
           <div class="product-field">
-            <label>id</label>
-            <input data-product-field="id" value="${escapeHtml(product.id || "")}" ${product.isNew ? "" : "readonly"}>
-          </div>
-          <div class="product-field">
-            <label>code</label>
-            <input data-product-field="code" value="${escapeHtml(product.code || "")}" ${product.isNew ? "" : "readonly"}>
-          </div>
-          <div class="product-field">
-            <label>名稱</label>
-            <input data-product-field="name" value="${escapeHtml(product.name || "")}">
-          </div>
-          <div class="product-field">
             <label>品種</label>
-            <input data-product-field="variety" value="${escapeHtml(product.variety || "")}">
+            <select data-product-field="variety">
+              ${renderSimpleOptions(["牛奶梨", "蔗香梨"], product.variety)}
+            </select>
           </div>
           <div class="product-field">
             <label>分類</label>
-            <input data-product-field="category" value="${escapeHtml(product.category || "")}">
+            <select data-product-field="category">
+              ${renderSimpleOptions(["一般禮盒", "兩粒裝"], product.category)}
+            </select>
           </div>
           <div class="product-field">
             <label>A數 / 等級</label>
             <input data-product-field="grade" value="${escapeHtml(product.grade || "")}">
           </div>
           <div class="product-field">
-            <label>重量區間</label>
-            <input data-product-field="weight" value="${escapeHtml(product.weight || "")}">
-          </div>
-          <div class="product-field">
             <label>顆數</label>
-            <input data-product-field="count" value="${escapeHtml(product.count || "")}">
+            <select data-product-field="count">
+              ${renderSimpleOptions(["2顆", "6顆", "8顆", "10顆", "12顆"], product.count)}
+            </select>
           </div>
           <div class="product-field">
             <label>價格</label>
@@ -3264,13 +3340,42 @@
             <input data-product-field="sortOrder" type="number" min="1" step="1" value="${escapeHtml(product.sortOrder || "")}">
           </div>
           <div class="product-field">
-            <label>上下架</label>
-            <div class="product-toggle-field">
-              <input data-product-field="active" type="checkbox" ${product.active ? "checked" : ""}>
-              <span>${product.active ? "前台顯示" : "前台不顯示"}</span>
-            </div>
+            <label>狀態</label>
+            <select data-product-field="status">
+              ${renderSimpleOptions(["上架", "停售"], product.active ? "上架" : "停售")}
+            </select>
           </div>
+          <details class="product-code-details" ${product.isNew ? "open" : ""}>
+            <summary>系統代碼</summary>
+            <div class="product-code-grid">
+              <div class="product-field">
+                <label>id</label>
+                <input data-product-field="id" value="${escapeHtml(product.id || "")}" ${product.isNew ? "" : "readonly"}>
+              </div>
+              <div class="product-field">
+                <label>code</label>
+                <input data-product-field="code" value="${escapeHtml(product.code || "")}" ${product.isNew ? "" : "readonly"}>
+              </div>
+            </div>
+          </details>
         `;
+      }
+
+      function renderSimpleOptions(options, selectedValue) {
+        const selected = String(selectedValue || "").trim();
+        return options
+          .map(
+            (option) =>
+              `<option value="${escapeHtml(option)}"${option === selected ? " selected" : ""}>${escapeHtml(option)}</option>`,
+          )
+          .join("");
+      }
+
+      function getAdminProductDisplayName(product) {
+        return [product?.variety, product?.grade]
+          .map((value) => String(value || "").trim())
+          .filter(Boolean)
+          .join(" ") || String(product?.code || "").trim();
       }
 
       function renderProductBannerSettings() {
@@ -3313,15 +3418,14 @@
         const draft = {
           id: `p${Date.now()}`,
           code: "",
-          name: "",
           variety: "蔗香梨",
           category: "一般禮盒",
           grade: "",
-          weight: "",
-          count: "",
+          count: "8顆",
           price: 1,
           stock: null,
           active: false,
+          status: "停售",
           sortOrder: nextSort,
           isNew: true,
         };
@@ -3341,7 +3445,6 @@
           String(
             card.querySelector(`[data-product-field="${field}"]`)?.value || "",
           ).trim();
-        const activeInput = card.querySelector('[data-product-field="active"]');
         const stockText = getValue("stock");
         const stock =
           stockText === ""
@@ -3353,15 +3456,14 @@
         return {
           id: getValue("id"),
           code: normalizeAdminProductCode(getValue("code")),
-          name: getValue("name"),
           variety: getValue("variety"),
           category: getValue("category"),
           grade: getValue("grade"),
-          weight: getValue("weight"),
           count: getValue("count"),
           price: Number(getValue("price")),
           stock,
-          active: activeInput?.checked === true,
+          active: getValue("status") === "上架",
+          status: getValue("status") === "上架" ? "上架" : "停售",
           sortOrder: Number(getValue("sortOrder")),
         };
       }
@@ -3373,15 +3475,13 @@
           const requiredStrings = [
             product.id,
             product.code,
-            product.name,
             product.variety,
             product.category,
             product.grade,
-            product.weight,
             product.count,
           ];
           if (requiredStrings.some((value) => !String(value || "").trim())) {
-            return "商品欄位不可空白。";
+            return "商品欄位不可空白，系統代碼也要填。";
           }
           if (!Number.isInteger(product.price) || product.price <= 0) {
             return "價格需為正整數。";
@@ -3522,7 +3622,7 @@
         return products
           .map(
             (product) =>
-              `<option value="${escapeHtml(product.code)}" ${product.code === selectedProduct ? "selected" : ""}>${escapeHtml(product.variety || "")} ${escapeHtml(product.category || "")}｜${escapeHtml(product.grade || product.name)}｜${escapeHtml(product.count)}｜$${escapeHtml(formatAdminMoney(product.price))}</option>`,
+              `<option value="${escapeHtml(product.code)}" ${product.code === selectedProduct ? "selected" : ""}>${escapeHtml(getAdminProductDisplayName(product))}｜${escapeHtml(product.category || "")}｜${escapeHtml(product.count)}｜$${escapeHtml(formatAdminMoney(product.price))}</option>`,
           )
           .join("");
       }
@@ -3618,8 +3718,8 @@
         return {
           productId: product.id,
           productCode: product.code,
-          productName: product.name,
-          weight: product.weight,
+          productName: getAdminProductDisplayName(product),
+          weight: "",
           count: product.count,
           unitPrice: product.price,
           qty,
@@ -4969,7 +5069,7 @@
             .replace(/\s+/g, "")
             .toUpperCase();
           const matches = adminProductCatalog.filter((product) => {
-            return [product.code, product.name].some(
+            return [product.code, getAdminProductDisplayName(product), product.grade].some(
               (value) =>
                 String(value || "")
                   .replace(/\s+/g, "")
