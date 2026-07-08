@@ -38,6 +38,10 @@
         box-shadow: 0 3px 10px rgba(15, 23, 42, 0.04);
       }
 
+      .gas-test-panel.hidden {
+        display: none;
+      }
+
       .gas-test-title {
         font-size: 14px;
         font-weight: 800;
@@ -1952,7 +1956,7 @@
       .product-banner-admin {
         border: 1px solid #e2e8f0;
         border-radius: 12px;
-        margin-bottom: 14px;
+        margin-top: 18px;
         padding: 12px;
       }
 
@@ -2296,7 +2300,7 @@
     </div>
 
     <section id="order-page-section">
-      <div class="gas-test-panel" aria-live="polite">
+      <div class="gas-test-panel hidden" id="adminStatusPanel" aria-live="polite">
         <div class="gas-test-status" id="adminReadStatus">
           等待管理員完整訂單讀取…
         </div>
@@ -2661,18 +2665,14 @@
           </div>
         </div>
         <div class="product-management-body">
+          <div
+            class="product-management-feedback"
+            id="productManagementFeedback"
+          ></div>
+          <div class="product-card-list" id="product-management-list"></div>
           <div class="product-banner-admin">
             <h3>前台廣告圖</h3>
             <div class="product-banner-editor">
-              <div class="product-field">
-                <label for="productBannerImageUrl">圖片網址</label>
-                <input
-                  id="productBannerImageUrl"
-                  type="url"
-                  placeholder="assets/sanheyuan-banner.png 或 https://..."
-                  oninput="previewProductBannerImage()"
-                />
-              </div>
               <div class="product-field">
                 <label for="productBannerImageFile">直接上傳新圖片</label>
                 <input
@@ -2696,20 +2696,8 @@
               >
                 上傳並套用圖片
               </button>
-              <button
-                type="button"
-                class="product-action-btn primary"
-                onclick="saveProductBannerSettings()"
-              >
-                儲存圖片網址
-              </button>
             </div>
           </div>
-          <div
-            class="product-management-feedback"
-            id="productManagementFeedback"
-          ></div>
-          <div class="product-card-list" id="product-management-list"></div>
         </div>
       </div>
     </section>
@@ -3084,6 +3072,12 @@
       function getNotificationTypeLabel(type) {
         const key = String(type || "").trim();
         return NOTIFICATION_TYPE_LABELS[key] || key || "無";
+      }
+
+      function setAdminStatusPanelVisible(visible) {
+        document
+          .getElementById("adminStatusPanel")
+          ?.classList.toggle("hidden", !visible);
       }
 
       function isOpenNotificationStatus(status) {
@@ -3529,19 +3523,10 @@
       }
 
       function renderProductBannerSettings() {
-        const input = document.getElementById("productBannerImageUrl");
         const preview = document.getElementById("productBannerPreview");
         const bannerUrl = String(
           adminSiteSettings?.bannerImageUrl || "assets/sanheyuan-banner.png",
         ).trim();
-        if (input && input.value !== bannerUrl) input.value = bannerUrl;
-        if (preview) preview.src = bannerUrl || "assets/sanheyuan-banner.png";
-      }
-
-      function previewProductBannerImage() {
-        const input = document.getElementById("productBannerImageUrl");
-        const preview = document.getElementById("productBannerPreview");
-        const bannerUrl = String(input?.value || "").trim();
         if (preview) preview.src = bannerUrl || "assets/sanheyuan-banner.png";
       }
 
@@ -3633,8 +3618,6 @@
             ...(result.siteSettings || {}),
             bannerImageUrl: result.imageUrl,
           };
-          const urlInput = document.getElementById("productBannerImageUrl");
-          if (urlInput) urlInput.value = result.imageUrl;
           renderProductBannerSettings();
           setProductManagementFeedback("✅ 已上傳並套用廣告圖", "success");
           if (input) input.value = "";
@@ -3802,18 +3785,6 @@
         await saveProductManagementPayload({ products });
       }
 
-      async function saveProductBannerSettings() {
-        const bannerImageUrl = String(
-          document.getElementById("productBannerImageUrl")?.value || "",
-        ).trim();
-        await saveProductManagementPayload({
-          siteSettings: {
-            ...adminSiteSettings,
-            bannerImageUrl: bannerImageUrl || "assets/sanheyuan-banner.png",
-          },
-        });
-      }
-
       async function saveProductManagementPayload(payloadPatch) {
         const adminSessionToken = String(
           sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
@@ -3914,8 +3885,9 @@
 
         if (status) {
           status.className = `gas-test-status${isError ? " error" : ""}`;
-          status.innerText = message;
+          status.innerText = isError ? message : "";
         }
+        if (isError) setAdminStatusPanelVisible(true);
       }
 
       function resetModalProductRows() {
@@ -4294,6 +4266,7 @@
           ).trim();
 
           if (adminReadStatusEl) {
+            setAdminStatusPanelVisible(true);
             adminReadStatusEl.className = "gas-test-status";
             adminReadStatusEl.innerText = "讀取管理員完整訂單中...";
           }
@@ -4334,27 +4307,11 @@
           }
 
           const orders = payload.orders;
-          const firstOrder = orders[0] || null;
-          const returnedCount = Number.isFinite(Number(payload.count))
-            ? Number(payload.count)
-            : orders.length;
-          const statusLines = [
-            "✅ 管理員完整訂單讀取成功",
-            `回傳筆數：${returnedCount}`,
-          ];
-
-          if (firstOrder) {
-            statusLines.push(
-              `第一筆訂單編號：${firstOrder.orderNo || "未提供"}`,
-            );
-          } else {
-            statusLines.push("目前沒有正式訂單");
-          }
-
           if (adminReadStatusEl) {
-            adminReadStatusEl.className = "gas-test-status success";
-            adminReadStatusEl.innerText = statusLines.join("\n");
+            adminReadStatusEl.className = "gas-test-status";
+            adminReadStatusEl.innerText = "";
           }
+          setAdminStatusPanelVisible(false);
 
           updateAdminRefreshMeta();
           return orders;
@@ -4366,6 +4323,7 @@
           }
 
           if (adminReadStatusEl) {
+            setAdminStatusPanelVisible(true);
             adminReadStatusEl.className = "gas-test-status error";
             adminReadStatusEl.innerText =
               "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。";
@@ -4513,6 +4471,7 @@
           const adminReadStatusEl = document.getElementById("adminReadStatus");
 
           if (adminReadStatusEl) {
+            setAdminStatusPanelVisible(true);
             adminReadStatusEl.className = "gas-test-status error";
             adminReadStatusEl.innerText =
               "⚠️ 真實訂單卡渲染失敗，原畫面已保留。";
