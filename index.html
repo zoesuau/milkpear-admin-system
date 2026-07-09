@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta
-      name="viewport" 
+      name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <title>出貨後台</title>
@@ -3191,6 +3191,14 @@
         } finally {
           window.clearTimeout(timer);
         }
+      }
+
+      function createAdminRequestKey(action, parts = []) {
+        return [action, ...parts]
+          .map((part) => String(part ?? "").trim())
+          .join("|")
+          .replace(/\s+/g, "")
+          .slice(0, 160);
       }
 
       function clearAdminAuthSession() {
@@ -6856,6 +6864,11 @@
               orderNo,
               actualShippingDate,
               bundleChangeNotice: String(bundleChangeNotice),
+              requestKey: createAdminRequestKey("adminMarkOrderShipped", [
+                orderNo,
+                actualShippingDate,
+                String(bundleChangeNotice),
+              ]),
             }),
           });
           const payload = await response.json();
@@ -6882,7 +6895,12 @@
           }
 
           actionSucceeded = true;
-          adminMarkOrderShippedSetFeedback(panel, "已寫入，正在重新讀取訂單…");
+          adminMarkOrderShippedSetFeedback(
+            panel,
+            payload.deduped
+              ? "寄出通知已送出且未重複發送，正在重新讀取訂單…"
+              : "已寫入，正在重新讀取訂單…",
+          );
           const adminOrders = await fetchAdminOrdersFromGas();
           if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
             adminMarkOrderShippedSetSaving(card, panel, false);
@@ -7190,6 +7208,7 @@
           feedback.innerText = "通知發送中…";
         }
 
+        let dedupedSucceeded = false;
         try {
           const action = "adminSendShippingDateNotice";
           const response = await fetch(GAS_ORDERS_API_URL, {
@@ -7201,6 +7220,11 @@
               action,
               adminSessionToken,
               orderNo,
+              requestKey: createAdminRequestKey(action, [
+                orderNo,
+                noticeMode,
+                expectedShippingDate,
+              ]),
             }),
           });
           const payload = await response.json();
@@ -7219,17 +7243,21 @@
             throw new Error(errorCode || "SHIPPING_DATE_NOTICE_FAILED");
           }
 
+          dedupedSucceeded = payload.deduped === true;
           if (feedback) {
             feedback.classList.remove("is-error");
-            feedback.innerText = "已送出，正在重新讀取訂單…";
+            feedback.innerText = dedupedSucceeded
+              ? "此通知已送出，未重複發送，正在重新讀取訂單…"
+              : "已送出，正在重新讀取訂單…";
           }
           const adminOrders = await fetchAdminOrdersFromGas();
           if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
             adminShippingDateNoticeSetSaving(card, false);
             if (feedback) {
               feedback.classList.add("is-error");
-              feedback.innerText =
-                "通知結果已回傳，但重新讀取失敗，請重新整理確認。";
+              feedback.innerText = dedupedSucceeded
+                ? "此通知已送出且未重複發送，但重新讀取失敗，請重新整理確認。"
+                : "通知結果已回傳，但重新讀取失敗，請重新整理確認。";
             }
             showAdminAuthOverlay(
               "通知結果已回傳，但重新讀取失敗，請按下方重新讀取訂單確認。",
@@ -7248,9 +7276,11 @@
           adminShippingDateNoticeSetSaving(card, false);
           if (feedback) {
             feedback.classList.add("is-error");
-            feedback.innerText = adminShippingDateNoticeGetErrorMessage(
-              error?.message || "",
-            );
+            feedback.innerText =
+              error?.message === "SHIPPING_DATE_NOTICE_REFRESH_FAILED" &&
+              dedupedSucceeded
+                ? "此通知已送出且未重複發送，但重新讀取失敗，請重新整理確認。"
+                : adminShippingDateNoticeGetErrorMessage(error?.message || "");
           }
         }
       }
@@ -7291,20 +7321,29 @@
           feedback.innerText = "";
         }
 
+        let dedupedSucceeded = false;
         try {
           const action = canLineNotify
             ? "adminResendOrderNotification"
             : "adminMarkOrderPhoneNotified";
+          const body = {
+            action,
+            adminSessionToken,
+            orderNo,
+          };
+          if (canLineNotify) {
+            body.requestKey = createAdminRequestKey(action, [
+              orderNo,
+              notificationType,
+              card.dataset.lastNotificationStatus || "",
+            ]);
+          }
           const response = await fetch(GAS_ORDERS_API_URL, {
             method: "POST",
             headers: {
               "Content-Type": "text/plain;charset=utf-8",
             },
-            body: JSON.stringify({
-              action,
-              adminSessionToken,
-              orderNo,
-            }),
+            body: JSON.stringify(body),
           });
           const payload = await response.json();
 
@@ -7346,6 +7385,12 @@
             return;
           }
 
+          dedupedSucceeded = payload.deduped === true;
+          if (dedupedSucceeded && feedback) {
+            feedback.classList.remove("is-error");
+            feedback.innerText = "此通知已送出，未重複發送，正在重新讀取訂單…";
+          }
+
           const adminOrders = await fetchAdminOrdersFromGas();
           if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
             throw new Error("NOTIFICATION_REFRESH_FAILED");
@@ -7370,7 +7415,9 @@
                 : "異動仍待通知。";
             feedback.innerText =
               error.message === "NOTIFICATION_REFRESH_FAILED"
-                ? "通知可能已完成，但重新讀取失敗，請重新整理確認。"
+                ? dedupedSucceeded
+                  ? "此通知已送出且未重複發送，但重新讀取失敗，請重新整理確認。"
+                  : "通知可能已完成，但重新讀取失敗，請重新整理確認。"
                 : "處理失敗，" + pendingText;
           }
         }
