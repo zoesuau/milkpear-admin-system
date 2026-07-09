@@ -80,13 +80,34 @@
       }
 
       .admin-auth-panel {
+        position: relative;
         width: min(100%, 360px);
         background: #ffffff;
         border: 1px solid #dbeafe;
         border-radius: 12px;
-        padding: 20px;
+        padding: 28px 20px 20px;
         text-align: center;
         box-shadow: 0 14px 40px rgba(15, 23, 42, 0.14);
+      }
+
+      .admin-auth-x {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 34px;
+        height: 34px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: #334155;
+        font-size: 24px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .admin-auth-x:active {
+        background: #e2e8f0;
       }
 
       .admin-auth-message {
@@ -97,7 +118,9 @@
         margin-bottom: 14px;
       }
 
-      .admin-auth-retry {
+      .admin-auth-retry,
+      .admin-auth-refresh,
+      .admin-auth-close {
         border: 0;
         border-radius: 8px;
         padding: 10px 14px;
@@ -108,7 +131,19 @@
         cursor: pointer;
       }
 
-      .admin-auth-retry.hidden {
+      .admin-auth-refresh {
+        margin-right: 8px;
+        background: #4f7f63;
+      }
+
+      .admin-auth-close {
+        margin-left: 8px;
+        background: #64748b;
+      }
+
+      .admin-auth-retry.hidden,
+      .admin-auth-refresh.hidden,
+      .admin-auth-close.hidden {
         display: none;
       }
 
@@ -2267,15 +2302,38 @@
   <body>
     <div class="admin-auth-overlay" id="adminAuthOverlay" aria-live="polite">
       <div class="admin-auth-panel">
+        <button
+          type="button"
+          class="admin-auth-x"
+          id="adminAuthXBtn"
+          aria-label="關閉提示"
+          title="關閉提示"
+        >
+          ×
+        </button>
         <div class="admin-auth-message" id="adminAuthMessage">
           管理員登入確認中...
         </div>
+        <button
+          type="button"
+          class="admin-auth-refresh"
+          id="adminAuthRefreshBtn"
+        >
+          重新讀取訂單
+        </button>
         <button
           type="button"
           class="admin-auth-retry hidden"
           id="adminAuthRetryBtn"
         >
           重新登入 LINE
+        </button>
+        <button
+          type="button"
+          class="admin-auth-close"
+          id="adminAuthCloseBtn"
+        >
+          關閉提示
         </button>
       </div>
     </div>
@@ -2300,7 +2358,11 @@
     </div>
 
     <section id="order-page-section">
-      <div class="gas-test-panel hidden" id="adminStatusPanel" aria-live="polite">
+      <div
+        class="gas-test-panel hidden"
+        id="adminStatusPanel"
+        aria-live="polite"
+      >
         <div class="gas-test-status" id="adminReadStatus">
           等待管理員完整訂單讀取…
         </div>
@@ -2356,39 +2418,6 @@
           >
             本週
           </button>
-          <script>
-            (() => {
-              const button = document.getElementById("currentWeekFilterButton");
-              if (!button) return;
-
-              const parts = new Intl.DateTimeFormat("en-US", {
-                timeZone: "Asia/Taipei",
-                year: "numeric",
-                month: "2-digit",
-                day: "2-digit",
-              }).formatToParts(new Date());
-
-              const getPart = (type) =>
-                parts.find((part) => part.type === type)?.value;
-
-              const year = Number(getPart("year"));
-              const month = Number(getPart("month"));
-              const day = Number(getPart("day"));
-              if (!year || !month || !day) return;
-
-              const monday = new Date(Date.UTC(year, month - 1, day));
-              const weekday = monday.getUTCDay() || 7;
-              monday.setUTCDate(monday.getUTCDate() - weekday + 1);
-
-              const sunday = new Date(monday);
-              sunday.setUTCDate(sunday.getUTCDate() + 6);
-
-              const formatMonthDay = (date) =>
-                `${date.getUTCMonth() + 1}/${date.getUTCDate()}`;
-
-              button.textContent = `本週（${formatMonthDay(monday)}～${formatMonthDay(sunday)}）`;
-            })();
-          </script>
           <button onclick="filterByDateRange('本月', this)">本月</button>
           <button onclick="filterByDateRange('自訂', this)">自訂</button>
         </div>
@@ -2687,7 +2716,28 @@
                   id="productBannerPreview"
                   src="assets/sanheyuan-banner.png"
                   alt="前台廣告圖預覽"
+                  onerror="
+                    this.style.display = 'none';
+                    document.getElementById(
+                      'productBannerPreviewEmpty',
+                    ).style.display = 'block';
+                  "
+                  onload="
+                    this.style.display = '';
+                    document.getElementById(
+                      'productBannerPreviewEmpty',
+                    ).style.display = 'none';
+                  "
                 />
+                <span
+                  id="productBannerPreviewEmpty"
+                  style="
+                    display: none;
+                    color: var(--text-muted);
+                    font-size: 0.85em;
+                  "
+                  >尚未上傳廣告圖，或圖片路徑無法在後台預覽（不影響前台實際顯示）</span
+                >
               </div>
               <button
                 type="button"
@@ -3014,6 +3064,9 @@
       const ADMIN_LINE_NONCE_KEY = "milkpear_admin_line_nonce";
       const ADMIN_LINE_CODE_VERIFIER_KEY = "milkpear_admin_line_code_verifier";
       const ADMIN_LINE_SESSION_TOKEN_KEY = "milkpear_admin_session_token";
+      const ADMIN_AUTH_TIMEOUT_MS = 15000;
+      const ADMIN_READ_ORDERS_TIMEOUT_MS = 15000;
+      const ADMIN_INITIAL_LOAD_SLOW_MS = 12000;
 
       let adminProductCatalog = [];
       let adminSiteSettings = {
@@ -3088,19 +3141,54 @@
         return CANONICAL_NOTIFICATION_TYPES.has(String(type || "").trim());
       }
 
-      function showAdminAuthOverlay(message, showRetry) {
+      function shouldOfferAdminRefreshFromMessage(message) {
+        return /讀取失敗|重新整理|重新讀取|讀取訂單時間較久/.test(
+          String(message || ""),
+        );
+      }
+
+      function showAdminAuthOverlay(
+        message,
+        showRetry,
+        showRefresh = false,
+        showClose = false,
+      ) {
         const overlay = document.getElementById("adminAuthOverlay");
         const messageEl = document.getElementById("adminAuthMessage");
         const retryBtn = document.getElementById("adminAuthRetryBtn");
+        const refreshBtn = document.getElementById("adminAuthRefreshBtn");
+        const closeBtn = document.getElementById("adminAuthCloseBtn");
+        const shouldShowRefresh =
+          showRefresh || shouldOfferAdminRefreshFromMessage(message);
+        const shouldShowClose =
+          showClose ||
+          shouldShowRefresh ||
+          String(message || "").includes("失敗");
 
         if (messageEl) messageEl.innerText = message;
         if (retryBtn) retryBtn.classList.toggle("hidden", !showRetry);
+        if (refreshBtn)
+          refreshBtn.classList.toggle("hidden", !shouldShowRefresh);
+        if (closeBtn) closeBtn.classList.toggle("hidden", !shouldShowClose);
         if (overlay) overlay.classList.remove("hidden");
       }
 
       function hideAdminAuthOverlay() {
         const overlay = document.getElementById("adminAuthOverlay");
         if (overlay) overlay.classList.add("hidden");
+      }
+
+      async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+        if (typeof AbortController === "undefined") {
+          return fetch(url, options);
+        }
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+          window.clearTimeout(timer);
+        }
       }
 
       function clearAdminAuthSession() {
@@ -3194,19 +3282,23 @@
         }
 
         try {
-          const response = await fetch(GAS_ORDERS_API_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "text/plain;charset=utf-8",
+          const response = await fetchWithTimeout(
+            GAS_ORDERS_API_URL,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "text/plain;charset=utf-8",
+              },
+              body: JSON.stringify({
+                action: "adminAuth",
+                code,
+                redirectUri: ADMIN_AUTH_REDIRECT_URI,
+                codeVerifier,
+                nonce,
+              }),
             },
-            body: JSON.stringify({
-              action: "adminAuth",
-              code,
-              redirectUri: ADMIN_AUTH_REDIRECT_URI,
-              codeVerifier,
-              nonce,
-            }),
-          });
+            ADMIN_AUTH_TIMEOUT_MS,
+          );
 
           const payload = await response.json();
 
@@ -3237,7 +3329,12 @@
           clearAdminAuthSession();
           sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
           clearAdminAuthQuery();
-          showAdminAuthOverlay("⚠️ LINE 登入驗證失敗，請重新登入 LINE", true);
+          showAdminAuthOverlay(
+            "⚠️ LINE 登入驗證失敗，請確認網路後再試。",
+            true,
+            false,
+            true,
+          );
           return false;
         }
       }
@@ -3355,15 +3452,15 @@
       }
 
       function renderProductManagementCard(product) {
-            const activeText = product.active ? "上架" : "停售";
-            const activeClass = product.active
-              ? "product-status-active"
-              : "product-status-inactive";
-            const stockText =
-              Number.isInteger(product.stock) && product.stock >= 0
-                ? `${product.stock}盒`
-                : "未控管";
-            return `
+        const activeText = product.active ? "上架" : "停售";
+        const activeClass = product.active
+          ? "product-status-active"
+          : "product-status-inactive";
+        const stockText =
+          Number.isInteger(product.stock) && product.stock >= 0
+            ? `${product.stock}盒`
+            : "未控管";
+        return `
             <article class="product-admin-card${product.active ? "" : " is-inactive"}" data-product-id="${escapeHtml(product.id)}">
               <div class="product-admin-summary">
                 <div class="product-admin-topline">
@@ -3516,10 +3613,12 @@
       }
 
       function getAdminProductDisplayName(product) {
-        return [product?.variety, product?.grade]
-          .map((value) => String(value || "").trim())
-          .filter(Boolean)
-          .join(" ") || String(product?.code || "").trim();
+        return (
+          [product?.variety, product?.grade]
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+            .join(" ") || String(product?.code || "").trim()
+        );
       }
 
       function renderProductBannerSettings() {
@@ -3566,7 +3665,10 @@
         ).trim();
 
         if (!adminSessionToken) {
-          setProductManagementFeedback("登入已過期，請重新登入 LINE。", "error");
+          setProductManagementFeedback(
+            "登入已過期，請重新登入 LINE。",
+            "error",
+          );
           return;
         }
 
@@ -3575,8 +3677,15 @@
           return;
         }
 
-        if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
-          setProductManagementFeedback("只支援 PNG、JPG、WEBP、GIF 圖片。", "error");
+        if (
+          !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
+            file.type,
+          )
+        ) {
+          setProductManagementFeedback(
+            "只支援 PNG、JPG、WEBP、GIF 圖片。",
+            "error",
+          );
           return;
         }
 
@@ -3791,7 +3900,10 @@
         ).trim();
 
         if (!adminSessionToken) {
-          setProductManagementFeedback("登入已過期，請重新登入 LINE。", "error");
+          setProductManagementFeedback(
+            "登入已過期，請重新登入 LINE。",
+            "error",
+          );
           return false;
         }
 
@@ -4275,16 +4387,20 @@
             throw new Error("ADMIN_SESSION_REQUIRED");
           }
 
-          const response = await fetch(baseUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "text/plain;charset=utf-8",
+          const response = await fetchWithTimeout(
+            baseUrl,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "text/plain;charset=utf-8",
+              },
+              body: JSON.stringify({
+                action: "adminReadOrders",
+                adminSessionToken,
+              }),
             },
-            body: JSON.stringify({
-              action: "adminReadOrders",
-              adminSessionToken,
-            }),
-          });
+            ADMIN_READ_ORDERS_TIMEOUT_MS,
+          );
 
           const payload = await response.json();
 
@@ -4332,6 +4448,7 @@
           showAdminAuthOverlay(
             "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。",
             false,
+            true,
           );
 
           return null;
@@ -4364,6 +4481,32 @@
         applyReadOnlyModeToRealOrders();
         updateAdminRefreshMeta();
       }
+
+      async function refreshAdminOrdersFromOverlay() {
+        setAdminRefreshState(true, "正在重新讀取訂單...");
+        showAdminAuthOverlay("正在重新讀取訂單...", false, true, true);
+        const adminOrders = await fetchAdminOrdersFromGas();
+        if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
+          setAdminRefreshState(false, "重新讀取失敗，請稍後再試。");
+          showAdminAuthOverlay(
+            "⚠️ 管理員完整訂單讀取失敗，請稍後再試。",
+            false,
+            true,
+          );
+          return;
+        }
+
+        updateStatsCounters();
+        syncAdminSearchMatches();
+        applyCurrentFilter();
+        handleBatchCheckChange();
+        updateNotifyButton();
+        applyReadOnlyModeToRealOrders();
+        updateAdminRefreshMeta();
+        hideAdminAuthOverlay();
+      }
+      window.refreshAdminOrdersFromOverlay = refreshAdminOrdersFromOverlay;
+      window.hideAdminAuthOverlay = hideAdminAuthOverlay;
 
       async function fetchAdminProductCatalogFromGas() {
         const baseUrl = String(GAS_ORDERS_API_URL || "").trim();
@@ -5297,7 +5440,11 @@
             .replace(/\s+/g, "")
             .toUpperCase();
           const matches = adminProductCatalog.filter((product) => {
-            return [product.code, getAdminProductDisplayName(product), product.grade].some(
+            return [
+              product.code,
+              getAdminProductDisplayName(product),
+              product.grade,
+            ].some(
               (value) =>
                 String(value || "")
                   .replace(/\s+/g, "")
@@ -5685,6 +5832,8 @@
           ORDER_CONTENT_UPDATE_BUSY: "系統忙碌，請稍後再試。",
           ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
           ORDER_NO_NOT_UNIQUE: "訂單資料異常，請停止操作。",
+          ORDER_CONTENT_REFRESH_FAILED:
+            "內容可能已儲存，但重新讀取失敗，請重新讀取訂單確認。",
         };
         return messages[errorCode] || "內容儲存失敗，請稍後再試。";
       }
@@ -5823,6 +5972,13 @@
           saveButton.innerText = "儲存內容";
           feedback.className = "admin-content-feedback is-error";
           feedback.innerText = adminContentErrorMessage(error.message);
+          if (error.message === "ORDER_CONTENT_REFRESH_FAILED") {
+            showAdminAuthOverlay(
+              "內容可能已儲存，但重新讀取失敗，請按下方重新讀取訂單確認。",
+              false,
+              true,
+            );
+          }
         }
       }
 
@@ -6196,11 +6352,7 @@
           paymentMethod,
           paymentStatus,
         );
-        const saveButtonLabel =
-          String(expectedShippingDate || "").trim() === "" &&
-          canLineNotify === true
-            ? "儲存並寄送 LINE 通知"
-            : "儲存此筆修改";
+        const saveButtonLabel = "儲存此筆修改";
         const paymentWarning = paymentState
           ? ""
           : `<div class="admin-workflow-feedback is-error">付款資料待確認</div>`;
@@ -6211,6 +6363,7 @@
             data-admin-workflow-editor="true"
             data-baseline-date="${escapeHtml(expectedShippingDate)}"
             data-baseline-payment="${escapeHtml(paymentState || "")}"
+            data-can-line-notify="${canLineNotify === true ? "true" : "false"}"
           >
             <div class="admin-workflow-grid">
               <div class="admin-workflow-field">
@@ -6318,11 +6471,29 @@
         );
       }
 
+      function adminWorkflowShouldSendLineNotice(editor) {
+        const values = adminWorkflowGetValues(editor);
+        return (
+          editor?.dataset.canLineNotify === "true" &&
+          String(editor.dataset.baselineDate || "").trim() === "" &&
+          String(values.expectedShippingDate || "").trim() !== ""
+        );
+      }
+
+      function adminWorkflowUpdateSaveButtonLabel(editor) {
+        const saveButton = editor?.querySelector(".admin-workflow-save");
+        if (!saveButton) return;
+        saveButton.innerText = adminWorkflowShouldSendLineNotice(editor)
+          ? "儲存並寄送 LINE 通知"
+          : "儲存此筆修改";
+      }
+
       function adminWorkflowRefreshDirtyState(editor) {
         if (!editor || editor.dataset.saving === "true") return;
 
         const isDirty = adminWorkflowIsDirty(editor);
         const saveButton = editor.querySelector(".admin-workflow-save");
+        adminWorkflowUpdateSaveButtonLabel(editor);
         if (saveButton) saveButton.disabled = !isDirty;
         adminWorkflowSetFeedback(editor, isDirty ? "尚未儲存" : "");
         adminNoteRefreshCardLocks(editor.closest(".card"));
@@ -6338,6 +6509,11 @@
 
         const saveButton = editor.querySelector(".admin-workflow-save");
         if (saveButton) {
+          saveButton.innerText = isSaving
+            ? "儲存中…"
+            : adminWorkflowShouldSendLineNotice(editor)
+              ? "儲存並寄送 LINE 通知"
+              : "儲存此筆修改";
           saveButton.disabled = isSaving || !adminWorkflowIsDirty(editor);
         }
         adminNoteRefreshCardLocks(editor.closest(".card"));
@@ -6355,6 +6531,38 @@
           if (part.type !== "literal") values[part.type] = part.value;
         });
         return `${values.year}-${values.month}-${values.day}`;
+      }
+
+      function updateCurrentWeekFilterButtonLabel() {
+        const button = document.getElementById("currentWeekFilterButton");
+        if (!button) return;
+
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Taipei",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(new Date());
+        const values = {};
+        parts.forEach((part) => {
+          if (part.type !== "literal") values[part.type] = part.value;
+        });
+
+        const year = Number(values.year);
+        const month = Number(values.month);
+        const day = Number(values.day);
+        if (!year || !month || !day) return;
+
+        const monday = new Date(Date.UTC(year, month - 1, day));
+        const weekday = monday.getUTCDay() || 7;
+        monday.setUTCDate(monday.getUTCDate() - weekday + 1);
+
+        const sunday = new Date(monday);
+        sunday.setUTCDate(sunday.getUTCDate() + 6);
+
+        const formatMonthDay = (date) =>
+          `${date.getUTCMonth() + 1}/${date.getUTCDate()}`;
+        button.textContent = `本週（${formatMonthDay(monday)}～${formatMonthDay(sunday)}）`;
       }
 
       function buildAdminMarkOrderShippedHtml(options = {}) {
@@ -6757,6 +6965,11 @@
             "訂單已儲存，但重新讀取失敗，請重新整理確認最新資料。",
             true,
           );
+          showAdminAuthOverlay(
+            "訂單已儲存，但重新讀取失敗，請按下方重新讀取訂單確認。",
+            false,
+            true,
+          );
           return false;
         }
 
@@ -6766,6 +6979,11 @@
           adminWorkflowSetFeedback(
             editor,
             "訂單已儲存，但重新讀取失敗，請重新整理確認最新資料。",
+            true,
+          );
+          showAdminAuthOverlay(
+            "訂單已儲存，但重新讀取失敗，請按下方重新讀取訂單確認。",
+            false,
             true,
           );
           return false;
@@ -7011,6 +7229,11 @@
               feedback.innerText =
                 "通知結果已回傳，但重新讀取失敗，請重新整理確認。";
             }
+            showAdminAuthOverlay(
+              "通知結果已回傳，但重新讀取失敗，請按下方重新讀取訂單確認。",
+              false,
+              true,
+            );
             return;
           }
           updateStatsCounters();
@@ -7381,16 +7604,29 @@
       // 頁面初始化
       window.addEventListener("DOMContentLoaded", async () => {
         const retryBtn = document.getElementById("adminAuthRetryBtn");
+        const refreshBtn = document.getElementById("adminAuthRefreshBtn");
+        const closeBtn = document.getElementById("adminAuthCloseBtn");
+        const xBtn = document.getElementById("adminAuthXBtn");
         if (retryBtn) {
           retryBtn.addEventListener("click", () => {
             startAdminAuth(true);
           });
+        }
+        if (refreshBtn) {
+          refreshBtn.addEventListener("click", refreshAdminOrdersFromOverlay);
+        }
+        if (closeBtn) {
+          closeBtn.addEventListener("click", hideAdminAuthOverlay);
+        }
+        if (xBtn) {
+          xBtn.addEventListener("click", hideAdminAuthOverlay);
         }
         document
           .getElementById("adminRefreshOrdersBtn")
           ?.addEventListener("click", refreshAdminOrdersManually);
 
         bindAdminWorkflowEvents();
+        updateCurrentWeekFilterButtonLabel();
         calculateCardAmount("orderCard1");
         updateStatsCounters();
         handleBatchCheckChange();
@@ -7405,8 +7641,20 @@
           return;
         }
 
+        let initialLoadFinished = false;
+        const initialLoadTimer = window.setTimeout(() => {
+          if (initialLoadFinished) return;
+          showAdminAuthOverlay(
+            "讀取訂單時間較久，網路不穩時可先按下方重新讀取訂單。",
+            false,
+            true,
+          );
+        }, ADMIN_INITIAL_LOAD_SLOW_MS);
+
         await fetchAdminProductCatalogFromGas();
         const adminOrders = await fetchAdminOrdersFromGas();
+        initialLoadFinished = true;
+        window.clearTimeout(initialLoadTimer);
 
         if (!Array.isArray(adminOrders)) {
           return;
