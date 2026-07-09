@@ -235,28 +235,117 @@
 
       .filter-custom-range {
         display: none;
-        gap: 6px;
-        align-items: center;
-        margin: -2px 0 10px;
-        overflow-x: auto;
+        margin: -2px 0 14px;
       }
       .filter-custom-range.active {
+        display: block;
+      }
+      .range-calendar {
+        width: min(100%, 440px);
+        padding: 12px;
+        border: 1px solid #dbe4f0;
+        border-radius: 14px;
+        background: #ffffff;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      }
+      .range-calendar-header {
         display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
       }
-      .filter-custom-range input[type="date"] {
-        flex: 0 0 auto;
+      .range-calendar-title {
+        color: #1f2937;
+        font-size: 16px;
+        font-weight: 900;
+      }
+      .range-calendar-nav {
+        width: 34px;
         height: 34px;
-        border: 1px solid #cbd5e1;
-        border-radius: 10px;
-        padding: 0 8px;
-        font-size: 13px;
-        color: #334155;
-        background: #fff;
+        border: 1px solid #dbe4f0;
+        border-radius: 50%;
+        background: #ffffff;
+        color: #475569;
+        font-size: 24px;
+        font-weight: 900;
+        line-height: 1;
+        cursor: pointer;
       }
-      .filter-custom-range span {
-        color: #64748b;
-        font-size: 13px;
-        font-weight: 700;
+      .range-calendar-nav:active {
+        transform: translateY(1px);
+      }
+      .range-calendar-weekdays,
+      .range-calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+      }
+      .range-calendar-weekdays span {
+        padding: 6px 0;
+        color: #94a3b8;
+        font-size: 12px;
+        font-weight: 900;
+        text-align: center;
+      }
+      .range-calendar-day {
+        position: relative;
+        min-width: 0;
+        height: 46px;
+        border: 0;
+        background: transparent;
+        color: #0f172a;
+        font-size: 18px;
+        font-weight: 900;
+        cursor: pointer;
+      }
+      .range-calendar-day::before {
+        content: "";
+        position: absolute;
+        inset: 7px 0;
+        background: transparent;
+      }
+      .range-calendar-day::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        background: transparent;
+      }
+      .range-calendar-day span {
+        position: relative;
+        z-index: 1;
+      }
+      .range-calendar-day.in-range::before {
+        background: #dceeff;
+      }
+      .range-calendar-day.range-start::before {
+        left: 50%;
+      }
+      .range-calendar-day.range-end::before {
+        right: 50%;
+      }
+      .range-calendar-day.range-start::after,
+      .range-calendar-day.range-end::after {
+        background: #1463e8;
+      }
+      .range-calendar-day.range-start,
+      .range-calendar-day.range-end {
+        color: #ffffff;
+      }
+      .range-calendar-day.is-today:not(.range-start):not(.range-end) span {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border: 2px solid #94a3b8;
+        border-radius: 50%;
+      }
+      .range-calendar-day.is-empty {
+        cursor: default;
       }
 
       .search-control-box {
@@ -968,6 +1057,19 @@
         display: none;
       }
       @media (max-width: 640px) {
+        .range-calendar {
+          width: 100%;
+          padding: 10px 8px;
+          box-sizing: border-box;
+        }
+        .range-calendar-day {
+          height: 40px;
+          font-size: 16px;
+        }
+        .range-calendar-day::after {
+          width: 32px;
+          height: 32px;
+        }
         .admin-content-grid {
           grid-template-columns: 1fr;
         }
@@ -2425,18 +2527,43 @@
         </div>
         <div class="filter-custom-range" id="customDateRange">
           <input
-            type="date"
+            type="hidden"
             id="customDateStart"
             aria-label="自訂開始日期"
-            onchange="handleCustomDateRangeChange()"
           />
-          <span>至</span>
           <input
-            type="date"
+            type="hidden"
             id="customDateEnd"
             aria-label="自訂結束日期"
-            onchange="handleCustomDateRangeChange()"
           />
+          <div class="range-calendar" aria-label="自訂日期區間選擇器">
+            <div class="range-calendar-header">
+              <button
+                type="button"
+                class="range-calendar-nav"
+                aria-label="上一個月"
+                onclick="moveCustomDateCalendarMonth(-1)"
+              >
+                ‹
+              </button>
+              <div class="range-calendar-title" id="customDateCalendarTitle">
+                -
+              </div>
+              <button
+                type="button"
+                class="range-calendar-nav"
+                aria-label="下一個月"
+                onclick="moveCustomDateCalendarMonth(1)"
+              >
+                ›
+              </button>
+            </div>
+            <div class="range-calendar-weekdays" aria-hidden="true">
+              <span>日</span><span>一</span><span>二</span><span>三</span
+              ><span>四</span><span>五</span><span>六</span>
+            </div>
+            <div class="range-calendar-grid" id="customDateCalendarGrid"></div>
+          </div>
         </div>
 
         <div class="scroll-filter-row" id="notificationFilterRow">
@@ -7813,6 +7940,7 @@
 
         bindAdminWorkflowEvents();
         updateCurrentWeekFilterButtonLabel();
+        renderCustomDateCalendar();
         calculateCardAmount("orderCard1");
         updateStatsCounters();
         handleBatchCheckChange();
@@ -7980,6 +8108,136 @@
         if (activeButton) activeButton.classList.add("active");
       }
 
+      function getDateParts(dateString) {
+        const normalizedDate = normalizeAdminDateValue(dateString);
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalizedDate);
+        if (!match) return null;
+        return {
+          year: Number(match[1]),
+          month: Number(match[2]),
+          day: Number(match[3]),
+        };
+      }
+
+      function getCustomCalendarMonthSeed() {
+        const start = document.getElementById("customDateStart")?.value || "";
+        const startParts = getDateParts(start);
+        if (startParts) return startParts;
+        return getDateParts(getTaipeiToday()) || {
+          year: new Date().getFullYear(),
+          month: new Date().getMonth() + 1,
+          day: 1,
+        };
+      }
+
+      let customDateCalendarYear = getCustomCalendarMonthSeed().year;
+      let customDateCalendarMonth = getCustomCalendarMonthSeed().month;
+      let customDateRangeSelectingEnd = false;
+
+      function setCustomCalendarMonth(year, month) {
+        const date = new Date(Date.UTC(year, month - 1, 1));
+        customDateCalendarYear = date.getUTCFullYear();
+        customDateCalendarMonth = date.getUTCMonth() + 1;
+      }
+
+      function getMonthDayCount(year, month) {
+        return new Date(Date.UTC(year, month, 0)).getUTCDate();
+      }
+
+      function formatAdminDateFromParts(year, month, day) {
+        return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+
+      function renderCustomDateCalendar() {
+        const title = document.getElementById("customDateCalendarTitle");
+        const grid = document.getElementById("customDateCalendarGrid");
+        if (!title || !grid) return;
+
+        title.innerText = `${customDateCalendarYear}年${customDateCalendarMonth}月`;
+        const firstDay = new Date(
+          Date.UTC(customDateCalendarYear, customDateCalendarMonth - 1, 1),
+        ).getUTCDay();
+        const dayCount = getMonthDayCount(
+          customDateCalendarYear,
+          customDateCalendarMonth,
+        );
+        const startValue =
+          document.getElementById("customDateStart")?.value || "";
+        const endValue = document.getElementById("customDateEnd")?.value || "";
+        const today = getTaipeiToday();
+        const cells = [];
+
+        for (let i = 0; i < firstDay; i++) {
+          cells.push(
+            '<button type="button" class="range-calendar-day is-empty" tabindex="-1" aria-hidden="true"></button>',
+          );
+        }
+
+        for (let day = 1; day <= dayCount; day++) {
+          const dateValue = formatAdminDateFromParts(
+            customDateCalendarYear,
+            customDateCalendarMonth,
+            day,
+          );
+          const inRange =
+            startValue &&
+            endValue &&
+            dateValue >= startValue &&
+            dateValue <= endValue;
+          const classes = ["range-calendar-day"];
+          if (dateValue === today) classes.push("is-today");
+          if (inRange) classes.push("in-range");
+          if (dateValue === startValue) classes.push("range-start");
+          if (dateValue === endValue) classes.push("range-end");
+          cells.push(
+            `<button type="button" class="${classes.join(" ")}" data-date="${dateValue}" onclick="selectCustomDateRangeDay('${dateValue}')" aria-label="${dateValue}"><span>${day}</span></button>`,
+          );
+        }
+
+        grid.innerHTML = cells.join("");
+      }
+
+      function setCustomDateRange(start, end) {
+        const startInput = document.getElementById("customDateStart");
+        const endInput = document.getElementById("customDateEnd");
+        if (!startInput || !endInput) return;
+        startInput.value = start || "";
+        endInput.value = end || "";
+        renderCustomDateCalendar();
+      }
+
+      function selectCustomDateRangeDay(dateValue) {
+        currentDateFilter = "自訂";
+        adminCurrentPage = 1;
+        document.getElementById("customDateRange")?.classList.add("active");
+
+        const startInput = document.getElementById("customDateStart");
+        const endInput = document.getElementById("customDateEnd");
+        const start = startInput?.value || "";
+        const end = endInput?.value || "";
+
+        if (!start || !customDateRangeSelectingEnd) {
+          customDateRangeSelectingEnd = true;
+          setCustomDateRange(dateValue, dateValue);
+        } else if (dateValue < start) {
+          customDateRangeSelectingEnd = false;
+          setCustomDateRange(dateValue, start);
+        } else {
+          customDateRangeSelectingEnd = false;
+          setCustomDateRange(start, dateValue);
+        }
+
+        applyCurrentFilter();
+      }
+
+      function moveCustomDateCalendarMonth(offset) {
+        setCustomCalendarMonth(
+          customDateCalendarYear,
+          customDateCalendarMonth + offset,
+        );
+        renderCustomDateCalendar();
+      }
+
       function filterByStatus(status, btnElement) {
         currentFilterStatus = status;
         adminCurrentPage = 1;
@@ -7994,6 +8252,11 @@
         document
           .getElementById("customDateRange")
           ?.classList.toggle("active", range === "自訂");
+        if (range === "自訂") {
+          const seed = getCustomCalendarMonthSeed();
+          setCustomCalendarMonth(seed.year, seed.month);
+          renderCustomDateCalendar();
+        }
         applyCurrentFilter();
       }
 
@@ -8001,6 +8264,7 @@
         currentDateFilter = "自訂";
         adminCurrentPage = 1;
         document.getElementById("customDateRange")?.classList.add("active");
+        renderCustomDateCalendar();
         applyCurrentFilter();
       }
 
