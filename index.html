@@ -1,7 +1,6 @@
 <!doctype html>
 <html lang="zh-Hant">
   <head>
-	  
     <meta charset="UTF-8" />
     <meta
       name="viewport"
@@ -2523,7 +2522,12 @@
           >
             本週
           </button>
-          <button onclick="filterByDateRange('本月', this)">本月</button>
+          <button
+            id="nextWeekFilterButton"
+            onclick="filterByDateRange('下週', this)"
+          >
+            下週
+          </button>
           <button onclick="filterByDateRange('自訂', this)">自訂</button>
         </div>
         <div class="filter-custom-range" id="customDateRange">
@@ -6778,8 +6782,11 @@
       }
 
       function updateCurrentWeekFilterButtonLabel() {
-        const button = document.getElementById("currentWeekFilterButton");
-        if (!button) return;
+        const currentWeekButton = document.getElementById(
+          "currentWeekFilterButton",
+        );
+        const nextWeekButton = document.getElementById("nextWeekFilterButton");
+        if (!currentWeekButton && !nextWeekButton) return;
 
         const parts = new Intl.DateTimeFormat("en-US", {
           timeZone: "Asia/Taipei",
@@ -6797,16 +6804,25 @@
         const day = Number(values.day);
         if (!year || !month || !day) return;
 
-        const monday = new Date(Date.UTC(year, month - 1, day));
-        const weekday = monday.getUTCDay() || 7;
-        monday.setUTCDate(monday.getUTCDate() - weekday + 1);
+        const currentMonday = new Date(Date.UTC(year, month - 1, day));
+        const weekday = currentMonday.getUTCDay() || 7;
+        currentMonday.setUTCDate(currentMonday.getUTCDate() - weekday + 1);
 
-        const sunday = new Date(monday);
-        sunday.setUTCDate(sunday.getUTCDate() + 6);
+        const currentSunday = new Date(currentMonday);
+        currentSunday.setUTCDate(currentSunday.getUTCDate() + 6);
+        const nextMonday = new Date(currentMonday);
+        nextMonday.setUTCDate(nextMonday.getUTCDate() + 7);
+        const nextSunday = new Date(nextMonday);
+        nextSunday.setUTCDate(nextSunday.getUTCDate() + 6);
 
         const formatMonthDay = (date) =>
           `${date.getUTCMonth() + 1}/${date.getUTCDate()}`;
-        button.textContent = `本週（${formatMonthDay(monday)}～${formatMonthDay(sunday)}）`;
+        if (currentWeekButton) {
+          currentWeekButton.textContent = `本週（${formatMonthDay(currentMonday)}～${formatMonthDay(currentSunday)}）`;
+        }
+        if (nextWeekButton) {
+          nextWeekButton.textContent = `下週（${formatMonthDay(nextMonday)}～${formatMonthDay(nextSunday)}）`;
+        }
       }
 
       function buildAdminMarkOrderShippedHtml(options = {}) {
@@ -8324,14 +8340,6 @@
         return date.toISOString().slice(0, 10);
       }
 
-      function getCurrentMonthRange() {
-        const today = getTaipeiToday();
-        return {
-          start: `${today.slice(0, 7)}-01`,
-          end: `${today.slice(0, 7)}-31`,
-        };
-      }
-
       function getCurrentWeekRange() {
         const today = getTaipeiToday();
         const [year, month, dateOfMonth] = today.split("-").map(Number);
@@ -8340,6 +8348,17 @@
         return {
           start: addDaysToDateString(today, 1 - day),
           end: addDaysToDateString(today, 7 - day),
+        };
+      }
+
+      function getNextWeekRange() {
+        const today = getTaipeiToday();
+        const [year, month, dateOfMonth] = today.split("-").map(Number);
+        const date = new Date(Date.UTC(year, month - 1, dateOfMonth));
+        const day = date.getUTCDay() || 7;
+        return {
+          start: addDaysToDateString(today, 8 - day),
+          end: addDaysToDateString(today, 14 - day),
         };
       }
 
@@ -8355,8 +8374,8 @@
           const range = getCurrentWeekRange();
           return cardRange.start <= range.end && cardRange.end >= range.start;
         }
-        if (currentDateFilter === "本月") {
-          const range = getCurrentMonthRange();
+        if (currentDateFilter === "下週") {
+          const range = getNextWeekRange();
           return cardRange.start <= range.end && cardRange.end >= range.start;
         }
         if (currentDateFilter === "自訂") {
