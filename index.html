@@ -10,7 +10,6 @@
 
     <style>
       * {
-		  
         margin: 0;
         padding: 0;
         box-sizing: border-box;
@@ -81,34 +80,13 @@
       }
 
       .admin-auth-panel {
-        position: relative;
         width: min(100%, 360px);
         background: #ffffff;
         border: 1px solid #dbeafe;
         border-radius: 12px;
-        padding: 28px 20px 20px;
+        padding: 20px;
         text-align: center;
         box-shadow: 0 14px 40px rgba(15, 23, 42, 0.14);
-      }
-
-      .admin-auth-x {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        width: 34px;
-        height: 34px;
-        border: 0;
-        border-radius: 999px;
-        background: transparent;
-        color: #334155;
-        font-size: 24px;
-        font-weight: 700;
-        line-height: 1;
-        cursor: pointer;
-      }
-
-      .admin-auth-x:active {
-        background: #e2e8f0;
       }
 
       .admin-auth-message {
@@ -2303,15 +2281,6 @@
   <body>
     <div class="admin-auth-overlay" id="adminAuthOverlay" aria-live="polite">
       <div class="admin-auth-panel">
-        <button
-          type="button"
-          class="admin-auth-x"
-          id="adminAuthXBtn"
-          aria-label="關閉提示"
-          title="關閉提示"
-        >
-          ×
-        </button>
         <div class="admin-auth-message" id="adminAuthMessage">
           管理員登入確認中...
         </div>
@@ -7607,7 +7576,6 @@
         const retryBtn = document.getElementById("adminAuthRetryBtn");
         const refreshBtn = document.getElementById("adminAuthRefreshBtn");
         const closeBtn = document.getElementById("adminAuthCloseBtn");
-        const xBtn = document.getElementById("adminAuthXBtn");
         if (retryBtn) {
           retryBtn.addEventListener("click", () => {
             startAdminAuth(true);
@@ -7618,9 +7586,6 @@
         }
         if (closeBtn) {
           closeBtn.addEventListener("click", hideAdminAuthOverlay);
-        }
-        if (xBtn) {
-          xBtn.addEventListener("click", hideAdminAuthOverlay);
         }
         document
           .getElementById("adminRefreshOrdersBtn")
