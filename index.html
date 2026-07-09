@@ -4378,7 +4378,8 @@
         }
       }
 
-      async function fetchAdminOrdersFromGas() {
+      async function fetchAdminOrdersFromGas(options = {}) {
+        const silent = options && options.silent === true;
         const adminReadStatusEl = document.getElementById("adminReadStatus");
 
         try {
@@ -4387,7 +4388,7 @@
             sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
           ).trim();
 
-          if (adminReadStatusEl) {
+          if (adminReadStatusEl && !silent) {
             setAdminStatusPanelVisible(true);
             adminReadStatusEl.className = "gas-test-status";
             adminReadStatusEl.innerText = "讀取管理員完整訂單中...";
@@ -4433,11 +4434,11 @@
           }
 
           const orders = payload.orders;
-          if (adminReadStatusEl) {
+          if (adminReadStatusEl && !silent) {
             adminReadStatusEl.className = "gas-test-status";
             adminReadStatusEl.innerText = "";
           }
-          setAdminStatusPanelVisible(false);
+          if (!silent) setAdminStatusPanelVisible(false);
 
           updateAdminRefreshMeta();
           return orders;
@@ -4448,18 +4449,20 @@
             return null;
           }
 
-          if (adminReadStatusEl) {
+          if (adminReadStatusEl && !silent) {
             setAdminStatusPanelVisible(true);
             adminReadStatusEl.className = "gas-test-status error";
             adminReadStatusEl.innerText =
               "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。";
           }
 
-          showAdminAuthOverlay(
-            "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。",
-            false,
-            true,
-          );
+          if (!silent) {
+            showAdminAuthOverlay(
+              "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。",
+              false,
+              true,
+            );
+          }
 
           return null;
         }
@@ -4632,6 +4635,74 @@
 
           return false;
         }
+      }
+
+      function replaceAdminOrderLocally(order, restoreState = null) {
+        const cardsContainer = document.getElementById("cards-container");
+        const orderNo = String(order?.orderNo || "").trim();
+        if (!cardsContainer || !orderNo) return false;
+
+        try {
+          const nextOrders = latestAdminOrders.slice();
+          const index = nextOrders.findIndex(
+            (item) => String(item?.orderNo || "") === orderNo,
+          );
+          if (index === -1) {
+            nextOrders.unshift(order);
+          } else {
+            nextOrders[index] = order;
+          }
+          latestAdminOrders = nextOrders;
+
+          const oldCard = [...cardsContainer.querySelectorAll(".card")].find(
+            (card) => String(card.dataset.orderNo || "") === orderNo,
+          );
+          if (!oldCard) {
+            return renderAdminOrders(latestAdminOrders);
+          }
+
+          const wrapper = document.createElement("div");
+          wrapper.innerHTML = buildAdminOrderCardHtml(order).trim();
+          const newCard = wrapper.firstElementChild;
+          if (!newCard) return false;
+          oldCard.replaceWith(newCard);
+
+          syncAdminSearchMatches();
+          updateStatsCounters();
+          applyCurrentFilter();
+          handleBatchCheckChange();
+          updateNotifyButton();
+          applyReadOnlyModeToRealOrders();
+          restoreAdminOrderCardAfterRender(restoreState || { orderNo });
+          return true;
+        } catch (error) {
+          return false;
+        }
+      }
+
+      function refreshAdminOrdersInBackground() {
+        window.setTimeout(async () => {
+          const adminOrders = await fetchAdminOrdersFromGas({ silent: true });
+          if (Array.isArray(adminOrders) && renderAdminOrders(adminOrders)) {
+            updateStatsCounters();
+            applyCurrentFilter();
+            handleBatchCheckChange();
+            updateNotifyButton();
+            applyReadOnlyModeToRealOrders();
+            updateAdminRefreshMeta();
+          } else {
+            setAdminRefreshState(
+              false,
+              "背景同步失敗，請稍後手動重新整理。",
+            );
+          }
+        }, 0);
+      }
+
+      function applySingleOrderResponse(order, restoreState = null) {
+        if (!replaceAdminOrderLocally(order, restoreState)) return false;
+        refreshAdminOrdersInBackground();
+        return true;
       }
 
       const ADMIN_PAYMENT_STATE_OPTIONS = [
@@ -5965,6 +6036,18 @@
             throw new Error(result?.errorCode || "ORDER_CONTENT_UPDATE_FAILED");
           }
 
+          if (payload.order) {
+            if (
+              !applySingleOrderResponse(
+                payload.order,
+                restoreState || { orderNo: savedOrderNo },
+              )
+            ) {
+              throw new Error("ORDER_CONTENT_REFRESH_FAILED");
+            }
+            return;
+          }
+
           const adminOrders = await fetchAdminOrdersFromGas();
           if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
             throw new Error("ORDER_CONTENT_REFRESH_FAILED");
@@ -6316,6 +6399,14 @@
           }
 
           actionSucceeded = true;
+          if (payload.order) {
+            adminNoteSetFeedback(editor, "已寫入，正在背景同步…");
+            if (!applySingleOrderResponse(payload.order, restoreState)) {
+              throw new Error("ADMIN_NOTE_REFRESH_FAILED");
+            }
+            return;
+          }
+
           adminNoteSetFeedback(editor, "已寫入，正在重新讀取訂單…");
           const adminOrders = await fetchAdminOrdersFromGas();
           if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
@@ -6898,9 +6989,16 @@
           adminMarkOrderShippedSetFeedback(
             panel,
             payload.deduped
-              ? "寄出通知已送出且未重複發送，正在重新讀取訂單…"
-              : "已寫入，正在重新讀取訂單…",
+              ? "寄出通知已送出且未重複發送，正在背景同步…"
+              : "已寫入，正在背景同步…",
           );
+          if (payload.order) {
+            if (!applySingleOrderResponse(payload.order, restoreState)) {
+              throw new Error("MARK_SHIPPED_LOCAL_UPDATE_FAILED");
+            }
+            return;
+          }
+
           const adminOrders = await fetchAdminOrdersFromGas();
           if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
             adminMarkOrderShippedSetSaving(card, panel, false);
@@ -6923,7 +7021,9 @@
           adminMarkOrderShippedSetFeedback(
             panel,
             actionSucceeded
-              ? "出貨狀態可能已寫入，但重新讀取失敗。請重新整理後確認。"
+              ? error.message === "MARK_SHIPPED_LOCAL_UPDATE_FAILED"
+                ? "出貨狀態已寫入，但畫面更新失敗。請重新整理後確認。"
+                : "出貨狀態可能已寫入，但重新讀取失敗。請重新整理後確認。"
               : "確認已寄出失敗，請重新讀取後再試。",
             true,
           );
@@ -7115,13 +7215,23 @@
             return;
           }
 
+          if (payload.order) {
+            adminWorkflowSetFeedback(editor, "已儲存，正在背景同步…");
+            if (!applySingleOrderResponse(payload.order, restoreState)) {
+              throw new Error("ADMIN_WORKFLOW_LOCAL_UPDATE_FAILED");
+            }
+            return;
+          }
+
           adminWorkflowSetFeedback(editor, "已儲存，正在重新讀取訂單…");
           await adminWorkflowRefreshOrdersAfterSave(editor, restoreState);
         } catch (error) {
           adminWorkflowSetSaving(editor, false);
           adminWorkflowSetFeedback(
             editor,
-            "儲存失敗，請重新讀取後再試。",
+            error.message === "ADMIN_WORKFLOW_LOCAL_UPDATE_FAILED"
+              ? "訂單已儲存，但畫面更新失敗，請重新整理確認最新資料。"
+              : "儲存失敗，請重新讀取後再試。",
             true,
           );
         }
@@ -7247,8 +7357,14 @@
           if (feedback) {
             feedback.classList.remove("is-error");
             feedback.innerText = dedupedSucceeded
-              ? "此通知已送出，未重複發送，正在重新讀取訂單…"
-              : "已送出，正在重新讀取訂單…";
+              ? "此通知已送出，未重複發送，正在背景同步…"
+              : "已送出，正在背景同步…";
+          }
+          if (payload.order) {
+            if (!applySingleOrderResponse(payload.order, restoreState)) {
+              throw new Error("SHIPPING_DATE_NOTICE_REFRESH_FAILED");
+            }
+            return;
           }
           const adminOrders = await fetchAdminOrdersFromGas();
           if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
@@ -7388,7 +7504,17 @@
           dedupedSucceeded = payload.deduped === true;
           if (dedupedSucceeded && feedback) {
             feedback.classList.remove("is-error");
-            feedback.innerText = "此通知已送出，未重複發送，正在重新讀取訂單…";
+            feedback.innerText = "此通知已送出，未重複發送，正在背景同步…";
+          } else if (feedback) {
+            feedback.classList.remove("is-error");
+            feedback.innerText = "已處理，正在背景同步…";
+          }
+
+          if (payload.order) {
+            if (!applySingleOrderResponse(payload.order, restoreState)) {
+              throw new Error("NOTIFICATION_REFRESH_FAILED");
+            }
+            return;
           }
 
           const adminOrders = await fetchAdminOrdersFromGas();
