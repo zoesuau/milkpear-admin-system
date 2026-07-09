@@ -4816,6 +4816,15 @@
         const requestedShippingBatchLabel = String(
           order?.requestedShippingBatchLabel ?? "",
         ).trim();
+        const requestedShippingStartDate = normalizeAdminDateValue(
+          order?.requestedShippingStartDate ?? "",
+        );
+        const requestedShippingEndDate = normalizeAdminDateValue(
+          order?.requestedShippingEndDate ?? "",
+        );
+        const requestedShippingSortOrder = Number(
+          order?.requestedShippingSortOrder,
+        );
         const paymentStatus = String(order?.paymentStatus ?? "").trim();
         const notificationStatus = String(
           order?.notificationStatus ?? "",
@@ -5002,6 +5011,8 @@
           order?.orderStatus,
           order?.expectedShippingDate,
           order?.actualShippingDate,
+          order?.requestedShippingStartDate,
+          order?.requestedShippingEndDate,
 
           order?.changedFields,
           order?.notificationStatus,
@@ -5043,6 +5054,10 @@
 	            data-pending-notice-fields="${escapeHtml(pendingNoticeFields.join("|"))}"
 	            data-expected-shipping-date="${escapeHtml(expectedShippingDate)}"
 	            data-actual-shipping-date="${escapeHtml(actualShippingDate)}"
+	            data-requested-shipping-batch-label="${escapeHtml(requestedShippingBatchLabel)}"
+	            data-requested-shipping-start-date="${escapeHtml(requestedShippingStartDate)}"
+	            data-requested-shipping-end-date="${escapeHtml(requestedShippingEndDate)}"
+	            data-requested-shipping-sort-order="${Number.isFinite(requestedShippingSortOrder) ? escapeHtml(requestedShippingSortOrder) : ""}"
 	            data-created-at="${escapeHtml(createdAt)}"
 	            data-last-updated-at="${escapeHtml(lastUpdatedAt)}"
 	            ${adminWorkflowEditable ? 'data-admin-workflow-editor="true"' : ""}
@@ -8009,6 +8024,30 @@
           : expectedShippingDate;
       }
 
+      function getAdminFilterCardDateRange(card) {
+        const cardDate = getAdminFilterCardDate(card);
+        if (adminWorkflowIsValidDate(cardDate) && cardDate) {
+          return { start: cardDate, end: cardDate };
+        }
+
+        const requestedStartDate = normalizeAdminDateValue(
+          card.dataset.requestedShippingStartDate || "",
+        );
+        const requestedEndDate = normalizeAdminDateValue(
+          card.dataset.requestedShippingEndDate || "",
+        );
+        if (
+          requestedStartDate &&
+          requestedEndDate &&
+          adminWorkflowIsValidDate(requestedStartDate) &&
+          adminWorkflowIsValidDate(requestedEndDate)
+        ) {
+          return { start: requestedStartDate, end: requestedEndDate };
+        }
+
+        return null;
+      }
+
       function addDaysToDateString(dateString, days) {
         const normalizedDate = normalizeAdminDateValue(dateString);
         if (!adminWorkflowIsValidDate(normalizedDate) || !normalizedDate) {
@@ -8041,24 +8080,25 @@
 
       function isCardDateMatched(card) {
         if (currentDateFilter === "全部") return true;
-        const cardDate = getAdminFilterCardDate(card);
-        if (!adminWorkflowIsValidDate(cardDate)) return false;
+        const cardRange = getAdminFilterCardDateRange(card);
+        if (!cardRange) return false;
         if (currentDateFilter === "今日") {
-          return cardDate === getTaipeiToday();
+          const today = getTaipeiToday();
+          return cardRange.start <= today && cardRange.end >= today;
         }
         if (currentDateFilter === "本週") {
           const range = getCurrentWeekRange();
-          return cardDate >= range.start && cardDate <= range.end;
+          return cardRange.start <= range.end && cardRange.end >= range.start;
         }
         if (currentDateFilter === "本月") {
           const range = getCurrentMonthRange();
-          return cardDate >= range.start && cardDate <= range.end;
+          return cardRange.start <= range.end && cardRange.end >= range.start;
         }
         if (currentDateFilter === "自訂") {
           const start = document.getElementById("customDateStart")?.value || "";
           const end = document.getElementById("customDateEnd")?.value || "";
-          if (start && cardDate < start) return false;
-          if (end && cardDate > end) return false;
+          if (start && cardRange.end < start) return false;
+          if (end && cardRange.start > end) return false;
           return !!(start || end);
         }
         return true;
@@ -8131,6 +8171,13 @@
         return 3;
       }
 
+      function getRequestedShippingSortOrder(card) {
+        const sortOrder = Number(card.dataset.requestedShippingSortOrder);
+        return Number.isFinite(sortOrder) && sortOrder > 0
+          ? sortOrder
+          : Number.POSITIVE_INFINITY;
+      }
+
       function sortAdminCardsForCurrentStatus(cards) {
         return cards.slice().sort((a, b) => {
           if (currentFilterStatus === "已安排出貨") {
@@ -8141,6 +8188,9 @@
             );
           }
           if (currentFilterStatus === "待確認") {
+            const aSortOrder = getRequestedShippingSortOrder(a);
+            const bSortOrder = getRequestedShippingSortOrder(b);
+            if (aSortOrder !== bSortOrder) return aSortOrder - bSortOrder;
             const aTime = parseAdminSortTime(a.dataset.createdAt);
             const bTime = parseAdminSortTime(b.dataset.createdAt);
             if (aTime !== bTime) return bTime - aTime;
