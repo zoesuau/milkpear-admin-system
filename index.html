@@ -195,6 +195,10 @@
 
       .scroll-filter-row button {
         flex: 0 0 auto;
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         padding: 8px 16px;
         border: 1px solid #e2e8f0;
         background: white;
@@ -209,6 +213,24 @@
         background: #4f7f63;
         color: white;
         border-color: #4f7f63;
+      }
+
+      .admin-tab-badge {
+        display: none;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 999px;
+        background: #dc2626;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 18px;
+        text-align: center;
+      }
+
+      .admin-tab-badge.active {
+        display: inline-block;
       }
 
       .filter-custom-range {
@@ -2298,11 +2320,7 @@
         >
           重新登入 LINE
         </button>
-        <button
-          type="button"
-          class="admin-auth-close"
-          id="adminAuthCloseBtn"
-        >
+        <button type="button" class="admin-auth-close" id="adminAuthCloseBtn">
           關閉提示
         </button>
       </div>
@@ -2368,11 +2386,25 @@
           <button class="active" onclick="filterByStatus('全部', this)">
             全部
           </button>
-          <button onclick="filterByStatus('待確認', this)">新訂單</button>
+          <button onclick="filterByStatus('待確認', this)">
+            新訂單
+            <span
+              class="admin-tab-badge"
+              id="statusBadgePending"
+              aria-label="待處理新訂單數"
+            ></span>
+          </button>
           <button onclick="filterByStatus('已安排出貨', this)">
             已安排出貨日期
           </button>
-          <button onclick="filterByStatus('待通知', this)">改單再通知</button>
+          <button onclick="filterByStatus('待通知', this)">
+            改單再通知
+            <span
+              class="admin-tab-badge"
+              id="statusBadgeNotice"
+              aria-label="待處理通知數"
+            ></span>
+          </button>
           <button onclick="filterByStatus('已寄出', this)">已寄出</button>
           <button onclick="filterByStatus('已取消', this)">已取消</button>
         </div>
@@ -7714,12 +7746,21 @@
         updateOperationMeta(cardId);
       }
 
+      function updateStatusTabBadge(badgeId, count) {
+        const badge = document.getElementById(badgeId);
+        if (!badge) return;
+        const safeCount = Number.isFinite(count) ? count : 0;
+        badge.innerText = safeCount > 99 ? "99+" : String(safeCount);
+        badge.classList.toggle("active", safeCount > 0);
+      }
+
       function updateStatsCounters() {
         const cards = document.querySelectorAll(".cards-container .card");
         let pending = 0,
           confirmed = 0,
           shipped = 0,
-          cancelled = 0;
+          cancelled = 0,
+          noticeWork = 0;
 
         cards.forEach((card) => {
           const status = card.getAttribute("data-status") || "待確認";
@@ -7727,6 +7768,7 @@
           else if (status === "已安排出貨") confirmed++;
           else if (status === "已寄出") shipped++;
           else if (status === "已取消") cancelled++;
+          if (isNoticeWorkCard(card)) noticeWork++;
         });
 
         const pendingEl = document.getElementById("stat-pending");
@@ -7737,6 +7779,8 @@
         if (confirmedEl) confirmedEl.innerText = confirmed;
         if (shippedEl) shippedEl.innerText = shipped;
         if (cancelledEl) cancelledEl.innerText = cancelled;
+        updateStatusTabBadge("statusBadgePending", pending);
+        updateStatusTabBadge("statusBadgeNotice", noticeWork);
       }
 
       function setActiveFilterButton(rowId, activeButton) {
