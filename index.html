@@ -2006,6 +2006,33 @@
         color: #475569;
         margin-bottom: 6px;
       }
+
+      .form-label-row {
+        align-items: center;
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+        margin-bottom: 6px;
+      }
+
+      .form-label-row > label {
+        margin-bottom: 0;
+      }
+
+      .same-recipient-checkbox {
+        align-items: center;
+        color: #4f7f63;
+        display: inline-flex;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 900;
+        white-space: nowrap;
+      }
+
+      .same-recipient-checkbox input {
+        accent-color: #4f7f63;
+      }
+
       .form-control {
         width: 100%;
         height: 44px;
@@ -3727,7 +3754,13 @@
 
             <div class="admin-content-section-title">二、訂購人資料</div>
             <div class="form-group">
-              <label>訂購人姓名</label>
+              <div class="form-label-row">
+                <label>訂購人姓名</label>
+                <label class="same-recipient-checkbox">
+                  <input type="checkbox" id="new-sender-same-as-recipient" />
+                  同收件人
+                </label>
+              </div>
               <input
                 type="text"
                 id="new-sender-name"
@@ -8947,6 +8980,15 @@
           .getElementById("admin-customer-search-confirm")
           ?.addEventListener("click", handleAdminCustomerSearchConfirm);
         document
+          .getElementById("new-sender-same-as-recipient")
+          ?.addEventListener("change", handleNewOrderSameAsRecipientChange);
+        document
+          .getElementById("new-name")
+          ?.addEventListener("input", syncNewOrderSenderFromRecipient);
+        document
+          .getElementById("new-phone")
+          ?.addEventListener("input", syncNewOrderSenderFromRecipient);
+        document
           .getElementById("singleShippingDateInput")
           ?.addEventListener("change", () => {
             currentDateFilter = "指定單日";
@@ -10763,6 +10805,10 @@ ${adminNote}
           selectedPanel.innerHTML = "";
         }
         if (syncCheckbox) syncCheckbox.checked = false;
+        const sameRecipientCheckbox = document.getElementById(
+          "new-sender-same-as-recipient",
+        );
+        if (sameRecipientCheckbox) sameRecipientCheckbox.checked = false;
       }
 
       function setAdminCustomerSearchStatus(message, isError = false) {
@@ -10902,6 +10948,28 @@ ${adminNote}
         if (event.key !== "Enter") return;
         event.preventDefault();
         handleAdminCustomerSearchConfirm();
+      }
+
+      function syncNewOrderSenderFromRecipient() {
+        const sameCheckbox = document.getElementById(
+          "new-sender-same-as-recipient",
+        );
+        if (!sameCheckbox?.checked) return;
+
+        const recipientName =
+          document.getElementById("new-name")?.value || "";
+        const recipientPhone =
+          document.getElementById("new-phone")?.value || "";
+        const senderName = document.getElementById("new-sender-name");
+        const senderPhone = document.getElementById("new-sender-phone");
+        if (senderName) senderName.value = recipientName;
+        if (senderPhone) senderPhone.value = recipientPhone;
+      }
+
+      function handleNewOrderSameAsRecipientChange(event) {
+        if (event?.target?.checked) {
+          syncNewOrderSenderFromRecipient();
+        }
       }
 
       function selectAdminCustomer(customer) {
