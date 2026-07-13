@@ -599,16 +599,16 @@
 
       .shipping-tracking-list {
         display: grid;
-        gap: 7px;
-        min-width: 150px;
+        gap: 10px;
+        min-width: 300px;
       }
 
       .shipping-tracking-line {
         color: #0f172a;
         font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-        font-size: 13px;
+        font-size: 15px;
         font-weight: 800;
-        letter-spacing: 0.03em;
+        letter-spacing: 0.08em;
         white-space: nowrap;
       }
 
@@ -2549,11 +2549,11 @@
         }
         .shipping-manifest-table th:nth-child(6),
         .shipping-manifest-table td:nth-child(6) {
-          width: 58mm;
+          width: 92mm;
         }
         .shipping-tracking-line {
           color: #000000 !important;
-          font-size: 9pt;
+          font-size: 11pt;
         }
       }
 
@@ -8827,7 +8827,7 @@
         return `
           <div class="shipping-tracking-list">
             ${Array.from({ length: slotCount }, (_, index) => {
-              return `<div class="shipping-tracking-line">${escapeHtml(index + 1)}：____-____-____</div>`;
+              return `<div class="shipping-tracking-line">${escapeHtml(index + 1)}：________-________-________</div>`;
             }).join("")}
           </div>
         `;
