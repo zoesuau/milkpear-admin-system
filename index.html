@@ -3028,23 +3028,19 @@
           </button>
           <button onclick="filterByDateRange('自訂', this)">自訂</button>
           <div class="single-date-filter">
-            <input type="date" id="singleShippingDateInput" aria-label="指定單日" />
+            <input
+              type="date"
+              id="singleShippingDateInput"
+              aria-label="指定單日"
+            />
             <button type="button" onclick="filterBySingleShippingDate(this)">
               指定單日
             </button>
           </div>
         </div>
         <div class="filter-custom-range" id="customDateRange">
-          <input
-            type="hidden"
-            id="customDateStart"
-            aria-label="自訂開始日期"
-          />
-          <input
-            type="hidden"
-            id="customDateEnd"
-            aria-label="自訂結束日期"
-          />
+          <input type="hidden" id="customDateStart" aria-label="自訂開始日期" />
+          <input type="hidden" id="customDateEnd" aria-label="自訂結束日期" />
           <div class="range-calendar" aria-label="自訂日期區間選擇器">
             <div class="range-calendar-header">
               <button
@@ -3395,10 +3391,7 @@
           class="shipping-manifest-product-summary"
           id="shippingManifestProductSummary"
         ></div>
-        <div
-          class="shipping-manifest-empty"
-          id="shippingManifestEmpty"
-        >
+        <div class="shipping-manifest-empty" id="shippingManifestEmpty">
           選擇今天、明天，或指定單一日期後顯示出貨總表。
         </div>
         <div class="shipping-manifest-table-wrap">
@@ -5484,10 +5477,7 @@
             applyReadOnlyModeToRealOrders();
             updateAdminRefreshMeta();
           } else {
-            setAdminRefreshState(
-              false,
-              "背景同步失敗，請稍後手動重新整理。",
-            );
+            setAdminRefreshState(false, "背景同步失敗，請稍後手動重新整理。");
           }
         }, 0);
       }
@@ -8771,7 +8761,14 @@
         const printButton = document.getElementById(
           "shippingManifestPrintButton",
         );
-        if (!panel || !subtitle || !summary || !productSummary || !empty || !tbody) {
+        if (
+          !panel ||
+          !subtitle ||
+          !summary ||
+          !productSummary ||
+          !empty ||
+          !tbody
+        ) {
           return;
         }
 
@@ -8797,8 +8794,7 @@
 
         if (!hasValidSingleDate) {
           panel.classList.add("is-empty");
-          empty.innerText =
-            "選擇今天、明天，或指定單一日期後顯示出貨總表。";
+          empty.innerText = "選擇今天、明天，或指定單一日期後顯示出貨總表。";
           tbody.innerHTML = "";
           if (printButton) printButton.disabled = true;
           return;
@@ -8858,7 +8854,10 @@
 
       function printShippingManifest() {
         const selectedDate = getShippingManifestSingleDate();
-        if (!selectedDate || !getShippingManifestOrdersForDate(selectedDate).length) {
+        if (
+          !selectedDate ||
+          !getShippingManifestOrdersForDate(selectedDate).length
+        ) {
           return;
         }
         renderShippingManifest();
@@ -8912,7 +8911,7 @@
             setActiveFilterButton(
               "dateFilterRow",
               document.querySelector(
-                "#dateFilterRow button[onclick^=\"filterBySingleShippingDate\"]",
+                '#dateFilterRow button[onclick^="filterBySingleShippingDate"]',
               ),
             );
             document
@@ -9124,11 +9123,13 @@
         const start = document.getElementById("customDateStart")?.value || "";
         const startParts = getDateParts(start);
         if (startParts) return startParts;
-        return getDateParts(getTaipeiToday()) || {
-          year: new Date().getFullYear(),
-          month: new Date().getMonth() + 1,
-          day: 1,
-        };
+        return (
+          getDateParts(getTaipeiToday()) || {
+            year: new Date().getFullYear(),
+            month: new Date().getMonth() + 1,
+            day: 1,
+          }
+        );
       }
 
       let customDateCalendarYear = getCustomCalendarMonthSeed().year;
@@ -9251,7 +9252,9 @@
         adminCurrentPage = 1;
         setActiveFilterButton("dateFilterRow", btnElement);
         if (range !== "指定單日") {
-          const singleInput = document.getElementById("singleShippingDateInput");
+          const singleInput = document.getElementById(
+            "singleShippingDateInput",
+          );
           if (singleInput && range !== "今日" && range !== "明天") {
             singleInput.value = "";
           }
@@ -9369,7 +9372,9 @@
             document.getElementById("singleShippingDateInput")?.value || "",
           );
           if (!selectedDate) return false;
-          return cardRange.start <= selectedDate && cardRange.end >= selectedDate;
+          return (
+            cardRange.start <= selectedDate && cardRange.end >= selectedDate
+          );
         }
         if (currentDateFilter === "本週") {
           const range = getCurrentWeekRange();
@@ -10701,7 +10706,9 @@ ${adminNote}
         const searchInput = document.getElementById("admin-customer-search");
         const results = document.getElementById("admin-customer-results");
         const status = document.getElementById("admin-customer-search-status");
-        const selectedPanel = document.getElementById("admin-selected-customer");
+        const selectedPanel = document.getElementById(
+          "admin-selected-customer",
+        );
         const syncCheckbox = document.getElementById(
           "admin-sync-customer-profile",
         );
@@ -10752,15 +10759,17 @@ ${adminNote}
             `;
           })
           .join("");
-        results.querySelectorAll(".customer-result-button").forEach((button) => {
-          button.addEventListener("click", () => {
-            const customerId = button.dataset.customerId || "";
-            const customer = customers.find(
-              (item) => item.customerId === customerId,
-            );
-            if (customer) selectAdminCustomer(customer);
+        results
+          .querySelectorAll(".customer-result-button")
+          .forEach((button) => {
+            button.addEventListener("click", () => {
+              const customerId = button.dataset.customerId || "";
+              const customer = customers.find(
+                (item) => item.customerId === customerId,
+              );
+              if (customer) selectAdminCustomer(customer);
+            });
           });
-        });
       }
 
       async function searchAdminCustomersNow(query) {
@@ -10824,7 +10833,9 @@ ${adminNote}
       function handleAdminCustomerSearchInput(event) {
         const query = event?.target?.value || "";
         adminSelectedCustomer = null;
-        const selectedPanel = document.getElementById("admin-selected-customer");
+        const selectedPanel = document.getElementById(
+          "admin-selected-customer",
+        );
         const syncCheckbox = document.getElementById(
           "admin-sync-customer-profile",
         );
@@ -10843,7 +10854,8 @@ ${adminNote}
         adminSelectedCustomer = customer;
         const buyerName = customer.buyerName || customer.recipientName || "";
         const buyerPhone = customer.buyerPhone || customer.recipientPhone || "";
-        const recipientName = customer.recipientName || customer.buyerName || "";
+        const recipientName =
+          customer.recipientName || customer.buyerName || "";
         const recipientPhone =
           customer.recipientPhone || customer.buyerPhone || "";
 
@@ -10858,7 +10870,9 @@ ${adminNote}
         setValue("new-address", customer.recipientAddress || "");
         setValue("new-note", customer.customerNote || "");
 
-        const selectedPanel = document.getElementById("admin-selected-customer");
+        const selectedPanel = document.getElementById(
+          "admin-selected-customer",
+        );
         if (selectedPanel) {
           selectedPanel.style.display = "block";
           selectedPanel.innerHTML = `
