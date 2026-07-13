@@ -649,6 +649,32 @@
         min-height: 18px;
       }
 
+      .customer-search-row {
+        display: flex;
+        gap: 8px;
+      }
+
+      .customer-search-row .form-control {
+        flex: 1 1 70%;
+        min-width: 0;
+      }
+
+      .customer-search-confirm {
+        flex: 0 0 30%;
+        min-width: 86px;
+        border: none;
+        border-radius: 8px;
+        background: #4f7f63;
+        color: #fff;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 900;
+      }
+
+      .customer-search-confirm:active {
+        background: #3d634d;
+      }
+
       .customer-search-results {
         display: grid;
         gap: 8px;
@@ -663,7 +689,7 @@
         color: #334155;
         cursor: pointer;
         display: grid;
-        grid-template-columns: 1fr auto;
+        grid-template-columns: 1fr;
         gap: 6px 10px;
         padding: 10px 12px;
         text-align: left;
@@ -685,12 +711,14 @@
         color: #4f7f63;
         font-size: 13px;
         font-weight: 900;
+        word-break: break-word;
       }
 
       .customer-result-meta {
         color: #64748b;
         font-size: 12px;
         font-weight: 700;
+        word-break: break-word;
       }
 
       .selected-customer-panel {
@@ -3621,13 +3649,22 @@
             <div class="admin-content-section-title">客戶查詢</div>
             <div class="form-group">
               <label>輸入姓名或電話搜尋舊客戶</label>
-              <input
-                type="search"
-                id="admin-customer-search"
-                class="form-control"
-                autocomplete="off"
-                placeholder="例如：陳美玲、0912、電話末三碼"
-              />
+              <div class="customer-search-row">
+                <input
+                  type="search"
+                  id="admin-customer-search"
+                  class="form-control"
+                  autocomplete="off"
+                  placeholder="例如：陳美玲、0912、電話末三碼"
+                />
+                <button
+                  type="button"
+                  id="admin-customer-search-confirm"
+                  class="customer-search-confirm"
+                >
+                  確認
+                </button>
+              </div>
               <div
                 id="admin-customer-search-status"
                 class="customer-search-status"
@@ -8904,6 +8941,12 @@
           .getElementById("admin-customer-search")
           ?.addEventListener("input", handleAdminCustomerSearchInput);
         document
+          .getElementById("admin-customer-search")
+          ?.addEventListener("keydown", handleAdminCustomerSearchKeydown);
+        document
+          .getElementById("admin-customer-search-confirm")
+          ?.addEventListener("click", handleAdminCustomerSearchConfirm);
+        document
           .getElementById("singleShippingDateInput")
           ?.addEventListener("change", () => {
             currentDateFilter = "指定單日";
@@ -10743,8 +10786,11 @@ ${adminNote}
             const selected =
               adminSelectedCustomer &&
               adminSelectedCustomer.customerId === customer.customerId;
-            const addressArea = customer.addressArea || "地址未填";
+            const phone =
+              customer.buyerPhone || customer.recipientPhone || "電話未填";
+            const address = customer.recipientAddress || "地址未填";
             const lastOrder = customer.lastOrderDate || "尚無日期";
+            const lastUpdated = customer.lastUpdatedAt || "尚無日期";
             return `
               <button
                 type="button"
@@ -10752,9 +10798,9 @@ ${adminNote}
                 data-customer-id="${escapeHtml(customer.customerId)}"
               >
                 <span class="customer-result-name">${escapeHtml(displayName)}</span>
-                <span class="customer-result-phone">末三碼 ${escapeHtml(customer.phoneLast3 || "---")}</span>
-                <span class="customer-result-meta">${escapeHtml(addressArea)}</span>
-                <span class="customer-result-meta">最後 ${escapeHtml(lastOrder)}</span>
+                <span class="customer-result-phone">電話：${escapeHtml(phone)}</span>
+                <span class="customer-result-meta">地址：${escapeHtml(address)}</span>
+                <span class="customer-result-meta">最後訂購：${escapeHtml(lastOrder)}｜最後更新：${escapeHtml(lastUpdated)}</span>
               </button>
             `;
           })
@@ -10831,7 +10877,6 @@ ${adminNote}
       }
 
       function handleAdminCustomerSearchInput(event) {
-        const query = event?.target?.value || "";
         adminSelectedCustomer = null;
         const selectedPanel = document.getElementById(
           "admin-selected-customer",
@@ -10845,9 +10890,18 @@ ${adminNote}
         }
         if (syncCheckbox) syncCheckbox.checked = false;
         if (adminCustomerSearchTimer) clearTimeout(adminCustomerSearchTimer);
-        adminCustomerSearchTimer = setTimeout(() => {
-          searchAdminCustomersNow(query);
-        }, 300);
+        setAdminCustomerSearchStatus("輸入完成後按確認搜尋。");
+      }
+
+      function handleAdminCustomerSearchConfirm() {
+        const query = document.getElementById("admin-customer-search")?.value || "";
+        searchAdminCustomersNow(query);
+      }
+
+      function handleAdminCustomerSearchKeydown(event) {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        handleAdminCustomerSearchConfirm();
       }
 
       function selectAdminCustomer(customer) {
@@ -10877,8 +10931,9 @@ ${adminNote}
           selectedPanel.style.display = "block";
           selectedPanel.innerHTML = `
             已選客戶：${escapeHtml(buyerName || recipientName || "未命名客戶")}
-            ｜電話末三碼 ${escapeHtml(customer.phoneLast3 || "---")}
-            ｜${escapeHtml(customer.addressArea || "地址未填")}
+            <br>電話：${escapeHtml(buyerPhone || recipientPhone || "電話未填")}
+            <br>地址：${escapeHtml(customer.recipientAddress || "地址未填")}
+            <br>最後訂購：${escapeHtml(customer.lastOrderDate || "尚無日期")}｜最後更新：${escapeHtml(customer.lastUpdatedAt || "尚無日期")}
             <br>customerId：${escapeHtml(customer.customerId)}
           `;
         }
