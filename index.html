@@ -406,182 +406,6 @@
         background: #0284c7;
       }
 
-      .shipping-manifest-panel {
-        max-width: 500px;
-        margin: 0 auto 16px auto;
-        background: #ffffff;
-        border: 1px solid #dbe5dd;
-        border-radius: 16px;
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
-        padding: 14px;
-      }
-
-      .shipping-manifest-panel.is-empty .shipping-manifest-table-wrap {
-        display: none;
-      }
-
-      .shipping-manifest-header {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: flex-start;
-        margin-bottom: 12px;
-      }
-
-      .shipping-manifest-title {
-        color: #1f2937;
-        font-size: 18px;
-        font-weight: 900;
-      }
-
-      .shipping-manifest-subtitle {
-        color: #64748b;
-        font-size: 13px;
-        font-weight: 700;
-        margin-top: 2px;
-      }
-
-      .shipping-manifest-print {
-        flex: 0 0 auto;
-        min-height: 36px;
-        padding: 0 12px;
-        border: 0;
-        border-radius: 8px;
-        background: #0f766e;
-        color: #ffffff;
-        font-size: 13px;
-        font-weight: 800;
-        cursor: pointer;
-      }
-
-      .shipping-manifest-print:disabled {
-        cursor: not-allowed;
-        opacity: 0.45;
-      }
-
-      .shipping-manifest-summary {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
-        margin-bottom: 12px;
-      }
-
-      .shipping-manifest-stat {
-        min-width: 0;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        background: #f8fafc;
-        padding: 9px 10px;
-      }
-
-      .shipping-manifest-stat span {
-        display: block;
-        color: #64748b;
-        font-size: 12px;
-        font-weight: 800;
-      }
-
-      .shipping-manifest-stat strong {
-        display: block;
-        color: #0f172a;
-        font-size: 17px;
-        font-weight: 900;
-        line-height: 1.35;
-        word-break: break-word;
-      }
-
-      .shipping-manifest-product-summary {
-        margin-bottom: 12px;
-        padding: 10px 12px;
-        border-left: 4px solid #4f7f63;
-        background: #f0fdf4;
-        color: #166534;
-        font-size: 13px;
-        font-weight: 800;
-        line-height: 1.7;
-        white-space: pre-line;
-      }
-
-      .shipping-manifest-empty {
-        color: #64748b;
-        font-size: 14px;
-        font-weight: 800;
-        padding: 12px;
-        border: 1px dashed #cbd5e1;
-        border-radius: 10px;
-        background: #f8fafc;
-        text-align: center;
-      }
-
-      .shipping-manifest-table-wrap {
-        overflow-x: auto;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-      }
-
-      .shipping-manifest-table {
-        min-width: 1060px;
-        width: 100%;
-        border-collapse: collapse;
-        background: #ffffff;
-      }
-
-      .shipping-manifest-table th,
-      .shipping-manifest-table td {
-        border: 1px solid #e2e8f0;
-        padding: 8px;
-        text-align: left;
-        vertical-align: top;
-        color: #1f2937;
-        font-size: 13px;
-        line-height: 1.5;
-      }
-
-      .shipping-manifest-table th {
-        background: #f1f5f9;
-        color: #334155;
-        font-weight: 900;
-        white-space: nowrap;
-      }
-
-      .shipping-manifest-table .cell-center {
-        text-align: center;
-      }
-
-      .shipping-manifest-table .cell-money {
-        text-align: right;
-        white-space: nowrap;
-      }
-
-      .shipping-manifest-table .cell-phone {
-        white-space: nowrap;
-      }
-
-      .shipping-manifest-table .cell-address,
-      .shipping-manifest-table .cell-items,
-      .shipping-manifest-table .cell-note {
-        white-space: pre-line;
-        word-break: break-word;
-      }
-
-      .single-date-filter {
-        display: inline-flex;
-        flex: 0 0 auto;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .single-date-filter input {
-        height: 36px;
-        min-width: 142px;
-        border: 1px solid #e2e8f0;
-        border-radius: 18px;
-        padding: 0 10px;
-        color: #334155;
-        font-size: 14px;
-        font-weight: 700;
-      }
-
       .btn-add-order-trigger {
         height: 36px;
         padding: 0 12px;
@@ -2120,13 +1944,6 @@
           padding: 20px;
           border-radius: 20px;
         }
-        .shipping-manifest-panel {
-          max-width: 1024px;
-          padding: 18px 20px;
-        }
-        .shipping-manifest-summary {
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-        }
         .scroll-filter-row {
           overflow-x: visible;
           flex-wrap: wrap;
@@ -2182,204 +1999,8 @@
 
       @media screen and (min-width: 1200px) {
         .top-filter-panel,
-        .shipping-manifest-panel,
         .cards-container {
           max-width: 1140px;
-        }
-      }
-
-      @media print {
-        @page {
-          size: A4 landscape;
-          margin: 10mm;
-        }
-
-        * {
-          box-shadow: none !important;
-          text-shadow: none !important;
-        }
-
-        html,
-        body {
-          width: auto;
-          min-width: 0;
-          margin: 0 !important;
-          padding: 0 !important;
-          background: #ffffff !important;
-          color: #000000 !important;
-        }
-
-        .admin-auth-overlay,
-        .gas-test-panel,
-        .admin-tab-bar,
-        .top-filter-panel,
-        .admin-pagination,
-        .cards-container,
-        #product-page-section,
-        .product-management-section,
-        .modal-overlay,
-        button,
-        input,
-        select,
-        textarea,
-        .admin-workflow-editor,
-        .admin-mark-shipped-panel,
-        .order-change-alert,
-        .batch-check {
-          display: none !important;
-        }
-
-        #order-page-section,
-        .shipping-manifest-panel {
-          display: block !important;
-        }
-
-        .shipping-manifest-panel {
-          max-width: none !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          border: 0 !important;
-          border-radius: 0 !important;
-          background: #ffffff !important;
-        }
-
-        .shipping-manifest-header {
-          display: block;
-          margin-bottom: 4mm;
-        }
-
-        .shipping-manifest-title {
-          color: #000000 !important;
-          font-size: 20pt;
-          font-weight: 900;
-        }
-
-        .shipping-manifest-subtitle {
-          color: #000000 !important;
-          font-size: 10pt;
-          font-weight: 700;
-        }
-
-        .shipping-manifest-summary {
-          display: grid !important;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 2mm;
-          margin-bottom: 3mm;
-        }
-
-        .shipping-manifest-stat {
-          border: 1px solid #000000 !important;
-          border-radius: 0 !important;
-          background: #ffffff !important;
-          padding: 2mm;
-        }
-
-        .shipping-manifest-stat span,
-        .shipping-manifest-stat strong,
-        .shipping-manifest-product-summary,
-        .shipping-manifest-empty {
-          color: #000000 !important;
-        }
-
-        .shipping-manifest-stat span {
-          font-size: 8pt;
-        }
-
-        .shipping-manifest-stat strong {
-          font-size: 11pt;
-        }
-
-        .shipping-manifest-product-summary {
-          margin-bottom: 3mm;
-          padding: 2mm;
-          border: 1px solid #000000 !important;
-          border-left: 1px solid #000000 !important;
-          background: #ffffff !important;
-          font-size: 9pt;
-          line-height: 1.45;
-        }
-
-        .shipping-manifest-empty {
-          border: 1px solid #000000 !important;
-          border-radius: 0 !important;
-          background: #ffffff !important;
-          font-size: 11pt;
-        }
-
-        .shipping-manifest-table-wrap {
-          overflow: visible !important;
-          border: 0 !important;
-          border-radius: 0 !important;
-        }
-
-        .shipping-manifest-table {
-          min-width: 0 !important;
-          width: 100% !important;
-          table-layout: fixed;
-          border-collapse: collapse !important;
-          page-break-inside: auto;
-        }
-
-        .shipping-manifest-table thead {
-          display: table-header-group;
-        }
-
-        .shipping-manifest-table tr {
-          break-inside: avoid;
-          page-break-inside: avoid;
-        }
-
-        .shipping-manifest-table th,
-        .shipping-manifest-table td {
-          border: 1px solid #000000 !important;
-          background: #ffffff !important;
-          color: #000000 !important;
-          padding: 2mm;
-          font-size: 8.5pt;
-          line-height: 1.35;
-        }
-
-        .shipping-manifest-table th {
-          font-weight: 900;
-        }
-
-        .shipping-manifest-table th:nth-child(1),
-        .shipping-manifest-table td:nth-child(1) {
-          width: 8mm;
-        }
-        .shipping-manifest-table th:nth-child(2),
-        .shipping-manifest-table td:nth-child(2) {
-          width: 28mm;
-        }
-        .shipping-manifest-table th:nth-child(3),
-        .shipping-manifest-table td:nth-child(3) {
-          width: 20mm;
-        }
-        .shipping-manifest-table th:nth-child(4),
-        .shipping-manifest-table td:nth-child(4) {
-          width: 25mm;
-        }
-        .shipping-manifest-table th:nth-child(5),
-        .shipping-manifest-table td:nth-child(5) {
-          width: 48mm;
-        }
-        .shipping-manifest-table th:nth-child(6),
-        .shipping-manifest-table td:nth-child(6) {
-          width: 42mm;
-        }
-        .shipping-manifest-table th:nth-child(7),
-        .shipping-manifest-table td:nth-child(7),
-        .shipping-manifest-table th:nth-child(8),
-        .shipping-manifest-table td:nth-child(8) {
-          width: 22mm;
-        }
-        .shipping-manifest-table th:nth-child(9),
-        .shipping-manifest-table td:nth-child(9) {
-          width: 22mm;
-        }
-        .shipping-manifest-table th:nth-child(10),
-        .shipping-manifest-table td:nth-child(10) {
-          width: 24mm;
         }
       }
 
@@ -2894,8 +2515,7 @@
           <button class="active" onclick="filterByDateRange('全部', this)">
             全部
           </button>
-          <button onclick="filterByDateRange('今日', this)">今天</button>
-          <button onclick="filterByDateRange('明天', this)">明天</button>
+          <button onclick="filterByDateRange('今日', this)">今日</button>
           <button
             id="currentWeekFilterButton"
             onclick="filterByDateRange('本週', this)"
@@ -2909,12 +2529,6 @@
             下週
           </button>
           <button onclick="filterByDateRange('自訂', this)">自訂</button>
-          <div class="single-date-filter">
-            <input type="date" id="singleShippingDateInput" aria-label="指定單日" />
-            <button type="button" onclick="filterBySingleShippingDate(this)">
-              指定單日
-            </button>
-          </div>
         </div>
         <div class="filter-custom-range" id="customDateRange">
           <input
@@ -2995,69 +2609,6 @@
         <span id="adminPaginationInfo">第 0-0 張／共 0 張</span>
         <button type="button" id="adminNextPageBtn">下一頁</button>
       </div>
-
-      <section
-        class="shipping-manifest-panel is-empty"
-        id="shippingManifestPanel"
-        aria-live="polite"
-      >
-        <div class="shipping-manifest-header">
-          <div>
-            <div class="shipping-manifest-title" id="shippingManifestTitle">
-              三合院農園｜出貨總表
-            </div>
-            <div
-              class="shipping-manifest-subtitle"
-              id="shippingManifestSubtitle"
-            >
-              請選擇單一出貨日期
-            </div>
-          </div>
-          <button
-            type="button"
-            class="shipping-manifest-print"
-            id="shippingManifestPrintButton"
-            onclick="printShippingManifest()"
-            disabled
-          >
-            列印出貨單
-          </button>
-        </div>
-        <div
-          class="shipping-manifest-summary"
-          id="shippingManifestSummary"
-        ></div>
-        <div
-          class="shipping-manifest-product-summary"
-          id="shippingManifestProductSummary"
-        ></div>
-        <div
-          class="shipping-manifest-empty"
-          id="shippingManifestEmpty"
-        >
-          選擇今天、明天，或自訂／指定單一日期後顯示出貨總表。
-        </div>
-        <div class="shipping-manifest-table-wrap">
-          <table class="shipping-manifest-table">
-            <thead>
-              <tr>
-                <th>序號</th>
-                <th>訂單編號</th>
-                <th>收件人</th>
-                <th>電話</th>
-                <th>地址</th>
-                <th>商品與數量</th>
-                <th>付款方式</th>
-                <th>付款狀態</th>
-                <th>訂單金額</th>
-                <th>訂單狀態</th>
-                <th>備註</th>
-              </tr>
-            </thead>
-            <tbody id="shippingManifestTableBody"></tbody>
-          </table>
-        </div>
-      </section>
 
       <div class="cards-container" id="cards-container">
         <div
@@ -3636,8 +3187,8 @@
 
     <script>
       // ── 基礎變數 ──
-      const adminLegacySendButton = document.getElementById("sendBtn");
-      const adminLegacyStatusMessage = document.getElementById("statusMsg");
+      const sendBtn = document.getElementById("sendBtn");
+      const statusMsg = document.getElementById("statusMsg");
       const GAS_ORDERS_API_URL =
         "https://script.google.com/macros/s/AKfycby9r7QgpvOJ7KP_3uVI9eYHkzeJnPVFhP7Z3uQdQBvMogYglPoim79H3HJpjyUAgW57/exec";
       const LINE_LOGIN_CHANNEL_ID = "2010484376";
@@ -5189,7 +4740,6 @@
             unconfirmedNotificationOrderNos.clear();
             updateAdminPagination(0);
             syncBatchSelectionUi();
-            renderShippingManifest();
             return true;
           }
 
@@ -8368,278 +7918,6 @@
         return escapeHtml(String(value ?? "").trim()).replace(/\r?\n/g, "<br>");
       }
 
-      function getShippingManifestSingleDate() {
-        if (currentDateFilter === "今日") return getTaipeiToday();
-        if (currentDateFilter === "明天") {
-          return addDaysToDateString(getTaipeiToday(), 1);
-        }
-        if (currentDateFilter === "指定單日") {
-          return normalizeAdminDateValue(
-            document.getElementById("singleShippingDateInput")?.value || "",
-          );
-        }
-        if (currentDateFilter === "自訂") {
-          const start = normalizeAdminDateValue(
-            document.getElementById("customDateStart")?.value || "",
-          );
-          const end = normalizeAdminDateValue(
-            document.getElementById("customDateEnd")?.value || "",
-          );
-          return start && start === end ? start : "";
-        }
-        return "";
-      }
-
-      function formatShippingManifestDate(dateString) {
-        const normalizedDate = normalizeAdminDateValue(dateString);
-        const parts = getDateParts(normalizedDate);
-        if (!parts) return normalizedDate || "未指定";
-        return `${parts.year}/${parts.month}/${parts.day}`;
-      }
-
-      function formatShippingManifestPrintTime(date = new Date()) {
-        return new Intl.DateTimeFormat("zh-TW", {
-          timeZone: "Asia/Taipei",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        }).format(date);
-      }
-
-      function getShippingManifestOrdersForDate(dateString) {
-        const targetDate = normalizeAdminDateValue(dateString);
-        if (!targetDate) return [];
-        return latestAdminOrders
-          .filter((order) => {
-            const status = String(order?.orderStatus || "").trim();
-            const expectedShippingDate = normalizeAdminDateValue(
-              order?.expectedShippingDate || "",
-            );
-            return status !== "已取消" && expectedShippingDate === targetDate;
-          })
-          .sort((a, b) => {
-            const nameCompare = String(a?.recipientName || "").localeCompare(
-              String(b?.recipientName || ""),
-              "zh-Hant",
-            );
-            if (nameCompare !== 0) return nameCompare;
-            return String(a?.orderNo || "").localeCompare(
-              String(b?.orderNo || ""),
-              "zh-Hant",
-            );
-          });
-      }
-
-      function parseShippingManifestItems(itemsSummary) {
-        const lines = String(itemsSummary || "")
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean);
-
-        if (!lines.length) return { lines: [], reliable: false };
-
-        const parsed = [];
-        for (const line of lines) {
-          const qtyMatch = line.match(/[×xX*]\s*(\d+)\s*盒/);
-          if (!qtyMatch) return { lines, reliable: false };
-          const label =
-            line
-              .replace(/[（(].*$/, "")
-              .replace(/[×xX*]\s*\d+\s*盒.*$/, "")
-              .trim() || line;
-          const qty = Number(qtyMatch[1]);
-          if (!Number.isInteger(qty) || qty <= 0) {
-            return { lines, reliable: false };
-          }
-          parsed.push({ label, qty });
-        }
-
-        return { lines, reliable: true, items: parsed };
-      }
-
-      function buildShippingManifestStats(orders) {
-        const productTotals = new Map();
-        let allItemsReliable = orders.length > 0;
-        let parsedBoxTotal = 0;
-        let storedBoxTotal = 0;
-        let storedBoxTotalReliable = orders.length > 0;
-        let totalAmount = 0;
-
-        orders.forEach((order) => {
-          totalAmount += Number(order?.finalAmount || 0);
-
-          const parsedItems = parseShippingManifestItems(order?.itemsSummary);
-          if (!parsedItems.reliable) {
-            allItemsReliable = false;
-          } else {
-            parsedItems.items.forEach((item) => {
-              parsedBoxTotal += item.qty;
-              productTotals.set(
-                item.label,
-                (productTotals.get(item.label) || 0) + item.qty,
-              );
-            });
-          }
-
-          const storedBoxes = Number(String(order?.totalBoxes || "").trim());
-          if (Number.isFinite(storedBoxes) && storedBoxes >= 0) {
-            storedBoxTotal += storedBoxes;
-          } else {
-            storedBoxTotalReliable = false;
-          }
-        });
-
-        return {
-          orderCount: orders.length,
-          totalAmount,
-          productTotals,
-          allItemsReliable,
-          boxTotal: allItemsReliable
-            ? parsedBoxTotal
-            : storedBoxTotalReliable
-              ? storedBoxTotal
-              : null,
-        };
-      }
-
-      function buildShippingManifestProductSummary(stats) {
-        if (!stats.orderCount) return "商品／箱數統計：—";
-        if (stats.allItemsReliable && stats.productTotals.size) {
-          const lines = [...stats.productTotals.entries()].map(
-            ([label, qty]) => `${label}：${qty} 盒`,
-          );
-          lines.push(`合計：${stats.boxTotal} 盒`);
-          return lines.join("\n");
-        }
-        if (stats.boxTotal !== null) {
-          return `總箱數：${stats.boxTotal} 盒\n各商品規格數量：商品明細格式不足，請以表格逐筆核對。`;
-        }
-        return "商品／箱數統計：商品明細格式不足，請以表格逐筆核對。";
-      }
-
-      function getShippingManifestNote(order) {
-        const notes = [];
-        const buyerName = String(order?.buyerName || "").trim();
-        const recipientName = String(order?.recipientName || "").trim();
-        const customerNote = String(order?.customerNote || "").trim();
-        const adminNote = String(order?.adminNote || "").trim();
-        if (buyerName && buyerName !== recipientName) {
-          notes.push(`訂購人：${buyerName}`);
-        }
-        if (customerNote) notes.push(`客戶備註：${customerNote}`);
-        if (adminNote) notes.push(`管理員備註：${adminNote}`);
-        return notes.join("\n");
-      }
-
-      function renderShippingManifest() {
-        const panel = document.getElementById("shippingManifestPanel");
-        const subtitle = document.getElementById("shippingManifestSubtitle");
-        const summary = document.getElementById("shippingManifestSummary");
-        const productSummary = document.getElementById(
-          "shippingManifestProductSummary",
-        );
-        const empty = document.getElementById("shippingManifestEmpty");
-        const tbody = document.getElementById("shippingManifestTableBody");
-        const printButton = document.getElementById(
-          "shippingManifestPrintButton",
-        );
-        if (!panel || !subtitle || !summary || !productSummary || !empty || !tbody) {
-          return;
-        }
-
-        const selectedDate = getShippingManifestSingleDate();
-        const hasValidSingleDate =
-          !!selectedDate && adminWorkflowIsValidDate(selectedDate);
-        const orders = hasValidSingleDate
-          ? getShippingManifestOrdersForDate(selectedDate)
-          : [];
-        const stats = buildShippingManifestStats(orders);
-        const productSummaryText = buildShippingManifestProductSummary(stats);
-
-        subtitle.innerText = hasValidSingleDate
-          ? `出貨日期：${formatShippingManifestDate(selectedDate)}｜列印時間：${formatShippingManifestPrintTime()}`
-          : "請選擇今天、明天、自訂單日或指定單日";
-        summary.innerHTML = `
-          <div class="shipping-manifest-stat"><span>出貨日期</span><strong>${escapeHtml(hasValidSingleDate ? formatShippingManifestDate(selectedDate) : "—")}</strong></div>
-          <div class="shipping-manifest-stat"><span>訂單筆數</span><strong>${escapeHtml(stats.orderCount)} 筆</strong></div>
-          <div class="shipping-manifest-stat"><span>商品／箱數</span><strong>${escapeHtml(stats.boxTotal !== null ? `${stats.boxTotal} 盒` : "逐筆核對")}</strong></div>
-          <div class="shipping-manifest-stat"><span>訂單總金額</span><strong>$${escapeHtml(formatAdminMoney(stats.totalAmount))}</strong></div>
-        `;
-        productSummary.innerText = productSummaryText;
-
-        if (!hasValidSingleDate) {
-          panel.classList.add("is-empty");
-          empty.innerText =
-            "選擇今天、明天，或自訂／指定單一日期後顯示出貨總表。";
-          tbody.innerHTML = "";
-          if (printButton) printButton.disabled = true;
-          return;
-        }
-
-        if (!orders.length) {
-          panel.classList.add("is-empty");
-          empty.innerText = "此日期沒有出貨訂單";
-          tbody.innerHTML = "";
-          if (printButton) printButton.disabled = true;
-          return;
-        }
-
-        panel.classList.remove("is-empty");
-        empty.innerText = "";
-        if (printButton) printButton.disabled = false;
-        tbody.innerHTML = orders
-          .map((order, index) => {
-            const paymentStateLabel =
-              getPaymentLabelFromState(order?.paymentState) ||
-              formatReadOnlyPaymentLabel(
-                order?.paymentMethod,
-                order?.paymentStatus,
-              );
-            const paymentMethod = String(order?.paymentMethod || "").trim();
-            const paymentStatus = String(order?.paymentStatus || "").trim();
-            const note = getShippingManifestNote(order);
-            return `
-              <tr>
-                <td class="cell-center">${escapeHtml(index + 1)}</td>
-                <td>${escapeHtml(order?.orderNo || "—")}</td>
-                <td>${escapeHtml(order?.recipientName || "—")}</td>
-                <td class="cell-phone">${escapeHtml(order?.recipientPhone || "—")}</td>
-                <td class="cell-address">${formatMultilineHtml(order?.recipientAddress || "—")}</td>
-                <td class="cell-items">${formatMultilineHtml(order?.itemsSummary || "—")}</td>
-                <td>${escapeHtml(paymentMethod || paymentStateLabel || "—")}</td>
-                <td>${escapeHtml(paymentStatus || paymentStateLabel || "—")}</td>
-                <td class="cell-money">$${escapeHtml(formatAdminMoney(order?.finalAmount || 0))}</td>
-                <td>${escapeHtml(order?.orderStatus || "—")}</td>
-                <td class="cell-note">${formatMultilineHtml(note || "—")}</td>
-              </tr>
-            `;
-          })
-          .join("");
-      }
-
-      function filterBySingleShippingDate(btnElement) {
-        const input = document.getElementById("singleShippingDateInput");
-        if (!input) return;
-        if (!input.value) input.value = getTaipeiToday();
-        currentDateFilter = "指定單日";
-        adminCurrentPage = 1;
-        setActiveFilterButton("dateFilterRow", btnElement);
-        document.getElementById("customDateRange")?.classList.remove("active");
-        applyCurrentFilter();
-      }
-
-      function printShippingManifest() {
-        const selectedDate = getShippingManifestSingleDate();
-        if (!selectedDate || !getShippingManifestOrdersForDate(selectedDate).length) {
-          return;
-        }
-        renderShippingManifest();
-        window.print();
-      }
-
       function buildReadOnlyExtraRow(label, value, extraClass = "") {
         const normalizedValue = String(value ?? "").trim();
 
@@ -8676,22 +7954,6 @@
         document
           .getElementById("adminRefreshOrdersBtn")
           ?.addEventListener("click", refreshAdminOrdersManually);
-        document
-          .getElementById("singleShippingDateInput")
-          ?.addEventListener("change", () => {
-            currentDateFilter = "指定單日";
-            adminCurrentPage = 1;
-            setActiveFilterButton(
-              "dateFilterRow",
-              document.querySelector(
-                "#dateFilterRow button[onclick^=\"filterBySingleShippingDate\"]",
-              ),
-            );
-            document
-              .getElementById("customDateRange")
-              ?.classList.remove("active");
-            applyCurrentFilter();
-          });
 
         bindAdminWorkflowEvents();
         updateCurrentWeekFilterButtonLabel();
@@ -9004,12 +8266,6 @@
         currentDateFilter = range;
         adminCurrentPage = 1;
         setActiveFilterButton("dateFilterRow", btnElement);
-        if (range !== "指定單日") {
-          const singleInput = document.getElementById("singleShippingDateInput");
-          if (singleInput && range !== "今日" && range !== "明天") {
-            singleInput.value = "";
-          }
-        }
         document
           .getElementById("customDateRange")
           ?.classList.toggle("active", range === "自訂");
@@ -9113,17 +8369,6 @@
         if (currentDateFilter === "今日") {
           const today = getTaipeiToday();
           return cardRange.start <= today && cardRange.end >= today;
-        }
-        if (currentDateFilter === "明天") {
-          const tomorrow = addDaysToDateString(getTaipeiToday(), 1);
-          return cardRange.start <= tomorrow && cardRange.end >= tomorrow;
-        }
-        if (currentDateFilter === "指定單日") {
-          const selectedDate = normalizeAdminDateValue(
-            document.getElementById("singleShippingDateInput")?.value || "",
-          );
-          if (!selectedDate) return false;
-          return cardRange.start <= selectedDate && cardRange.end >= selectedDate;
         }
         if (currentDateFilter === "本週") {
           const range = getCurrentWeekRange();
@@ -9322,7 +8567,6 @@
         updateAdminPagination(matchedCards.length);
         cleanupSelectedOrderNos(true);
         syncBatchSelectionUi();
-        renderShippingManifest();
       }
 
       // ==========================================
@@ -10251,8 +9495,8 @@ ${adminNote}
           );
         }
 
-        if (adminLegacySendButton) {
-          adminLegacySendButton.disabled = true;
+        if (sendBtn) {
+          sendBtn.disabled = true;
         }
 
         if (!adminBatchProcessing && !preserveFeedback) {
