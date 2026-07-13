@@ -548,7 +548,7 @@
       }
 
       .shipping-manifest-table {
-        min-width: 1060px;
+        min-width: 980px;
         width: 100%;
         border-collapse: collapse;
         background: #ffffff;
@@ -587,9 +587,29 @@
 
       .shipping-manifest-table .cell-address,
       .shipping-manifest-table .cell-items,
+      .shipping-manifest-table .cell-sender,
       .shipping-manifest-table .cell-note {
         white-space: pre-line;
         word-break: break-word;
+      }
+
+      .shipping-manifest-table .cell-note {
+        min-width: 220px;
+      }
+
+      .shipping-tracking-list {
+        display: grid;
+        gap: 7px;
+        min-width: 150px;
+      }
+
+      .shipping-tracking-line {
+        color: #0f172a;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
       }
 
       .single-date-filter {
@@ -2513,37 +2533,27 @@
         }
         .shipping-manifest-table th:nth-child(2),
         .shipping-manifest-table td:nth-child(2) {
-          width: 28mm;
+          width: 26mm;
         }
         .shipping-manifest-table th:nth-child(3),
         .shipping-manifest-table td:nth-child(3) {
-          width: 20mm;
+          width: 55mm;
         }
         .shipping-manifest-table th:nth-child(4),
         .shipping-manifest-table td:nth-child(4) {
-          width: 25mm;
+          width: 28mm;
         }
         .shipping-manifest-table th:nth-child(5),
         .shipping-manifest-table td:nth-child(5) {
-          width: 48mm;
+          width: 78mm;
         }
         .shipping-manifest-table th:nth-child(6),
         .shipping-manifest-table td:nth-child(6) {
-          width: 42mm;
+          width: 58mm;
         }
-        .shipping-manifest-table th:nth-child(7),
-        .shipping-manifest-table td:nth-child(7),
-        .shipping-manifest-table th:nth-child(8),
-        .shipping-manifest-table td:nth-child(8) {
-          width: 22mm;
-        }
-        .shipping-manifest-table th:nth-child(9),
-        .shipping-manifest-table td:nth-child(9) {
-          width: 22mm;
-        }
-        .shipping-manifest-table th:nth-child(10),
-        .shipping-manifest-table td:nth-child(10) {
-          width: 24mm;
+        .shipping-tracking-line {
+          color: #000000 !important;
+          font-size: 9pt;
         }
       }
 
@@ -3453,17 +3463,12 @@
           <table class="shipping-manifest-table">
             <thead>
               <tr>
-                <th>序號</th>
-                <th>訂單編號</th>
+                <th>序</th>
                 <th>收件人</th>
-                <th>電話</th>
-                <th>地址</th>
                 <th>商品與數量</th>
-                <th>付款方式</th>
-                <th>付款狀態</th>
-                <th>訂單金額</th>
-                <th>訂單狀態</th>
+                <th>寄件人</th>
                 <th>備註</th>
+                <th>黑貓寄貨編號</th>
               </tr>
             </thead>
             <tbody id="shippingManifestTableBody"></tbody>
@@ -8805,15 +8810,33 @@
         return "商品／箱數統計：商品明細格式不足，請以表格逐筆核對。";
       }
 
+      function getShippingManifestOrderBoxCount(order) {
+        const parsedItems = parseShippingManifestItems(order?.itemsSummary);
+        if (parsedItems.reliable) {
+          return parsedItems.items.reduce((sum, item) => sum + item.qty, 0);
+        }
+        const storedBoxes = Number(String(order?.totalBoxes || "").trim());
+        return Number.isFinite(storedBoxes) && storedBoxes > 0
+          ? storedBoxes
+          : 1;
+      }
+
+      function buildShippingTrackingNumberSlotsHtml(order) {
+        const boxCount = getShippingManifestOrderBoxCount(order);
+        const slotCount = Math.max(1, Math.ceil(boxCount / 3));
+        return `
+          <div class="shipping-tracking-list">
+            ${Array.from({ length: slotCount }, (_, index) => {
+              return `<div class="shipping-tracking-line">${escapeHtml(index + 1)}：____-____-____</div>`;
+            }).join("")}
+          </div>
+        `;
+      }
+
       function getShippingManifestNote(order) {
         const notes = [];
-        const buyerName = String(order?.buyerName || "").trim();
-        const recipientName = String(order?.recipientName || "").trim();
         const customerNote = String(order?.customerNote || "").trim();
         const adminNote = String(order?.adminNote || "").trim();
-        if (buyerName && buyerName !== recipientName) {
-          notes.push(`訂購人：${buyerName}`);
-        }
         if (customerNote) notes.push(`客戶備註：${customerNote}`);
         if (adminNote) notes.push(`管理員備註：${adminNote}`);
         return notes.join("\n");
@@ -8883,28 +8906,16 @@
         if (printButton) printButton.disabled = false;
         tbody.innerHTML = orders
           .map((order, index) => {
-            const paymentStateLabel =
-              getPaymentLabelFromState(order?.paymentState) ||
-              formatReadOnlyPaymentLabel(
-                order?.paymentMethod,
-                order?.paymentStatus,
-              );
-            const paymentMethod = String(order?.paymentMethod || "").trim();
-            const paymentStatus = String(order?.paymentStatus || "").trim();
             const note = getShippingManifestNote(order);
+            const senderName = String(order?.buyerName || "").trim();
             return `
               <tr>
                 <td class="cell-center">${escapeHtml(index + 1)}</td>
-                <td>${escapeHtml(order?.orderNo || "—")}</td>
                 <td>${escapeHtml(order?.recipientName || "—")}</td>
-                <td class="cell-phone">${escapeHtml(order?.recipientPhone || "—")}</td>
-                <td class="cell-address">${formatMultilineHtml(order?.recipientAddress || "—")}</td>
                 <td class="cell-items">${formatMultilineHtml(order?.itemsSummary || "—")}</td>
-                <td>${escapeHtml(paymentMethod || paymentStateLabel || "—")}</td>
-                <td>${escapeHtml(paymentStatus || paymentStateLabel || "—")}</td>
-                <td class="cell-money">$${escapeHtml(formatAdminMoney(order?.finalAmount || 0))}</td>
-                <td>${escapeHtml(order?.orderStatus || "—")}</td>
+                <td class="cell-sender">${escapeHtml(senderName || "—")}</td>
                 <td class="cell-note">${formatMultilineHtml(note || "—")}</td>
+                <td>${buildShippingTrackingNumberSlotsHtml(order)}</td>
               </tr>
             `;
           })
