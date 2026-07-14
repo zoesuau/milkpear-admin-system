@@ -3764,6 +3764,7 @@
                 class="form-control"
                 required
                 placeholder="請輸入完整收件地址"
+                oninput="updateNewOrderAmountPreview()"
               />
             </div>
             <div class="form-group">
@@ -3953,6 +3954,7 @@
       let adminCancelOrderContext = null;
       let adminCancelOrderSubmitting = false;
       const ADMIN_ORDERS_PER_PAGE = 20;
+      const OFFSHORE_SHIPPING_KEYWORDS = ["金門", "澎湖", "連江", "馬祖", "綠島"];
       let adminCurrentPage = 1;
       const CURRENT_ADMIN_NAME = "後台管理員";
       let currentFilterStatus = "全部";
@@ -4967,7 +4969,35 @@
         };
       }
 
-      function calculateOrderAmount(items, paymentMethod, discountAmount = 0) {
+      function isOffshoreShippingAddress(address) {
+        const text = String(address || "");
+        return OFFSHORE_SHIPPING_KEYWORDS.some((keyword) =>
+          text.includes(keyword),
+        );
+      }
+
+      function calculateShippingFeeByAddress(totalBoxes, address) {
+        if (!totalBoxes || totalBoxes <= 0) return 0;
+
+        if (isOffshoreShippingAddress(address)) {
+          const fullGroups = Math.floor(totalBoxes / 3);
+          const remainder = totalBoxes % 3;
+          const remainderFee = remainder === 1 ? 300 : remainder === 2 ? 350 : 0;
+          return fullGroups * 400 + remainderFee;
+        }
+
+        const remainder = totalBoxes % 3;
+        if (remainder === 1) return 150;
+        if (remainder === 2) return 250;
+        return 0;
+      }
+
+      function calculateOrderAmount(
+        items,
+        paymentMethod,
+        discountAmount = 0,
+        address = "",
+      ) {
         if (!adminProductsReady) {
           return {
             items: [],
@@ -5009,17 +5039,7 @@
           return sum + item.qty;
         }, 0);
 
-        let shippingFee = 0;
-        if (totalBoxes > 0) {
-          const remainder = totalBoxes % 3;
-          if (remainder === 1) {
-            shippingFee = 150;
-          } else if (remainder === 2) {
-            shippingFee = 250;
-          } else {
-            shippingFee = 0;
-          }
-        }
+        const shippingFee = calculateShippingFeeByAddress(totalBoxes, address);
         const codFee = paymentMethod === "貨到付款" ? 30 : 0;
         const originalTotal = subtotal + shippingFee + codFee;
         const discount = normalizeMoney(discountAmount);
@@ -6574,7 +6594,7 @@
               <div class="admin-content-grid">
                 <div class="admin-content-field"><label>收件人姓名</label><input class="admin-content-recipient-name" value="${escapeHtml(order.recipientName || "")}" ${lockedAttribute}></div>
                 <div class="admin-content-field"><label>收件人電話</label><input class="admin-content-recipient-phone" value="${escapeHtml(order.recipientPhone || "")}" ${lockedAttribute}></div>
-                <div class="admin-content-field full"><label>收件地址</label><input class="admin-content-recipient-address" value="${escapeHtml(order.recipientAddress || "")}" ${lockedAttribute}></div>
+                <div class="admin-content-field full"><label>收件地址</label><input class="admin-content-recipient-address" value="${escapeHtml(order.recipientAddress || "")}" oninput="updateAdminContentPreview(this.closest('.card'))" ${lockedAttribute}></div>
                 <div class="admin-content-field full"><label>客戶備註</label><textarea class="admin-content-customer-note" ${lockedAttribute}>${escapeHtml(order.customerNote || "")}</textarea></div>
               </div>
             </div>
@@ -6677,6 +6697,10 @@
           return;
         }
         const order = getLatestAdminOrder(card.dataset.orderNo);
+        const recipientAddress =
+          card.querySelector(".admin-content-recipient-address")?.value.trim() ||
+          order?.recipientAddress ||
+          "";
         const amount = calculateOrderAmount(
           getAdminContentEditorItems(card).map((item) => ({
             productCode: item.code,
@@ -6684,6 +6708,7 @@
           })),
           order?.paymentMethod || "",
           discount,
+          recipientAddress,
         );
         if (!amount.valid) return;
 
@@ -9778,10 +9803,13 @@
           getPaymentStateDefinition(paymentValue)?.paymentMethod ||
           paymentValue;
         const discountAmount = normalizeMoney(card.dataset.discountAmount || 0);
+        const recipientAddress =
+          card.querySelector(".address")?.innerText.trim() || "";
         const amount = calculateOrderAmount(
           items,
           paymentMethod,
           discountAmount,
+          recipientAddress,
         );
         if (!amount.valid) return;
         updateDiscountDisplay(card, amount.originalTotal, amount.finalTotal);
@@ -11167,10 +11195,13 @@ ${adminNote}
         const discountAmount = normalizeMoney(
           document.getElementById("new-discount-amount")?.value || 0,
         );
+        const recipientAddress =
+          document.getElementById("new-address")?.value.trim() || "";
         const amount = calculateOrderAmount(
           items,
           paymentMethod,
           discountAmount,
+          recipientAddress,
         );
 
         return {
