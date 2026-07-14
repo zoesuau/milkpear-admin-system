@@ -479,6 +479,10 @@
         display: none;
       }
 
+      .shipping-manifest-panel:not(.is-empty) .shipping-manifest-empty {
+        display: none;
+      }
+
       .shipping-manifest-header {
         display: flex;
         justify-content: space-between;
@@ -2637,11 +2641,11 @@
 
         .shipping-manifest-table th:nth-child(1),
         .shipping-manifest-table td:nth-child(1) {
-          width: 7mm;
+          width: 9mm;
         }
         .shipping-manifest-table th:nth-child(2),
         .shipping-manifest-table td:nth-child(2) {
-          width: 22mm;
+          width: 20mm;
         }
         .shipping-manifest-table th:nth-child(3),
         .shipping-manifest-table td:nth-child(3) {
@@ -2673,13 +2677,19 @@
         }
         .shipping-tracking-line {
           color: #000000 !important;
-          font-size: 8.5pt;
+          gap: 1px;
+          font-size: 7.5pt;
           letter-spacing: 0;
           white-space: nowrap;
         }
         .shipping-tracking-segment {
-          width: 11mm;
+          width: 9mm;
           border-bottom: 1px solid #000000 !important;
+        }
+        .shipping-manifest-row-date {
+          margin-top: 1mm;
+          font-size: 7pt;
+          line-height: 1;
         }
       }
 
@@ -8899,6 +8909,12 @@
         return `${parts.year}/${parts.month}/${parts.day}`;
       }
 
+      function formatShippingManifestRowDate(dateString) {
+        const parts = getDateParts(normalizeAdminDateValue(dateString));
+        if (!parts) return "—";
+        return `${parts.month}/${parts.day}`;
+      }
+
       function formatShippingManifestPrintTime(date = new Date()) {
         return new Intl.DateTimeFormat("zh-TW", {
           timeZone: "Asia/Taipei",
@@ -9269,7 +9285,7 @@
               <tr>
                 <td class="cell-center">${escapeHtml(index + 1)}${
                   isRangeMode
-                    ? `<span class="shipping-manifest-row-date">${escapeHtml(formatShippingManifestDate(order?.expectedShippingDate || ""))}</span>`
+                    ? `<span class="shipping-manifest-row-date">${escapeHtml(formatShippingManifestRowDate(order?.expectedShippingDate || ""))}</span>`
                     : ""
                 }</td>
                 <td>${escapeHtml(order?.recipientName || "—")}</td>
