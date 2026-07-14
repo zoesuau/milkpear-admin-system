@@ -558,7 +558,44 @@
         font-size: 13px;
         font-weight: 800;
         line-height: 1.7;
+      }
+
+      .shipping-manifest-product-columns {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px 18px;
+      }
+
+      .shipping-manifest-product-column {
+        min-width: 0;
+      }
+
+      .shipping-manifest-product-heading {
+        display: block;
+        margin-bottom: 2px;
+        color: #14532d;
+        font-size: 14px;
+        font-weight: 900;
+      }
+
+      .shipping-manifest-product-lines {
         white-space: pre-line;
+      }
+
+      .shipping-manifest-product-other,
+      .shipping-manifest-product-total {
+        grid-column: 1 / -1;
+      }
+
+      .shipping-manifest-product-other {
+        padding-top: 5px;
+        border-top: 1px dashed #86a98f;
+      }
+
+      .shipping-manifest-product-total {
+        padding-top: 4px;
+        border-top: 1px solid #4f7f63;
+        font-weight: 900;
       }
 
       .shipping-manifest-empty {
@@ -635,6 +672,10 @@
         font-size: 10px;
         font-weight: 800;
         white-space: nowrap;
+      }
+
+      .shipping-manifest-blank-row {
+        display: none;
       }
 
       .shipping-tracking-list {
@@ -2534,6 +2575,20 @@
           line-height: 1.45;
         }
 
+        .shipping-manifest-product-columns {
+          gap: 1.5mm 5mm;
+        }
+
+        .shipping-manifest-product-heading {
+          color: #000000 !important;
+          font-size: 9pt;
+        }
+
+        .shipping-manifest-product-other,
+        .shipping-manifest-product-total {
+          border-color: #000000 !important;
+        }
+
         .shipping-manifest-empty {
           border: 1px solid #000000 !important;
           border-radius: 0 !important;
@@ -2586,23 +2641,35 @@
         }
         .shipping-manifest-table th:nth-child(2),
         .shipping-manifest-table td:nth-child(2) {
-          width: 24mm;
+          width: 22mm;
         }
         .shipping-manifest-table th:nth-child(3),
         .shipping-manifest-table td:nth-child(3) {
-          width: 41mm;
+          width: 38mm;
         }
         .shipping-manifest-table th:nth-child(4),
         .shipping-manifest-table td:nth-child(4) {
-          width: 22mm;
+          width: 18mm;
         }
         .shipping-manifest-table th:nth-child(5),
         .shipping-manifest-table td:nth-child(5) {
-          width: 46mm;
+          width: 20mm;
         }
         .shipping-manifest-table th:nth-child(6),
         .shipping-manifest-table td:nth-child(6) {
-          width: 50mm;
+          width: 40mm;
+        }
+        .shipping-manifest-table th:nth-child(7),
+        .shipping-manifest-table td:nth-child(7) {
+          width: 45mm;
+        }
+        .shipping-manifest-blank-row {
+          display: table-row !important;
+          height: 12mm;
+        }
+        .shipping-manifest-blank-row td {
+          height: 12mm;
+          padding: 1mm 1.6mm;
         }
         .shipping-tracking-line {
           color: #000000 !important;
@@ -3550,6 +3617,7 @@
                 <th>序</th>
                 <th>收件人</th>
                 <th>商品與數量</th>
+                <th>訂單金額</th>
                 <th>寄件人</th>
                 <th>備註</th>
                 <th>黑貓寄貨編號</th>
@@ -8951,18 +9019,126 @@
       }
 
       function buildShippingManifestProductSummary(stats) {
-        if (!stats.orderCount) return "商品／箱數統計：—";
-        if (stats.allItemsReliable && stats.productTotals.size) {
-          const lines = [...stats.productTotals.entries()].map(
-            ([label, qty]) => `${label}：${qty} 盒`,
-          );
-          lines.push(`合計：${stats.boxTotal} 盒`);
-          return lines.join("\n");
+        if (!stats.orderCount) {
+          return '<div class="shipping-manifest-product-lines">商品／箱數統計：—</div>';
         }
-        if (stats.boxTotal !== null) {
-          return `總箱數：${stats.boxTotal} 盒\n各商品規格數量：商品明細格式不足，請以表格逐筆核對。`;
+        if (!stats.allItemsReliable || !stats.productTotals.size) {
+          const totalText =
+            stats.boxTotal !== null ? `總箱數：${stats.boxTotal} 盒<br>` : "";
+          return `${totalText}各商品規格數量：商品明細格式不足，請以表格逐筆核對。`;
         }
-        return "商品／箱數統計：商品明細格式不足，請以表格逐筆核對。";
+
+        const groups = { milk: [], sugar: [], other: [] };
+        [...stats.productTotals.entries()].forEach(([label, qty]) => {
+          const normalizedLabel = String(label || "").trim();
+          const sizeMatch = normalizedLabel.match(/(\d+)\s*A/i);
+          const size = sizeMatch ? Number(sizeMatch[1]) : null;
+          if (
+            normalizedLabel.includes("牛奶梨") ||
+            (!/(蔗香梨|薦香梨)/.test(normalizedLabel) &&
+              size !== null &&
+              size <= 15)
+          ) {
+            groups.milk.push([normalizedLabel, qty]);
+          } else if (
+            /(蔗香梨|薦香梨)/.test(normalizedLabel) ||
+            (size !== null && size >= 17)
+          ) {
+            groups.sugar.push([normalizedLabel, qty]);
+          } else {
+            groups.other.push([normalizedLabel, qty]);
+          }
+        });
+
+        const getSize = ([label]) => {
+          const match = String(label).match(/(\d+)\s*A/i);
+          return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+        };
+        const sortEntries = (entries) =>
+          entries.sort((a, b) => {
+            const sizeDifference = getSize(a) - getSize(b);
+            if (sizeDifference !== 0) return sizeDifference;
+            return a[0].localeCompare(b[0], "zh-Hant", { numeric: true });
+          });
+        const buildLines = (entries, groupPattern = null) => {
+          if (!entries.length) return "—";
+          const mergedEntries = new Map();
+          entries.forEach(([label, qty]) => {
+            const sizeMatch = String(label).match(/(\d+)\s*A/i);
+            const strippedLabel = groupPattern
+              ? label.replace(groupPattern, "").replace(/^[\s：:｜|-]+/, "").trim() ||
+                label
+              : label;
+            const displayLabel = sizeMatch
+              ? `${Number(sizeMatch[1])} A`
+              : strippedLabel;
+            const key = displayLabel.replace(/\s+/g, "").toUpperCase();
+            const existing = mergedEntries.get(key);
+            mergedEntries.set(key, [
+              existing?.[0] || displayLabel,
+              (existing?.[1] || 0) + qty,
+            ]);
+          });
+          return sortEntries([...mergedEntries.values()])
+            .map(([label, qty]) => {
+              return `${escapeHtml(label)}：${escapeHtml(qty)} 盒`;
+            })
+            .join("<br>");
+        };
+
+        const otherHtml = groups.other.length
+          ? `<div class="shipping-manifest-product-other"><span class="shipping-manifest-product-heading">其他品項</span><div class="shipping-manifest-product-lines">${buildLines(groups.other)}</div></div>`
+          : "";
+        return `
+          <div class="shipping-manifest-product-columns">
+            <div class="shipping-manifest-product-column">
+              <span class="shipping-manifest-product-heading">牛奶梨</span>
+              <div class="shipping-manifest-product-lines">${buildLines(groups.milk, /牛奶梨/g)}</div>
+            </div>
+            <div class="shipping-manifest-product-column">
+              <span class="shipping-manifest-product-heading">蔗香梨</span>
+              <div class="shipping-manifest-product-lines">${buildLines(groups.sugar, /(蔗香梨|薦香梨)/g)}</div>
+            </div>
+            ${otherHtml}
+            <div class="shipping-manifest-product-total">合計：${escapeHtml(stats.boxTotal)} 盒</div>
+          </div>
+        `;
+      }
+
+      function getShippingManifestPrintRowUnits(order) {
+        const itemLines = String(order?.itemsSummary || "")
+          .split(/\r?\n/)
+          .filter((line) => line.trim()).length;
+        const noteLines = String(getShippingManifestNote(order) || "")
+          .split(/\r?\n/)
+          .filter((line) => line.trim()).length;
+        const trackingLines = Math.max(
+          1,
+          Math.ceil(getShippingManifestOrderBoxCount(order) / 3),
+        );
+        const visualLines = Math.max(1, itemLines, noteLines, trackingLines);
+        return Math.max(1, Math.ceil(visualLines / 3));
+      }
+
+      function buildShippingManifestBlankRowsHtml(orders) {
+        const printableRowUnits = orders.reduce(
+          (sum, order) => sum + getShippingManifestPrintRowUnits(order),
+          0,
+        );
+        const blankRowCount = Math.max(0, 13 - printableRowUnits);
+        return Array.from({ length: blankRowCount }, (_, index) => {
+          return `
+            <tr class="shipping-manifest-blank-row" aria-hidden="true">
+              <td class="cell-center">${escapeHtml(orders.length + index + 1)}</td>
+              <td></td>
+              <td></td>
+              <td class="cell-money"></td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+          `;
+        }).join("");
       }
 
       function getShippingManifestOrderBoxCount(order) {
@@ -9059,7 +9235,7 @@
           <div class="shipping-manifest-stat"><span>總出貨量</span><strong>${escapeHtml(stats.boxTotal !== null ? `${stats.boxTotal} 盒` : "逐筆核對")}</strong></div>
           <div class="shipping-manifest-stat"><span>訂單總金額</span><strong>$${escapeHtml(formatAdminMoney(stats.totalAmount))}</strong></div>
         `;
-        productSummary.innerText = productSummaryText;
+        productSummary.innerHTML = productSummaryText;
 
         if (!hasValidDateRange) {
           panel.classList.add("is-empty");
@@ -9085,7 +9261,7 @@
         panel.classList.remove("is-empty");
         empty.innerText = "";
         if (printButton) printButton.disabled = false;
-        tbody.innerHTML = orders
+        const orderRowsHtml = orders
           .map((order, index) => {
             const note = getShippingManifestNote(order);
             const senderName = String(order?.buyerName || "").trim();
@@ -9098,6 +9274,7 @@
                 }</td>
                 <td>${escapeHtml(order?.recipientName || "—")}</td>
                 <td class="cell-items">${formatMultilineHtml(order?.itemsSummary || "—")}</td>
+                <td class="cell-money">$${escapeHtml(formatAdminMoney(order?.finalAmount || 0))}</td>
                 <td class="cell-sender">${escapeHtml(senderName || "—")}</td>
                 <td class="cell-note">${formatMultilineHtml(note || "—")}</td>
                 <td>${buildShippingTrackingNumberSlotsHtml(order)}</td>
@@ -9105,6 +9282,8 @@
             `;
           })
           .join("");
+        tbody.innerHTML =
+          orderRowsHtml + buildShippingManifestBlankRowsHtml(orders);
       }
 
       function filterBySingleShippingDate(btnElement) {
