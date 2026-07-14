@@ -10851,6 +10851,10 @@ ${adminNote}
             const address = customer.recipientAddress || "地址未填";
             const lastOrder = customer.lastOrderDate || "尚無日期";
             const lastUpdated = customer.lastUpdatedAt || "尚無日期";
+            const duplicateText =
+              Number(customer.duplicateCount || 0) > 1
+                ? `<span class="customer-result-meta">已合併 ${escapeHtml(String(customer.duplicateCount))} 筆舊紀錄</span>`
+                : "";
             return `
               <button
                 type="button"
@@ -10861,6 +10865,7 @@ ${adminNote}
                 <span class="customer-result-phone">電話：${escapeHtml(phone)}</span>
                 <span class="customer-result-meta">地址：${escapeHtml(address)}</span>
                 <span class="customer-result-meta">最後訂購：${escapeHtml(lastOrder)}｜最後更新：${escapeHtml(lastUpdated)}</span>
+                ${duplicateText}
               </button>
             `;
           })
@@ -11016,6 +11021,11 @@ ${adminNote}
             <br>電話：${escapeHtml(buyerPhone || recipientPhone || "電話未填")}
             <br>地址：${escapeHtml(customer.recipientAddress || "地址未填")}
             <br>最後訂購：${escapeHtml(customer.lastOrderDate || "尚無日期")}｜最後更新：${escapeHtml(customer.lastUpdatedAt || "尚無日期")}
+            ${
+              Number(customer.duplicateCount || 0) > 1
+                ? `<br>已合併 ${escapeHtml(String(customer.duplicateCount))} 筆舊紀錄`
+                : ""
+            }
             <br>customerId：${escapeHtml(customer.customerId)}
           `;
         }
