@@ -8588,7 +8588,9 @@
             body.requestKey = createAdminRequestKey(action, [
               orderNo,
               notificationType,
-              card.dataset.lastNotificationStatus || "",
+              card.dataset.notificationStatus || "",
+              card.dataset.pendingNoticeFields || "",
+              card.dataset.lastUpdatedAt || "",
             ]);
           }
           const response = await fetch(GAS_ORDERS_API_URL, {
