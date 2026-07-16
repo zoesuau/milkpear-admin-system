@@ -4082,6 +4082,7 @@
       const ADMIN_INITIAL_LOAD_SLOW_MS = 12000;
 
       let adminProductCatalog = [];
+      let adminProductCatalogVersion = "";
       let adminSiteSettings = {
         bannerImageUrl: "assets/sanheyuan-banner.png",
       };
@@ -4952,6 +4953,7 @@
             body: JSON.stringify({
               action: "adminUpdateProductManagement",
               adminSessionToken,
+              catalogVersion: adminProductCatalogVersion,
               ...payloadPatch,
             }),
           });
@@ -4967,6 +4969,7 @@
           }
 
           adminProductCatalog = result.products.slice();
+          adminProductCatalogVersion = String(result.catalogVersion || "");
           adminSiteSettings = {
             ...adminSiteSettings,
             ...(result.siteSettings || {}),
@@ -4980,7 +4983,11 @@
         } catch (error) {
           console.error("商品管理儲存失敗", error);
           setProductManagementFeedback(
-            "儲存失敗，請確認欄位格式或重新整理後再試。",
+            error.message === "PRODUCT_CATALOG_STALE"
+              ? "庫存已被訂單更新，為避免覆蓋最新數量，請重新整理商品後再修改。"
+              : error.message === "PRODUCT_MANAGEMENT_UPDATE_BUSY"
+                ? "目前有訂單或庫存正在更新，請稍後再試。"
+                : "儲存失敗，請確認欄位格式或重新整理後再試。",
             "error",
           );
           return false;
@@ -5609,6 +5616,7 @@
           }
 
           adminProductCatalog = payload.products.slice();
+          adminProductCatalogVersion = String(payload.catalogVersion || "");
           adminSiteSettings = {
             ...adminSiteSettings,
             ...(payload.siteSettings || {}),
@@ -5621,6 +5629,7 @@
         } catch (error) {
           console.error("GAS 商品目錄讀取失敗", error);
           adminProductCatalog = [];
+          adminProductCatalogVersion = "";
           setAdminProductCatalogState(
             false,
             "商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。",
@@ -6446,6 +6455,10 @@
           ORDER_NOT_CANCELLABLE: "此訂單狀態不可取消。",
           ADMIN_CANCEL_WRITE_VERIFY_FAILED:
             "取消寫入未通過驗證，已嘗試復原，請重新讀取確認。",
+          CANCEL_STOCK_RESTORE_BASELINE_INVALID:
+            "此筆歷史商品格式無法安全回補庫存，請先由管理員確認庫存。",
+          ADMIN_CANCEL_INVENTORY_RESTORE_FAILED:
+            "庫存回補失敗，訂單尚未取消，請稍後再試。",
           ADMIN_CANCEL_ROLLBACK_FAILED:
             "取消結果無法確認，請停止操作並重新讀取訂單。",
           ADMIN_CANCEL_FAILED: "取消失敗，未套用前端變更。",
@@ -6962,7 +6975,18 @@
         scrollAdminOrderCardIntoView(orderNo);
       }
 
-      function adminContentErrorMessage(errorCode) {
+      function adminContentErrorMessage(errorCode, shortages = []) {
+        if (
+          errorCode === "PRODUCT_STOCK_INSUFFICIENT" &&
+          Array.isArray(shortages) &&
+          shortages.length
+        ) {
+          const lines = shortages.map((item) => {
+            const name = String(item?.grade || item?.code || "商品");
+            return `${name} 目前可追加 ${Number(item?.available) || 0} 盒，本次欲追加 ${Number(item?.requested) || 0} 盒。`;
+          });
+          return `庫存不足，訂單尚未修改。\n${lines.join("\n")}`;
+        }
         const messages = {
           ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入 LINE。",
           ORDER_CONTENT_LOCKED: "此訂單目前不可修改內容。",
@@ -6971,6 +6995,12 @@
           ITEMS_INVALID: "商品或數量不正確，請重新確認。",
           FINAL_AMOUNT_INVALID: "優惠金額不可大於原始應收金額。",
           ORDER_CONTENT_UPDATE_BUSY: "系統忙碌，請稍後再試。",
+          PRODUCT_STOCK_INSUFFICIENT:
+            "庫存不足，訂單尚未修改，請重新讀取商品庫存。",
+          ORDER_INVENTORY_UPDATE_FAILED:
+            "庫存同步失敗，訂單尚未修改，請稍後再試。",
+          ORDER_INVENTORY_UPDATE_VERIFY_FAILED:
+            "庫存同步結果無法確認，請重新讀取後再試。",
           ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
           ORDER_NO_NOT_UNIQUE: "訂單資料異常，請停止操作。",
           ORDER_CONTENT_REFRESH_FAILED:
@@ -7093,7 +7123,13 @@
               sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
               showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
             }
-            throw new Error(result?.errorCode || "ORDER_CONTENT_UPDATE_FAILED");
+            const saveError = new Error(
+              result?.errorCode || "ORDER_CONTENT_UPDATE_FAILED",
+            );
+            saveError.shortages = Array.isArray(result?.shortages)
+              ? result.shortages
+              : [];
+            throw saveError;
           }
 
           if (payload.order) {
@@ -7124,7 +7160,10 @@
           saveButton.disabled = false;
           saveButton.innerText = "儲存內容";
           feedback.className = "admin-content-feedback is-error";
-          feedback.innerText = adminContentErrorMessage(error.message);
+          feedback.innerText = adminContentErrorMessage(
+            error.message,
+            error.shortages,
+          );
           if (error.message === "ORDER_CONTENT_REFRESH_FAILED") {
             showAdminAuthOverlay(
               "內容可能已儲存，但重新讀取失敗，請按下方重新讀取訂單確認。",
@@ -11710,7 +11749,13 @@ ${adminNote}
               sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
               showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
             }
-            throw new Error(result?.errorCode || "ORDER_CREATE_FAILED");
+            const createError = new Error(
+              result?.errorCode || "ORDER_CREATE_FAILED",
+            );
+            createError.shortages = Array.isArray(result?.shortages)
+              ? result.shortages
+              : [];
+            throw createError;
           }
 
           const createdOrderNo = String(result.created.orderNo).trim();
@@ -11747,6 +11792,17 @@ ${adminNote}
           feedback.innerText =
             error.message === "REQUESTED_SHIPPING_BATCH_UNAVAILABLE"
               ? "希望寄出批次已失效，請重新選擇。"
+              : error.message === "PRODUCT_STOCK_INSUFFICIENT"
+                ? `庫存不足，訂單尚未建立。${
+                    Array.isArray(error.shortages) && error.shortages.length
+                      ? `\n${error.shortages
+                          .map(
+                            (item) =>
+                              `${String(item?.grade || item?.code || "商品")} 目前剩 ${Number(item?.available) || 0} 盒，本次需要 ${Number(item?.requested) || 0} 盒。`,
+                          )
+                          .join("\n")}`
+                      : ""
+                  }`
               : "訂單建立失敗，請確認資料後再試。";
         }
       }
