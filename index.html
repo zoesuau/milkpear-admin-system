@@ -5191,7 +5191,11 @@
         }, 0);
 
         const shippingFee = calculateShippingFeeByAddress(totalBoxes, address);
-        const codFee = paymentMethod === "貨到付款" ? 30 : 0;
+        const codFee =
+          paymentMethod === "貨到付款" ||
+          paymentMethod === "銀行轉帳＋追加款貨到付款"
+            ? 30
+            : 0;
         const originalTotal = subtotal + shippingFee + codFee;
         const discount = normalizeMoney(discountAmount);
         const finalTotal = Math.max(originalTotal - discount, 0);
@@ -5777,6 +5781,13 @@
           className: "pay-success",
         },
         {
+          paymentState: "bank_paid_cod_balance",
+          paymentMethod: "銀行轉帳＋追加款貨到付款",
+          paymentStatus: "追加款貨到付款",
+          label: "原款已匯款＋追加款貨到付款",
+          className: "pay-neutral",
+        },
+        {
           paymentState: "other_seasonal",
           paymentMethod: "其他",
           paymentStatus: "季結",
@@ -5898,6 +5909,7 @@
           折扣金額: "優惠金額",
           折扣原因: "優惠原因",
           訂單總金額: "訂單金額",
+          付款方式: "付款方式",
         };
         const pendingNoticeFields = [
           ...new Set(
@@ -6703,7 +6715,11 @@
             ? storedOriginalAmount
             : finalAmount + discountAmount;
         const currentShipping = Number(order.shippingFee || 0);
-        const currentCod = order.paymentMethod === "貨到付款" ? 30 : 0;
+        const currentCod =
+          order.paymentMethod === "貨到付款" ||
+          order.paymentMethod === "銀行轉帳＋追加款貨到付款"
+            ? 30
+            : 0;
         const currentSubtotal = Math.max(
           currentOriginal - currentShipping - currentCod,
           0,
@@ -7001,6 +7017,8 @@
             "庫存同步失敗，訂單尚未修改，請稍後再試。",
           ORDER_INVENTORY_UPDATE_VERIFY_FAILED:
             "庫存同步結果無法確認，請重新讀取後再試。",
+          CHANGE_NOTICE_TASK_CREATE_FAILED:
+            "通知任務建立失敗，本次修改已取消，請稍後再試。",
           ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
           ORDER_NO_NOT_UNIQUE: "訂單資料異常，請停止操作。",
           ORDER_CONTENT_REFRESH_FAILED:
@@ -7132,10 +7150,10 @@
             throw saveError;
           }
 
-          if (payload.order) {
+          if (result.order) {
             if (
               !applySingleOrderResponse(
-                payload.order,
+                result.order,
                 restoreState || { orderNo: savedOrderNo },
               )
             ) {
@@ -8145,9 +8163,13 @@
         if (!orderNo) return "訂單編號不存在，無法儲存。";
 
         if (
-          !["cod", "bank_unpaid", "bank_paid", "other_seasonal"].includes(
-            values.paymentState,
-          )
+          ![
+            "cod",
+            "bank_unpaid",
+            "bank_paid",
+            "bank_paid_cod_balance",
+            "other_seasonal",
+          ].includes(values.paymentState)
         ) {
           return "付款狀態不允許。";
         }
@@ -8180,6 +8202,10 @@
             "出貨日期通知任務建立失敗，已取消本次儲存，請稍後再試。",
           PAYMENT_STATUS_WRITE_VERIFY_FAILED:
             "付款狀態未成功儲存，請重新整理後再試。",
+          MIXED_COD_BALANCE_NOT_AVAILABLE:
+            "只有原訂單已收到匯款，且追加後仍有差額時，才能選擇「追加款貨到付款」。",
+          CHANGE_NOTICE_TASK_CREATE_FAILED:
+            "通知任務建立失敗，本次修改已取消，請稍後再試。",
           ADMIN_ORDER_UPDATE_INDETERMINATE:
             "無法確認儲存結果，請重新讀取此筆訂單。",
         };
