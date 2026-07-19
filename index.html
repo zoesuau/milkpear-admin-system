@@ -10015,9 +10015,24 @@
         const notificationStatus = String(
           card.dataset.notificationStatus || "",
         ).trim();
+        const lastNotificationType = String(
+          card.dataset.lastNotificationType || "",
+        ).trim();
+        const canLineNotify = card.dataset.canLineNotify === "true";
         const pendingFields = String(
           card.dataset.pendingNoticeFields || "",
         ).trim();
+
+        // 管理員新增、沒有 LINE 的訂單不需要補發「下單通知」；卡片也沒有
+        // 對應操作，因此不要把這類人工狀態列入「改單再通知」。
+        if (
+          notificationStatus === "manual_required" &&
+          lastNotificationType === "order_confirmation" &&
+          !canLineNotify &&
+          pendingFields === ""
+        ) {
+          return false;
+        }
         return (
           isOpenNotificationStatus(notificationStatus) || pendingFields !== ""
         );
