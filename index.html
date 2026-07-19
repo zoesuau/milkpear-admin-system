@@ -1181,8 +1181,20 @@
         font-weight: 800;
         cursor: pointer;
       }
+      .admin-workflow-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .admin-workflow-save[data-send-notification="false"] {
+        background: #ffffff;
+        border: 1px solid #4f7f63;
+        color: #4f7f63;
+      }
       .admin-workflow-save:disabled {
         background: #cbd5e1;
+        border-color: #cbd5e1;
         color: #64748b;
         cursor: not-allowed;
       }
@@ -7570,7 +7582,8 @@
           paymentMethod,
           paymentStatus,
         );
-        const saveButtonLabel = "儲存此筆修改";
+        const canOfferScheduleNotice =
+          canLineNotify === true && String(expectedShippingDate || "") === "";
         const paymentWarning = paymentState
           ? ""
           : `<div class="admin-workflow-feedback is-error">付款資料待確認</div>`;
@@ -7608,9 +7621,18 @@
             </div>
             <div class="admin-workflow-actions">
               <div class="admin-workflow-feedback" aria-live="polite"></div>
-              <button type="button" class="admin-workflow-save" disabled>
-                ${saveButtonLabel}
-              </button>
+              <div class="admin-workflow-buttons">
+                <button type="button" class="admin-workflow-save" data-send-notification="false" disabled>
+                  儲存
+                </button>
+                ${
+                  canOfferScheduleNotice
+                    ? `<button type="button" class="admin-workflow-save" data-send-notification="true" disabled>
+                         儲存並發送通知
+                       </button>`
+                    : ""
+                }
+              </div>
             </div>
           </div>
         `;
@@ -7698,21 +7720,17 @@
         );
       }
 
-      function adminWorkflowUpdateSaveButtonLabel(editor) {
-        const saveButton = editor?.querySelector(".admin-workflow-save");
-        if (!saveButton) return;
-        saveButton.innerText = adminWorkflowShouldSendLineNotice(editor)
-          ? "儲存並寄送 LINE 通知"
-          : "儲存此筆修改";
-      }
-
       function adminWorkflowRefreshDirtyState(editor) {
         if (!editor || editor.dataset.saving === "true") return;
 
         const isDirty = adminWorkflowIsDirty(editor);
-        const saveButton = editor.querySelector(".admin-workflow-save");
-        adminWorkflowUpdateSaveButtonLabel(editor);
-        if (saveButton) saveButton.disabled = !isDirty;
+        editor.querySelectorAll(".admin-workflow-save").forEach((button) => {
+          const wantsNotification =
+            button.dataset.sendNotification === "true";
+          button.disabled =
+            !isDirty ||
+            (wantsNotification && !adminWorkflowShouldSendLineNotice(editor));
+        });
         adminWorkflowSetFeedback(editor, isDirty ? "尚未儲存" : "");
         adminNoteRefreshCardLocks(editor.closest(".card"));
       }
@@ -7725,15 +7743,19 @@
             control.disabled = isSaving;
           });
 
-        const saveButton = editor.querySelector(".admin-workflow-save");
-        if (saveButton) {
-          saveButton.innerText = isSaving
+        editor.querySelectorAll(".admin-workflow-save").forEach((button) => {
+          const wantsNotification =
+            button.dataset.sendNotification === "true";
+          button.innerText = isSaving
             ? "儲存中…"
-            : adminWorkflowShouldSendLineNotice(editor)
-              ? "儲存並寄送 LINE 通知"
-              : "儲存此筆修改";
-          saveButton.disabled = isSaving || !adminWorkflowIsDirty(editor);
-        }
+            : wantsNotification
+              ? "儲存並發送通知"
+              : "儲存";
+          button.disabled =
+            isSaving ||
+            !adminWorkflowIsDirty(editor) ||
+            (wantsNotification && !adminWorkflowShouldSendLineNotice(editor));
+        });
         adminNoteRefreshCardLocks(editor.closest(".card"));
       }
 
@@ -8255,7 +8277,11 @@
         return true;
       }
 
-      async function adminWorkflowSaveCard(card, editor) {
+      async function adminWorkflowSaveCard(
+        card,
+        editor,
+        sendNotification = false,
+      ) {
         if (
           !card ||
           !editor ||
@@ -8275,13 +8301,22 @@
           return;
         }
 
+        if (sendNotification && !adminWorkflowShouldSendLineNotice(editor)) {
+          adminWorkflowSetFeedback(
+            editor,
+            "目前無法發送通知，請改用「儲存」。",
+            true,
+          );
+          return;
+        }
+
         const baselineDate = editor.dataset.baselineDate || "";
         const dateChangedToNonBlank =
           values.expectedShippingDate !== baselineDate &&
           values.expectedShippingDate !== "";
         if (dateChangedToNonBlank) {
           const confirmed = window.confirm(
-            `以下重要資料將被修改：\n\n- 確定出貨日期：${adminWorkflowFormatDateForConfirm(baselineDate)} → ${adminWorkflowFormatDateForConfirm(values.expectedShippingDate)}\n\n確認儲存這次修改？`,
+            `以下重要資料將被修改：\n\n- 確定出貨日期：${adminWorkflowFormatDateForConfirm(baselineDate)} → ${adminWorkflowFormatDateForConfirm(values.expectedShippingDate)}\n\n${sendNotification ? "儲存後會發送 LINE 通知給客人。" : "本次只儲存，不會發送通知。"}\n\n確認繼續？`,
           );
           if (!confirmed) return;
         }
@@ -8316,6 +8351,7 @@
               orderNo,
               expectedShippingDate: values.expectedShippingDate,
               paymentState: values.paymentState,
+              sendNotification: sendNotification ? "true" : "false",
             }),
           });
           const payload = await response.json();
@@ -8820,7 +8856,11 @@
 
           if (!editor || !card || !card.contains(editor)) return;
           if (adminNoteIsOpen(card)) return;
-          adminWorkflowSaveCard(card, editor);
+          adminWorkflowSaveCard(
+            card,
+            editor,
+            saveButton.dataset.sendNotification === "true",
+          );
         });
         cardsContainer.addEventListener("input", (event) => {
           if (!event.target.matches(".admin-note-textarea")) return;
