@@ -4124,6 +4124,13 @@
         "manual_required",
         "review_required",
       ]);
+      const CANCELLATION_NOTIFICATION_STATUSES = new Set([
+        "pending_send",
+        "failed",
+        "manual_required",
+        "review_required",
+        "sent",
+      ]);
       const CANONICAL_NOTIFICATION_TYPES = new Set([
         "order_confirmation",
         "schedule_notice",
@@ -6491,6 +6498,18 @@
         return messages[errorCode] || "取消失敗，請重新讀取後再試。";
       }
 
+      function adminCancelOrderGetResultMessage(notificationStatus) {
+        const messages = {
+          sent: "訂單已取消，LINE 取消通知已發送。",
+          pending_send: "訂單已取消，LINE 取消通知待發送。",
+          failed: "訂單已取消，但 LINE 取消通知失敗，請至待通知訂單處理。",
+          manual_required: "訂單已取消，此訂單請人工聯絡客戶。",
+          review_required: "訂單已取消，但取消通知需要人工確認。",
+        };
+
+        return messages[notificationStatus] || "訂單已取消。";
+      }
+
       async function adminCancelOrderSubmit() {
         if (adminCancelOrderSubmitting || !adminCancelOrderContext) return;
 
@@ -6540,6 +6559,9 @@
           const notificationStatus = String(
             payload?.notificationStatus || "",
           ).trim();
+          const notificationWarning = String(
+            payload?.notificationWarning || "",
+          ).trim();
 
           if (
             !response.ok ||
@@ -6548,7 +6570,7 @@
             payload.action !== "adminCancelOrder" ||
             payload.orderNo !== orderNo ||
             payload.orderStatus !== "已取消" ||
-            !isOpenNotificationStatus(notificationStatus) ||
+            !CANCELLATION_NOTIFICATION_STATUSES.has(notificationStatus) ||
             String(payload?.lastNotificationType || "").trim() !==
               "cancellation_notice"
           ) {
@@ -6565,7 +6587,11 @@
             return;
           }
 
-          if (feedback) feedback.innerText = "已取消，正在重新讀取訂單…";
+          const resultMessage =
+            adminCancelOrderGetResultMessage(notificationStatus);
+          if (feedback) {
+            feedback.innerText = `${resultMessage}正在重新讀取訂單…`;
+          }
           const adminOrders = await fetchAdminOrdersFromGas();
           if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
             adminCancelOrderSetSaving(false);
@@ -6584,6 +6610,9 @@
           applyReadOnlyModeToRealOrders();
           adminCancelOrderSetSaving(false);
           closeAdminCancelOrderModal();
+          if (notificationWarning || notificationStatus !== "sent") {
+            window.alert(resultMessage);
+          }
         } catch (error) {
           adminCancelOrderSetSaving(false);
           if (feedback) {
