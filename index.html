@@ -1794,6 +1794,32 @@
         opacity: 0.65;
         cursor: not-allowed;
       }
+      .admin-notification-skip-options {
+        display: grid;
+        gap: 8px;
+        margin-top: 14px;
+      }
+      .admin-notification-skip-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        padding: 10px 12px;
+        border: 1px solid #e4e4e7;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #3f3f46;
+        cursor: pointer;
+      }
+      .admin-notification-skip-option input {
+        margin-top: 3px;
+      }
+      .admin-notification-skip-other {
+        display: none;
+        margin-top: 10px;
+      }
+      .admin-notification-skip-other.is-visible {
+        display: block;
+      }
       .admin-shipping-date-notice-action {
         width: 100%;
         min-height: 44px;
@@ -3895,6 +3921,80 @@
       </div>
     </div>
 
+    <!-- 不發送 LINE 的內部決策紀錄視窗 -->
+    <div class="modal-overlay" id="adminNotificationSkipModal">
+      <div class="modal-container" style="max-width: 500px">
+        <div class="modal-header">
+          <h3>這次不發送 LINE</h3>
+          <button
+            type="button"
+            class="modal-close-btn"
+            onclick="closeAdminNotificationSkipModal()"
+          >
+            ×
+          </button>
+        </div>
+        <div class="modal-body">
+          <div style="font-size:14px; line-height:1.7; color:#3f3f46">
+            此次不會傳送 LINE，並會清除待處理標記。請選擇原因，此內容不會讓客戶看到。
+          </div>
+          <div class="admin-notification-skip-options">
+            <label class="admin-notification-skip-option">
+              <input type="radio" name="adminNotificationSkipReason" value="已用電話或其他方式通知" onchange="toggleAdminNotificationSkipOtherReason()" />
+              <span>已用電話或其他方式通知</span>
+            </label>
+            <label class="admin-notification-skip-option">
+              <input type="radio" name="adminNotificationSkipReason" value="已人工與客戶確認" onchange="toggleAdminNotificationSkipOtherReason()" />
+              <span>已人工與客戶確認</span>
+            </label>
+            <label class="admin-notification-skip-option">
+              <input type="radio" name="adminNotificationSkipReason" value="此異動不需要告知客戶" onchange="toggleAdminNotificationSkipOtherReason()" />
+              <span>此異動不需要告知客戶</span>
+            </label>
+            <label class="admin-notification-skip-option">
+              <input type="radio" name="adminNotificationSkipReason" value="重複或誤產生的通知" onchange="toggleAdminNotificationSkipOtherReason()" />
+              <span>重複或誤產生的通知</span>
+            </label>
+            <label class="admin-notification-skip-option">
+              <input type="radio" name="adminNotificationSkipReason" value="其他" onchange="toggleAdminNotificationSkipOtherReason()" />
+              <span>其他（請填簡短說明）</span>
+            </label>
+          </div>
+          <input
+            type="text"
+            id="adminNotificationSkipOtherReason"
+            class="admin-notification-skip-reason admin-notification-skip-other"
+            maxlength="180"
+            placeholder="請填寫簡短說明"
+          />
+          <div
+            class="admin-workflow-feedback"
+            id="adminNotificationSkipFeedback"
+            aria-live="polite"
+            style="margin-top:10px"
+          ></div>
+        </div>
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn-modal-cancel"
+            id="adminNotificationSkipBackButton"
+            onclick="closeAdminNotificationSkipModal()"
+          >
+            返回
+          </button>
+          <button
+            type="button"
+            class="btn-modal-submit"
+            id="adminNotificationSkipSubmitButton"
+            onclick="submitAdminNotificationSkipDecision()"
+          >
+            確認這次不發送
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-overlay" id="addOrderModal">
       <div class="modal-container">
         <div class="modal-header">
@@ -4164,6 +4264,8 @@
       let adminBatchProcessing = false;
       let adminCancelOrderContext = null;
       let adminCancelOrderSubmitting = false;
+      let adminNotificationSkipCard = null;
+      let adminNotificationSkipSubmitting = false;
       const ADMIN_ORDERS_PER_PAGE = 20;
       const OFFSHORE_SHIPPING_KEYWORDS = ["金門", "澎湖", "連江", "馬祖", "綠島"];
       let adminCurrentPage = 1;
@@ -5966,49 +6068,49 @@
 
       function buildAdminNaturalNotificationMessage(order, fields) {
         const pendingFields = [...new Set((fields || []).filter(Boolean))];
-        const recipientName = String(order?.recipientName || "").trim();
-        const greeting = recipientName ? `${recipientName} 您好，` : "您好，";
         const hasDate = pendingFields.includes("確定出貨日期");
-        const clauses = [];
+        const changedDataFields = pendingFields.filter(
+          (field) => field !== "確定出貨日期",
+        );
+        const shippingDate = formatAdminNotificationDate(
+          order?.expectedShippingDate,
+        );
 
-        if (pendingFields.includes("收件人")) {
-          clauses.push(`收件人為 ${String(order?.recipientName || "未提供").trim()}`);
-        }
-        if (pendingFields.includes("收件電話")) {
-          clauses.push(`收件電話為 ${String(order?.recipientPhone || "未提供").trim()}`);
-        }
-        if (pendingFields.includes("收件地址")) {
-          clauses.push(`收件地址為 ${String(order?.recipientAddress || "未提供").trim()}`);
-        }
-        if (
-          pendingFields.includes("商品內容") ||
-          pendingFields.includes("商品數量")
-        ) {
-          clauses.push(
-            `商品與數量為 ${String(order?.itemsSummary || "未提供").trim().replace(/\s*\n\s*/g, "、")}`,
-          );
-        }
-        if (pendingFields.includes("訂單金額")) {
-          clauses.push(`訂單金額為 ${formatAdminMoney(order?.finalAmount)}`);
-        }
-        if (pendingFields.includes("付款方式")) {
-          clauses.push(
-            `付款方式為 ${formatReadOnlyPaymentLabel(order?.paymentMethod, order?.paymentStatus)}`,
-          );
+        if (hasDate && changedDataFields.length) {
+          return `您好，這筆訂單已更新${changedDataFields.join("、")}，並安排於 ${shippingDate} 寄出，請您協助確認，謝謝您。`;
         }
         if (hasDate) {
-          clauses.push(
-            `確認預計於 ${formatAdminNotificationDate(order?.expectedShippingDate)} 寄出`,
-          );
+          return `您好，這筆訂單的出貨日期已調整為 ${shippingDate}，再請您留意收件，謝謝您。`;
         }
 
-        if (!clauses.length) {
-          return `${greeting}您的訂單資料已更新，再請您協助確認，謝謝您。`;
+        if (changedDataFields.length === 1) {
+          const field = changedDataFields[0];
+          const currentValueByField = {
+            收件人: String(order?.recipientName || "未提供").trim(),
+            收件電話: String(order?.recipientPhone || "未提供").trim(),
+            收件地址: String(order?.recipientAddress || "未提供").trim(),
+            商品內容: String(order?.itemsSummary || "未提供")
+              .trim()
+              .replace(/\s*\n\s*/g, "、"),
+            商品數量: String(order?.itemsSummary || "未提供")
+              .trim()
+              .replace(/\s*\n\s*/g, "、"),
+            訂單金額: `$${formatAdminMoney(order?.finalAmount)}`,
+            付款方式: formatReadOnlyPaymentLabel(
+              order?.paymentMethod,
+              order?.paymentStatus,
+            ),
+          };
+          const currentValue = currentValueByField[field];
+          if (currentValue) {
+            return `您好，這筆訂單的${field}已更新為${currentValue}，請您協助確認，謝謝您。`;
+          }
         }
-        if (clauses.length === 1 && hasDate) {
-          return `${greeting}您的訂單已${clauses[0]}，再請您留意，謝謝您。`;
+
+        if (changedDataFields.length) {
+          return `您好，這筆訂單已更新${changedDataFields.join("、")}，請您協助確認，謝謝您。`;
         }
-        return `${greeting}已協助更新這筆訂單的${clauses.join("，並")}，再請您確認，謝謝您。`;
+        return "您好，這筆訂單資料已更新，請您協助確認，謝謝您。";
       }
 
       function buildAdminOrderCardHtml(order) {
@@ -6168,8 +6270,9 @@
         const recipientAddress = String(order?.recipientAddress ?? "").trim();
         const shouldShowEditableNotificationDecision =
           canLineNotify &&
-          (shouldShowShippingDateNoticeActionButton ||
-            shouldShowChangeNoticeActionButton);
+          (shouldShowChangeNoticeActionButton ||
+            (shouldShowShippingDateNoticeActionButton &&
+              shippingDateNoticeMode === "reschedule"));
         const naturalNotificationMessage =
           shouldShowEditableNotificationDecision
             ? buildAdminNaturalNotificationMessage(order, pendingNoticeLabels)
@@ -6480,10 +6583,9 @@
                           <div class="admin-notification-decision">
                             <label>LINE 訊息預覽（可修改）</label>
                             <textarea class="admin-notification-message-preview" maxlength="1000">${escapeHtml(naturalNotificationMessage)}</textarea>
-                            <input type="text" class="admin-notification-skip-reason" maxlength="200" placeholder="選擇不通知時，請填寫簡短原因" />
                             <div class="admin-notification-decision-actions">
                               <button type="button" class="${shouldShowShippingDateNoticeActionButton ? "admin-shipping-date-notice-action" : "btn-resend-notice"}">發送 LINE</button>
-                              <button type="button" class="admin-notification-skip-action">不通知</button>
+                              <button type="button" class="admin-notification-skip-action">這次不發送</button>
                             </div>
                           </div>
                         `
@@ -6516,8 +6618,7 @@
                         shouldShowManualScheduleNoticeDoneButton)
                         ? `
                           <div class="admin-notification-decision">
-                            <input type="text" class="admin-notification-skip-reason" maxlength="200" placeholder="選擇不通知時，請填寫簡短原因" />
-                            <button type="button" class="admin-notification-skip-action">不通知</button>
+                            <button type="button" class="admin-notification-skip-action">這次不發送</button>
                           </div>
                         `
                         : ""
@@ -8820,12 +8921,153 @@
         }
       }
 
-      async function adminSkipPendingOrderNotification(card) {
+      function toggleAdminNotificationSkipOtherReason() {
+        const selectedReason = document.querySelector(
+          'input[name="adminNotificationSkipReason"]:checked',
+        );
+        const otherInput = document.getElementById(
+          "adminNotificationSkipOtherReason",
+        );
+        if (!otherInput) return;
+        const showOther = selectedReason?.value === "其他";
+        otherInput.classList.toggle("is-visible", showOther);
+        if (!showOther) otherInput.value = "";
+        if (showOther) otherInput.focus();
+      }
+
+      function openAdminNotificationSkipModal(card) {
+        if (
+          !card?.matches('.card[data-readonly="true"][data-order-no]') ||
+          card.dataset.notificationSaving === "true" ||
+          adminNotificationSkipSubmitting
+        ) {
+          return;
+        }
+
+        const modal = document.getElementById("adminNotificationSkipModal");
+        const feedback = document.getElementById(
+          "adminNotificationSkipFeedback",
+        );
+        const otherInput = document.getElementById(
+          "adminNotificationSkipOtherReason",
+        );
+        if (!modal || !feedback || !otherInput) return;
+
+        adminNotificationSkipCard = card;
+        document
+          .querySelectorAll('input[name="adminNotificationSkipReason"]')
+          .forEach((input) => {
+            input.checked = false;
+            input.disabled = false;
+          });
+        otherInput.value = "";
+        otherInput.disabled = false;
+        otherInput.classList.remove("is-visible");
+        feedback.classList.remove("is-error");
+        feedback.innerText = "";
+        modal.classList.add("open");
+      }
+
+      function closeAdminNotificationSkipModal() {
+        if (adminNotificationSkipSubmitting) return;
+        document
+          .getElementById("adminNotificationSkipModal")
+          ?.classList.remove("open");
+        adminNotificationSkipCard = null;
+      }
+
+      function setAdminNotificationSkipSaving(isSaving) {
+        adminNotificationSkipSubmitting = !!isSaving;
+        const submitButton = document.getElementById(
+          "adminNotificationSkipSubmitButton",
+        );
+        const backButton = document.getElementById(
+          "adminNotificationSkipBackButton",
+        );
+        const closeButton = document.querySelector(
+          "#adminNotificationSkipModal .modal-close-btn",
+        );
+        if (submitButton) {
+          submitButton.disabled = !!isSaving;
+          submitButton.innerText = isSaving
+            ? "正在記錄…"
+            : "確認這次不發送";
+        }
+        if (backButton) backButton.disabled = !!isSaving;
+        if (closeButton) closeButton.disabled = !!isSaving;
+        document
+          .querySelectorAll(
+            'input[name="adminNotificationSkipReason"], #adminNotificationSkipOtherReason',
+          )
+          .forEach((input) => {
+            input.disabled = !!isSaving;
+          });
+      }
+
+      async function submitAdminNotificationSkipDecision() {
+        if (adminNotificationSkipSubmitting || !adminNotificationSkipCard) {
+          return;
+        }
+        const selectedReason = document.querySelector(
+          'input[name="adminNotificationSkipReason"]:checked',
+        );
+        const otherReason = String(
+          document.getElementById("adminNotificationSkipOtherReason")?.value ||
+            "",
+        ).trim();
+        const feedback = document.getElementById(
+          "adminNotificationSkipFeedback",
+        );
+        if (!selectedReason) {
+          if (feedback) {
+            feedback.classList.add("is-error");
+            feedback.innerText = "請先選擇這次不發送的原因。";
+          }
+          return;
+        }
+        if (
+          selectedReason.value === "其他" &&
+          (Array.from(otherReason).length < 2 ||
+            Array.from(otherReason).length > 180)
+        ) {
+          if (feedback) {
+            feedback.classList.add("is-error");
+            feedback.innerText = "請填寫 2～180 字的簡短說明。";
+          }
+          document.getElementById("adminNotificationSkipOtherReason")?.focus();
+          return;
+        }
+
+        const reason =
+          selectedReason.value === "其他"
+            ? `其他：${otherReason}`
+            : selectedReason.value;
+        setAdminNotificationSkipSaving(true);
+        if (feedback) {
+          feedback.classList.remove("is-error");
+          feedback.innerText = "正在記錄不發送決定…";
+        }
+        const succeeded = await adminSkipPendingOrderNotification(
+          adminNotificationSkipCard,
+          reason,
+        );
+        setAdminNotificationSkipSaving(false);
+        if (succeeded) {
+          closeAdminNotificationSkipModal();
+          return;
+        }
+        if (feedback) {
+          feedback.classList.add("is-error");
+          feedback.innerText = "不發送決定未完成，請重新讀取確認。";
+        }
+      }
+
+      async function adminSkipPendingOrderNotification(card, selectedReason) {
         if (
           !card?.matches('.card[data-readonly="true"][data-order-no]') ||
           card.dataset.notificationSaving === "true"
         ) {
-          return;
+          return false;
         }
 
         const orderNo = String(card.dataset.orderNo || "").trim();
@@ -8833,10 +9075,7 @@
           card.dataset.pendingNoticeFields || "",
         ).trim();
         const orderVersion = String(card.dataset.lastUpdatedAt || "").trim();
-        const reasonInput = card.querySelector(
-          ".admin-notification-skip-reason",
-        );
-        const reason = String(reasonInput?.value || "").trim();
+        const reason = String(selectedReason || "").trim();
         const feedback = card.querySelector(".admin-notification-feedback");
         const adminSessionToken = String(
           sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
@@ -8848,7 +9087,7 @@
             feedback.innerText =
               "待處理資料不完整，請重新讀取訂單後再操作。";
           }
-          return;
+          return false;
         }
         if (Array.from(reason).length < 2 || Array.from(reason).length > 200) {
           if (feedback) {
@@ -8856,19 +9095,11 @@
             feedback.innerText =
               "選擇不通知時，請填寫 2～200 字的簡短原因。";
           }
-          reasonInput?.focus();
-          return;
+          return false;
         }
         if (!adminSessionToken) {
           showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
-          return;
-        }
-        if (
-          !window.confirm(
-            `確定本次不通知客戶嗎？\n\n待處理：${changedFieldsSnapshot.split("|").join("、")}\n原因：${reason}`,
-          )
-        ) {
-          return;
+          return false;
         }
 
         const restoreState = captureAdminOrderCardRestoreState(card);
@@ -8913,6 +9144,7 @@
           if (!applySingleOrderResponse(payload.order, restoreState)) {
             throw new Error("NOTIFICATION_REFRESH_FAILED");
           }
+          return true;
         } catch (error) {
           card.dataset.notificationSaving = "false";
           card
@@ -8932,6 +9164,7 @@
                   ? "不通知原因格式不正確，請重新填寫。"
                   : "不通知決定未完成，請重新讀取確認。";
           }
+          return false;
         }
       }
 
@@ -9174,7 +9407,7 @@
               '.card[data-readonly="true"][data-order-no]',
             );
             if (skipNotificationCard) {
-              adminSkipPendingOrderNotification(skipNotificationCard);
+              openAdminNotificationSkipModal(skipNotificationCard);
             }
             return;
           }
