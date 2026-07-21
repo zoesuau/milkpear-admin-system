@@ -6161,11 +6161,21 @@
           訂單總金額: "訂單金額",
           付款方式: "付款方式",
         };
-        const pendingNoticeFields = [
+        // 顯示名稱可以轉成較易懂的文字，但送回後端做版本比對時必須保留
+        // Orders「異動欄位」的原始值，否則「數量」與「商品數量」等別名
+        // 會被誤判為訂單已再次變更，導致通知無法送出。
+        const pendingNoticeFieldsRaw = [
           ...new Set(
             String(order?.changedFields ?? "")
               .split(/[|,、\r\n]+/)
-              .map((field) => notificationFieldLabels[field.trim()] || "")
+              .map((field) => field.trim())
+              .filter(Boolean),
+          ),
+        ];
+        const pendingNoticeFields = [
+          ...new Set(
+            pendingNoticeFieldsRaw
+              .map((field) => notificationFieldLabels[field] || "")
               .filter(Boolean),
           ),
         ];
@@ -6364,7 +6374,7 @@
             data-notification-status="${escapeHtml(notificationStatus)}"
             data-last-notification-type="${escapeHtml(lastNotificationType)}"
             data-shipping-date-notice-mode="${escapeHtml(shippingDateNoticeMode)}"
-	            data-pending-notice-fields="${escapeHtml(pendingNoticeFields.join("|"))}"
+	            data-pending-notice-fields="${escapeHtml(pendingNoticeFieldsRaw.join("|"))}"
 	            data-expected-shipping-date="${escapeHtml(expectedShippingDate)}"
 	            data-actual-shipping-date="${escapeHtml(actualShippingDate)}"
 	            data-requested-shipping-batch-label="${escapeHtml(requestedShippingBatchLabel)}"
