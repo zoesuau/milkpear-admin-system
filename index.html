@@ -6226,6 +6226,7 @@
             ? "出貨日期異動"
             : "出貨日期已確認";
         const shouldShowOrderChangeAlert =
+          orderStatus !== "已取消" &&
           !shouldHideManualOrderConfirmationNotice &&
           !shouldHideCancellationNotice &&
           (isPendingNotification || isManualRescheduleDecision);
@@ -10640,6 +10641,12 @@
       }
 
       function isNoticeWorkCard(card) {
+        // 已取消訂單的取消通知會在取消當下處理；即使歷史資料殘留舊的
+        // 異動欄位或失敗任務，也不應再出現在「改單再通知」。
+        if (String(card.dataset.status || "").trim() === "已取消") {
+          return false;
+        }
+
         const notificationStatus = String(
           card.dataset.notificationStatus || "",
         ).trim();
