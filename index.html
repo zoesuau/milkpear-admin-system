@@ -1741,6 +1741,59 @@
         font-size: 13px;
         font-weight: 800;
       }
+      .admin-notification-decision {
+        display: grid;
+        gap: 8px;
+        margin: 4px 0 10px;
+      }
+      .admin-notification-decision label {
+        color: #9a3412;
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .admin-notification-message-preview,
+      .admin-notification-skip-reason {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid #fdba74;
+        border-radius: 9px;
+        background: #ffffff;
+        color: #3f3f46;
+        font: inherit;
+        padding: 9px 10px;
+      }
+      .admin-notification-message-preview {
+        min-height: 112px;
+        resize: vertical;
+        line-height: 1.55;
+      }
+      .admin-notification-decision-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 8px;
+      }
+      .admin-notification-decision-actions .btn-resend-notice,
+      .admin-notification-decision-actions
+        .admin-shipping-date-notice-action {
+        width: 100%;
+        min-height: 42px;
+        height: auto;
+        margin: 0;
+      }
+      .admin-notification-skip-action {
+        min-height: 42px;
+        border: 1px solid #c2410c;
+        border-radius: 9px;
+        background: #ffffff;
+        color: #c2410c;
+        font-size: 14px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .admin-notification-skip-action:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
       .admin-shipping-date-notice-action {
         width: 100%;
         min-height: 44px;
@@ -4089,6 +4142,7 @@
       const ADMIN_LINE_NONCE_KEY = "milkpear_admin_line_nonce";
       const ADMIN_LINE_CODE_VERIFIER_KEY = "milkpear_admin_line_code_verifier";
       const ADMIN_LINE_SESSION_TOKEN_KEY = "milkpear_admin_session_token";
+      const ADMIN_DISPLAY_NAME_KEY = "milkpear_admin_display_name";
       const ADMIN_AUTH_TIMEOUT_MS = 15000;
       const ADMIN_READ_ORDERS_TIMEOUT_MS = 15000;
       const ADMIN_INITIAL_LOAD_SLOW_MS = 12000;
@@ -4113,7 +4167,9 @@
       const ADMIN_ORDERS_PER_PAGE = 20;
       const OFFSHORE_SHIPPING_KEYWORDS = ["金門", "澎湖", "連江", "馬祖", "綠島"];
       let adminCurrentPage = 1;
-      const CURRENT_ADMIN_NAME = "後台管理員";
+      let currentAdminName =
+        String(sessionStorage.getItem(ADMIN_DISPLAY_NAME_KEY) || "").trim() ||
+        "後台管理員";
       let currentFilterStatus = "全部";
       let currentDateFilter = "全部";
       let currentNotificationFilter = "全部";
@@ -4360,6 +4416,16 @@
               ADMIN_LINE_SESSION_TOKEN_KEY,
               payload.adminSessionToken.trim(),
             );
+            const adminDisplayName = String(
+              payload.adminDisplayName || "",
+            ).trim();
+            if (adminDisplayName) {
+              currentAdminName = adminDisplayName;
+              sessionStorage.setItem(
+                ADMIN_DISPLAY_NAME_KEY,
+                adminDisplayName,
+              );
+            }
             clearAdminAuthSession();
             clearAdminAuthQuery();
             showAdminAuthOverlay("正在讀取最新訂單資料...", false);
@@ -5276,7 +5342,7 @@
         if (!card) return;
         const nowText = formatOperationTime();
         if (options.modified !== false) {
-          setOperationText(card, ".last-editor", CURRENT_ADMIN_NAME);
+          setOperationText(card, ".last-editor", currentAdminName);
           setOperationText(card, ".last-edited-at", nowText);
         }
         if (options.notified) {
@@ -5486,6 +5552,14 @@
           );
 
           const payload = await response.json();
+
+          const adminDisplayName = String(
+            payload?.admin?.displayName || "",
+          ).trim();
+          if (adminDisplayName) {
+            currentAdminName = adminDisplayName;
+            sessionStorage.setItem(ADMIN_DISPLAY_NAME_KEY, adminDisplayName);
+          }
 
           if (
             payload &&
@@ -5882,6 +5956,61 @@
         };
       }
 
+      function formatAdminNotificationDate(value) {
+        const token = String(value || "").trim();
+        const matched = token.match(/^\d{4}-(\d{2})-(\d{2})$/);
+        return matched
+          ? `${Number(matched[1])}/${Number(matched[2])}`
+          : token || "尚未排定";
+      }
+
+      function buildAdminNaturalNotificationMessage(order, fields) {
+        const pendingFields = [...new Set((fields || []).filter(Boolean))];
+        const recipientName = String(order?.recipientName || "").trim();
+        const greeting = recipientName ? `${recipientName} 您好，` : "您好，";
+        const hasDate = pendingFields.includes("確定出貨日期");
+        const clauses = [];
+
+        if (pendingFields.includes("收件人")) {
+          clauses.push(`收件人為 ${String(order?.recipientName || "未提供").trim()}`);
+        }
+        if (pendingFields.includes("收件電話")) {
+          clauses.push(`收件電話為 ${String(order?.recipientPhone || "未提供").trim()}`);
+        }
+        if (pendingFields.includes("收件地址")) {
+          clauses.push(`收件地址為 ${String(order?.recipientAddress || "未提供").trim()}`);
+        }
+        if (
+          pendingFields.includes("商品內容") ||
+          pendingFields.includes("商品數量")
+        ) {
+          clauses.push(
+            `商品與數量為 ${String(order?.itemsSummary || "未提供").trim().replace(/\s*\n\s*/g, "、")}`,
+          );
+        }
+        if (pendingFields.includes("訂單金額")) {
+          clauses.push(`訂單金額為 ${formatAdminMoney(order?.finalAmount)}`);
+        }
+        if (pendingFields.includes("付款方式")) {
+          clauses.push(
+            `付款方式為 ${formatReadOnlyPaymentLabel(order?.paymentMethod, order?.paymentStatus)}`,
+          );
+        }
+        if (hasDate) {
+          clauses.push(
+            `確認預計於 ${formatAdminNotificationDate(order?.expectedShippingDate)} 寄出`,
+          );
+        }
+
+        if (!clauses.length) {
+          return `${greeting}您的訂單資料已更新，再請您協助確認，謝謝您。`;
+        }
+        if (clauses.length === 1 && hasDate) {
+          return `${greeting}您的訂單已${clauses[0]}，再請您留意，謝謝您。`;
+        }
+        return `${greeting}已協助更新這筆訂單的${clauses.join("，並")}，再請您確認，謝謝您。`;
+      }
+
       function buildAdminOrderCardHtml(order) {
         const statusMeta = getAdminOrderStatusMeta(order?.orderStatus);
         const orderStatus = String(order?.orderStatus ?? "").trim();
@@ -5972,7 +6101,7 @@
           expectedShippingDate !== "" &&
           adminWorkflowIsValidDate(expectedShippingDate) &&
           actualShippingDate === "" &&
-          hasOpenInitialScheduleNotice;
+          (hasOpenInitialScheduleNotice || hasExpectedShippingDateChange);
         const shouldSendRescheduledShippingDateNotice =
           shippingDateNoticeMode === "reschedule" &&
           canLineNotify &&
@@ -6037,6 +6166,14 @@
         const recipientName = String(order?.recipientName ?? "").trim();
         const recipientPhone = String(order?.recipientPhone ?? "").trim();
         const recipientAddress = String(order?.recipientAddress ?? "").trim();
+        const shouldShowEditableNotificationDecision =
+          canLineNotify &&
+          (shouldShowShippingDateNoticeActionButton ||
+            shouldShowChangeNoticeActionButton);
+        const naturalNotificationMessage =
+          shouldShowEditableNotificationDecision
+            ? buildAdminNaturalNotificationMessage(order, pendingNoticeLabels)
+            : "";
         const finalAmount = formatAdminMoney(order?.finalAmount);
         const discountAmountNumber = Number(order?.discountAmount);
         const hasDiscount =
@@ -6104,6 +6241,8 @@
         const customerNote = String(order?.customerNote ?? "").trim();
         const adminNote = String(order?.adminNote ?? "");
         const hasAdminNote = adminNote.trim().length > 0;
+        const orderSource = String(order?.orderSource ?? "").trim();
+        const lineDisplayName = String(order?.lineDisplayName ?? "").trim();
         const createdAt = String(order?.createdAt ?? "").trim();
         const lastUpdatedAt = String(order?.lastUpdatedAt ?? "").trim();
         const actualShippingDateRow = buildReadOnlyExtraRow(
@@ -6266,7 +6405,15 @@
                 ${buildReadOnlyExtraRow("訂購人", order?.buyerName)}
                 ${buildReadOnlyExtraRow("訂購人電話", order?.buyerPhone)}
                 ${buildReadOnlyExtraRow("付款狀態", paymentLabel)}
-                ${buildReadOnlyExtraRow("訂單來源", order?.orderSource)}
+                ${buildReadOnlyExtraRow("訂單來源", orderSource)}
+                ${
+                  orderSource === "LINE表單"
+                    ? buildReadOnlyExtraRow(
+                        "LINE 名稱",
+                        lineDisplayName || "未取得",
+                      )
+                    : ""
+                }
               </div>
             </details>
 
@@ -6328,15 +6475,28 @@
                         .join("")}
                     </div>
                     ${
-                      shouldShowShippingDateNoticeActionButton
+                      shouldShowEditableNotificationDecision
                         ? `
-                          <div class="admin-shipping-date-notice-preview">將發送：${escapeHtml(shippingDateNoticePreviewLabel)}</div>
-                          <button type="button" class="admin-shipping-date-notice-action">發送出貨日期通知</button>
+                          <div class="admin-notification-decision">
+                            <label>LINE 訊息預覽（可修改）</label>
+                            <textarea class="admin-notification-message-preview" maxlength="1000">${escapeHtml(naturalNotificationMessage)}</textarea>
+                            <input type="text" class="admin-notification-skip-reason" maxlength="200" placeholder="選擇不通知時，請填寫簡短原因" />
+                            <div class="admin-notification-decision-actions">
+                              <button type="button" class="${shouldShowShippingDateNoticeActionButton ? "admin-shipping-date-notice-action" : "btn-resend-notice"}">發送 LINE</button>
+                              <button type="button" class="admin-notification-skip-action">不通知</button>
+                            </div>
+                          </div>
                         `
-                        : ""
+                        : shouldShowShippingDateNoticeActionButton
+                          ? `
+                            <div class="admin-shipping-date-notice-preview">將發送：${escapeHtml(shippingDateNoticePreviewLabel)}</div>
+                            <button type="button" class="admin-shipping-date-notice-action">發送出貨日期通知</button>
+                          `
+                          : ""
                     }
                     ${
-                      shouldShowChangeNoticeActionButton
+                      shouldShowChangeNoticeActionButton &&
+                      !shouldShowEditableNotificationDecision
                         ? `<button type="button" class="btn-resend-notice">${canLineNotify ? "通知客戶本次變更" : "已電話通知"}</button>`
                         : ""
                     }
@@ -6348,6 +6508,18 @@
                     ${
                       shouldShowManualScheduleNoticeDoneButton
                         ? `<button type="button" class="btn-resend-notice">已電話通知</button>`
+                        : ""
+                    }
+                    ${
+                      !canLineNotify &&
+                      (shouldShowChangeNoticeActionButton ||
+                        shouldShowManualScheduleNoticeDoneButton)
+                        ? `
+                          <div class="admin-notification-decision">
+                            <input type="text" class="admin-notification-skip-reason" maxlength="200" placeholder="選擇不通知時，請填寫簡短原因" />
+                            <button type="button" class="admin-notification-skip-action">不通知</button>
+                          </div>
+                        `
                         : ""
                     }
                     ${
@@ -7611,8 +7783,9 @@
           paymentMethod,
           paymentStatus,
         );
-        const canOfferScheduleNotice =
-          canLineNotify === true && String(expectedShippingDate || "") === "";
+        // 先安全儲存訂單，再由待處理區明確選擇發送或不通知；
+        // 避免資料寫入與外部 LINE 發送綁在同一個不可回復動作。
+        const canOfferScheduleNotice = false;
         const paymentWarning = paymentState
           ? ""
           : `<div class="admin-workflow-feedback is-error">付款資料待確認</div>`;
@@ -8452,6 +8625,10 @@
           REQUEST_KEYS_INVALID: "通知請求格式不正確，請重新整理後再試。",
           ORDER_NOT_FOUND: "訂單已不存在，請重新讀取。",
           ORDER_NO_NOT_UNIQUE: "訂單資料異常，請停止操作。",
+          ADMIN_NOTIFICATION_MESSAGE_INVALID:
+            "LINE 訊息不可空白，且需少於 1,000 字。",
+          PENDING_CHANGE_SNAPSHOT_STALE:
+            "訂單資料已再次變更，請重新讀取後確認最新內容。",
         };
         return messages[errorCode] || "通知送出失敗，請重新讀取後再試。";
       }
@@ -8460,9 +8637,26 @@
         const button = card?.querySelector(
           ".admin-shipping-date-notice-action",
         );
-        if (!button) return;
-        button.disabled = !!isSaving;
-        button.innerText = isSaving ? "通知發送中…" : "發送出貨日期通知";
+        const skipButton = card?.querySelector(
+          ".admin-notification-skip-action",
+        );
+        const messageInput = card?.querySelector(
+          ".admin-notification-message-preview",
+        );
+        const reasonInput = card?.querySelector(
+          ".admin-notification-skip-reason",
+        );
+        if (button) {
+          button.disabled = !!isSaving;
+          button.innerText = isSaving
+            ? "通知發送中…"
+            : messageInput
+              ? "發送 LINE"
+              : "發送出貨日期通知";
+        }
+        if (skipButton) skipButton.disabled = !!isSaving;
+        if (messageInput) messageInput.disabled = !!isSaving;
+        if (reasonInput) reasonInput.disabled = !!isSaving;
       }
 
       async function adminSendShippingDateNotice(card) {
@@ -8484,6 +8678,10 @@
             card.dataset.shippingDateNoticeMode ||
             "",
         ).trim();
+        const customMessage = String(
+          card.querySelector(".admin-notification-message-preview")?.value ||
+            "",
+        ).trim();
         const previewLabel =
           noticeMode === "reschedule" ? "出貨日期異動" : "出貨日期已確認";
         const adminSessionToken = String(
@@ -8494,6 +8692,14 @@
           if (feedback) {
             feedback.classList.add("is-error");
             feedback.innerText = "找不到訂單編號，請重新讀取後再試。";
+          }
+          return;
+        }
+        if (!customMessage || Array.from(customMessage).length > 1000) {
+          if (feedback) {
+            feedback.classList.add("is-error");
+            feedback.innerText =
+              "LINE 訊息不可空白，且需少於 1,000 字。";
           }
           return;
         }
@@ -8509,7 +8715,7 @@
         }
 
         const confirmed = window.confirm(
-          `確定要發送「${previewLabel}」嗎？\n\n確定出貨日期：${expectedShippingDate || "未填"}`,
+          `確定要發送「${previewLabel}」嗎？\n\n${customMessage}`,
         );
         if (!confirmed) return;
 
@@ -8537,6 +8743,10 @@
                 noticeMode,
                 expectedShippingDate,
               ]),
+              customMessage,
+              changedFieldsSnapshot:
+                card.dataset.pendingNoticeFields || "",
+              orderVersion: card.dataset.lastUpdatedAt || "",
             }),
           });
           const payload = await response.json();
@@ -8603,6 +8813,121 @@
         }
       }
 
+      async function adminSkipPendingOrderNotification(card) {
+        if (
+          !card?.matches('.card[data-readonly="true"][data-order-no]') ||
+          card.dataset.notificationSaving === "true"
+        ) {
+          return;
+        }
+
+        const orderNo = String(card.dataset.orderNo || "").trim();
+        const changedFieldsSnapshot = String(
+          card.dataset.pendingNoticeFields || "",
+        ).trim();
+        const orderVersion = String(card.dataset.lastUpdatedAt || "").trim();
+        const reasonInput = card.querySelector(
+          ".admin-notification-skip-reason",
+        );
+        const reason = String(reasonInput?.value || "").trim();
+        const feedback = card.querySelector(".admin-notification-feedback");
+        const adminSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+
+        if (!orderNo || !changedFieldsSnapshot || !orderVersion) {
+          if (feedback) {
+            feedback.classList.add("is-error");
+            feedback.innerText =
+              "待處理資料不完整，請重新讀取訂單後再操作。";
+          }
+          return;
+        }
+        if (Array.from(reason).length < 2 || Array.from(reason).length > 200) {
+          if (feedback) {
+            feedback.classList.add("is-error");
+            feedback.innerText =
+              "選擇不通知時，請填寫 2～200 字的簡短原因。";
+          }
+          reasonInput?.focus();
+          return;
+        }
+        if (!adminSessionToken) {
+          showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+          return;
+        }
+        if (
+          !window.confirm(
+            `確定本次不通知客戶嗎？\n\n待處理：${changedFieldsSnapshot.split("|").join("、")}\n原因：${reason}`,
+          )
+        ) {
+          return;
+        }
+
+        const restoreState = captureAdminOrderCardRestoreState(card);
+        card.dataset.notificationSaving = "true";
+        card
+          .querySelectorAll(
+            ".admin-notification-skip-action, .admin-shipping-date-notice-action, .btn-resend-notice, .admin-notification-message-preview, .admin-notification-skip-reason",
+          )
+          .forEach((control) => {
+            control.disabled = true;
+          });
+        if (feedback) {
+          feedback.classList.remove("is-error");
+          feedback.innerText = "正在記錄不通知決定…";
+        }
+
+        try {
+          const action = "adminSkipPendingOrderNotification";
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({
+              action,
+              adminSessionToken,
+              orderNo,
+              changedFieldsSnapshot,
+              orderVersion,
+              reason,
+            }),
+          });
+          const payload = await response.json();
+          if (
+            !response.ok ||
+            payload?.ok !== true ||
+            payload?.action !== action ||
+            payload?.orderNo !== orderNo ||
+            payload?.result !== "skipped" ||
+            !payload?.order
+          ) {
+            throw new Error(payload?.errorCode || "CHANGE_NOTICE_FAILED");
+          }
+          if (!applySingleOrderResponse(payload.order, restoreState)) {
+            throw new Error("NOTIFICATION_REFRESH_FAILED");
+          }
+        } catch (error) {
+          card.dataset.notificationSaving = "false";
+          card
+            .querySelectorAll(
+              ".admin-notification-skip-action, .admin-shipping-date-notice-action, .btn-resend-notice, .admin-notification-message-preview, .admin-notification-skip-reason",
+            )
+            .forEach((control) => {
+              control.disabled = false;
+            });
+          if (feedback) {
+            feedback.classList.add("is-error");
+            feedback.innerText =
+              error?.message === "PENDING_CHANGE_SNAPSHOT_STALE"
+                ? "訂單資料已再次變更，請重新讀取後再決定。"
+                : error?.message ===
+                    "ADMIN_NOTIFICATION_SKIP_REASON_INVALID"
+                  ? "不通知原因格式不正確，請重新填寫。"
+                  : "不通知決定未完成，請重新讀取確認。";
+          }
+        }
+      }
+
       async function adminOrderNotificationSubmit(card) {
         if (
           !card?.matches('.card[data-readonly="true"][data-order-no]') ||
@@ -8621,15 +8946,38 @@
         const adminSessionToken = String(
           sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
         ).trim();
+        const customMessage = String(
+          card.querySelector(".admin-notification-message-preview")?.value ||
+            "",
+        ).trim();
 
         if (!adminSessionToken) {
           showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
           if (feedback) feedback.innerText = "登入已過期，請重新登入 LINE。";
           return;
         }
+        if (
+          canLineNotify &&
+          notificationType === "change_notice" &&
+          (!customMessage || Array.from(customMessage).length > 1000)
+        ) {
+          if (feedback) {
+            feedback.classList.add("is-error");
+            feedback.innerText =
+              "LINE 訊息不可空白，且需少於 1,000 字。";
+          }
+          return;
+        }
 
         const restoreState = captureAdminOrderCardRestoreState(card);
         card.dataset.notificationSaving = "true";
+        card
+          .querySelectorAll(
+            ".admin-notification-skip-action, .admin-notification-message-preview, .admin-notification-skip-reason",
+          )
+          .forEach((control) => {
+            control.disabled = true;
+          });
         if (button) {
           button.disabled = true;
           button.innerText = canLineNotify ? "通知發送中…" : "儲存中…";
@@ -8657,6 +9005,12 @@
               card.dataset.pendingNoticeFields || "",
               card.dataset.lastUpdatedAt || "",
             ]);
+            if (notificationType === "change_notice") {
+              body.customMessage = customMessage;
+              body.changedFieldsSnapshot =
+                card.dataset.pendingNoticeFields || "";
+              body.orderVersion = card.dataset.lastUpdatedAt || "";
+            }
           }
           const response = await fetch(GAS_ORDERS_API_URL, {
             method: "POST",
@@ -8682,6 +9036,13 @@
 
           if (payload.result !== "success") {
             card.dataset.notificationSaving = "false";
+            card
+              .querySelectorAll(
+                ".admin-notification-skip-action, .admin-notification-message-preview, .admin-notification-skip-reason",
+              )
+              .forEach((control) => {
+                control.disabled = false;
+              });
             if (button) {
               button.disabled = payload.result === "unconfirmed";
               button.innerText =
@@ -8733,6 +9094,13 @@
           restoreAdminOrderCardAfterRender(restoreState);
         } catch (error) {
           card.dataset.notificationSaving = "false";
+          card
+            .querySelectorAll(
+              ".admin-notification-skip-action, .admin-notification-message-preview, .admin-notification-skip-reason",
+            )
+            .forEach((control) => {
+              control.disabled = false;
+            });
           if (button) {
             button.disabled = false;
             button.innerText = getOrderNotificationActionLabel(card);
@@ -8744,7 +9112,11 @@
                 ? "寄出通知仍待處理。"
                 : "異動仍待通知。";
             feedback.innerText =
-              error.message === "NOTIFICATION_REFRESH_FAILED"
+              error.message === "PENDING_CHANGE_SNAPSHOT_STALE"
+                ? "訂單資料已再次變更，請重新讀取後確認最新內容。"
+                : error.message === "ADMIN_NOTIFICATION_MESSAGE_INVALID"
+                  ? "LINE 訊息不可空白，且需少於 1,000 字。"
+                  : error.message === "NOTIFICATION_REFRESH_FAILED"
                 ? dedupedSucceeded
                   ? "此通知已送出且未重複發送，但重新讀取失敗，請重新整理確認。"
                   : "通知可能已完成，但重新讀取失敗，請重新整理確認。"
@@ -8784,6 +9156,22 @@
         cardsContainer.addEventListener("input", handleValueChange);
         cardsContainer.addEventListener("change", handleValueChange);
         cardsContainer.addEventListener("click", (event) => {
+          const skipNotificationButton = event.target.closest(
+            ".admin-notification-skip-action",
+          );
+          if (
+            skipNotificationButton &&
+            cardsContainer.contains(skipNotificationButton)
+          ) {
+            const skipNotificationCard = skipNotificationButton.closest(
+              '.card[data-readonly="true"][data-order-no]',
+            );
+            if (skipNotificationCard) {
+              adminSkipPendingOrderNotification(skipNotificationCard);
+            }
+            return;
+          }
+
           const shippingDateNoticeButton = event.target.closest(
             ".admin-shipping-date-notice-action",
           );
