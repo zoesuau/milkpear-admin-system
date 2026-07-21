@@ -7783,9 +7783,12 @@
           paymentMethod,
           paymentStatus,
         );
-        // 先安全儲存訂單，再由待處理區明確選擇發送或不通知；
-        // 避免資料寫入與外部 LINE 發送綁在同一個不可回復動作。
-        const canOfferScheduleNotice = false;
+        // 第一次確定出貨日期可選擇只儲存，或在同一次操作中發送
+        // 原本的正式出貨日期小卡；後續改期仍交由可編輯文字流程處理。
+        const canOfferScheduleNotice =
+          canLineNotify === true &&
+          orderStatus === "待確認" &&
+          String(expectedShippingDate || "").trim() === "";
         const paymentWarning = paymentState
           ? ""
           : `<div class="admin-workflow-feedback is-error">付款資料待確認</div>`;
@@ -8424,6 +8427,10 @@
           ADMIN_ORDER_UPDATE_FAILED: "儲存失敗，未套用前端變更。",
           SCHEDULE_NOTICE_TASK_CREATE_FAILED:
             "出貨日期通知任務建立失敗，已取消本次儲存，請稍後再試。",
+          SCHEDULE_NOTICE_NOT_FIRST_CONFIRMATION:
+            "正式出貨日期小卡只能在第一次確定日期時發送。後續改期請先儲存，再使用可編輯文字通知。",
+          SCHEDULE_NOTICE_LINE_UID_REQUIRED:
+            "此訂單沒有可用的 LINE 對象，請改用「儲存」並人工聯絡客戶。",
           PAYMENT_STATUS_WRITE_VERIFY_FAILED:
             "付款狀態未成功儲存，請重新整理後再試。",
           MIXED_COD_BALANCE_NOT_AVAILABLE:
