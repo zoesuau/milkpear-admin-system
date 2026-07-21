@@ -5480,7 +5480,7 @@
           card?.dataset.lastNotificationType || "",
         ).trim();
         if (notificationType === "change_notice") {
-          return canLineNotify ? "通知客戶本次變更" : "已電話通知";
+          return canLineNotify ? "發送異動通知" : "已電話通知";
         }
         if (notificationType === "shipment_notice") {
           return canLineNotify ? "重新發送寄出通知" : "已電話通知";
@@ -6268,15 +6268,6 @@
         const recipientName = String(order?.recipientName ?? "").trim();
         const recipientPhone = String(order?.recipientPhone ?? "").trim();
         const recipientAddress = String(order?.recipientAddress ?? "").trim();
-        const shouldShowEditableNotificationDecision =
-          canLineNotify &&
-          (shouldShowChangeNoticeActionButton ||
-            (shouldShowShippingDateNoticeActionButton &&
-              shippingDateNoticeMode === "reschedule"));
-        const naturalNotificationMessage =
-          shouldShowEditableNotificationDecision
-            ? buildAdminNaturalNotificationMessage(order, pendingNoticeLabels)
-            : "";
         const finalAmount = formatAdminMoney(order?.finalAmount);
         const discountAmountNumber = Number(order?.discountAmount);
         const hasDiscount =
@@ -6578,28 +6569,16 @@
                         .join("")}
                     </div>
                     ${
-                      shouldShowEditableNotificationDecision
+                      shouldShowShippingDateNoticeActionButton
                         ? `
-                          <div class="admin-notification-decision">
-                            <label>LINE 訊息預覽（可修改）</label>
-                            <textarea class="admin-notification-message-preview" maxlength="1000">${escapeHtml(naturalNotificationMessage)}</textarea>
-                            <div class="admin-notification-decision-actions">
-                              <button type="button" class="${shouldShowShippingDateNoticeActionButton ? "admin-shipping-date-notice-action" : "btn-resend-notice"}">發送 LINE</button>
-                              <button type="button" class="admin-notification-skip-action">這次不發送</button>
-                            </div>
-                          </div>
+                          <div class="admin-shipping-date-notice-preview">將發送：${escapeHtml(shippingDateNoticePreviewLabel)}</div>
+                          <button type="button" class="admin-shipping-date-notice-action">${shippingDateNoticeMode === "reschedule" ? "發送異動通知" : "發送出貨日期通知"}</button>
                         `
-                        : shouldShowShippingDateNoticeActionButton
-                          ? `
-                            <div class="admin-shipping-date-notice-preview">將發送：${escapeHtml(shippingDateNoticePreviewLabel)}</div>
-                            <button type="button" class="admin-shipping-date-notice-action">發送出貨日期通知</button>
-                          `
-                          : ""
+                        : ""
                     }
                     ${
-                      shouldShowChangeNoticeActionButton &&
-                      !shouldShowEditableNotificationDecision
-                        ? `<button type="button" class="btn-resend-notice">${canLineNotify ? "通知客戶本次變更" : "已電話通知"}</button>`
+                      shouldShowChangeNoticeActionButton
+                        ? `<button type="button" class="btn-resend-notice">${canLineNotify ? "發送異動通知" : "已電話通知"}</button>`
                         : ""
                     }
                     ${
@@ -6610,17 +6589,6 @@
                     ${
                       shouldShowManualScheduleNoticeDoneButton
                         ? `<button type="button" class="btn-resend-notice">已電話通知</button>`
-                        : ""
-                    }
-                    ${
-                      !canLineNotify &&
-                      (shouldShowChangeNoticeActionButton ||
-                        shouldShowManualScheduleNoticeDoneButton)
-                        ? `
-                          <div class="admin-notification-decision">
-                            <button type="button" class="admin-notification-skip-action">這次不發送</button>
-                          </div>
-                        `
                         : ""
                     }
                     ${
@@ -8754,12 +8722,15 @@
         const reasonInput = card?.querySelector(
           ".admin-notification-skip-reason",
         );
+        const noticeMode = String(
+          card?.dataset.shippingDateNoticeMode || "",
+        ).trim();
         if (button) {
           button.disabled = !!isSaving;
           button.innerText = isSaving
             ? "通知發送中…"
-            : messageInput
-              ? "發送 LINE"
+            : noticeMode === "reschedule"
+              ? "發送異動通知"
               : "發送出貨日期通知";
         }
         if (skipButton) skipButton.disabled = !!isSaving;
@@ -8786,10 +8757,10 @@
             card.dataset.shippingDateNoticeMode ||
             "",
         ).trim();
-        const customMessage = String(
-          card.querySelector(".admin-notification-message-preview")?.value ||
-            "",
-        ).trim();
+        const messageInput = card.querySelector(
+          ".admin-notification-message-preview",
+        );
+        const customMessage = String(messageInput?.value || "").trim();
         const previewLabel =
           noticeMode === "reschedule" ? "出貨日期異動" : "出貨日期已確認";
         const adminSessionToken = String(
@@ -8803,7 +8774,10 @@
           }
           return;
         }
-        if (!customMessage || Array.from(customMessage).length > 1000) {
+        if (
+          messageInput &&
+          (!customMessage || Array.from(customMessage).length > 1000)
+        ) {
           if (feedback) {
             feedback.classList.add("is-error");
             feedback.innerText =
@@ -8823,7 +8797,7 @@
         }
 
         const confirmed = window.confirm(
-          `確定要發送「${previewLabel}」嗎？\n\n${customMessage}`,
+          `確定要發送「${previewLabel}」正式小卡嗎？${customMessage ? `\n\n${customMessage}` : ""}`,
         );
         if (!confirmed) return;
 
@@ -9196,19 +9170,6 @@
           if (feedback) feedback.innerText = "登入已過期，請重新登入 LINE。";
           return;
         }
-        if (
-          canLineNotify &&
-          notificationType === "change_notice" &&
-          (!customMessage || Array.from(customMessage).length > 1000)
-        ) {
-          if (feedback) {
-            feedback.classList.add("is-error");
-            feedback.innerText =
-              "LINE 訊息不可空白，且需少於 1,000 字。";
-          }
-          return;
-        }
-
         const restoreState = captureAdminOrderCardRestoreState(card);
         card.dataset.notificationSaving = "true";
         card
