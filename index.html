@@ -895,6 +895,10 @@
         border: 1px solid #e2e8f0;
         opacity: 0.7;
       } /* 灰色 */
+      .card.admin-created-order {
+        border-color: #9b7bc1;
+        border-width: 2px;
+      }
       .card.order-change-pending {
         box-shadow: none;
       }
@@ -6347,6 +6351,7 @@
         const adminNote = String(order?.adminNote ?? "");
         const hasAdminNote = adminNote.trim().length > 0;
         const orderSource = String(order?.orderSource ?? "").trim();
+        const isAdminCreatedOrder = orderSource === "管理端";
         const lineDisplayName = String(order?.lineDisplayName ?? "").trim();
         const createdAt = String(order?.createdAt ?? "").trim();
         const lastUpdatedAt = String(order?.lastUpdatedAt ?? "").trim();
@@ -6366,10 +6371,11 @@
 
         return `
           <div
-            class="card ${escapeHtml(statusMeta.cardClass)}${shouldShowOrderChangeAlert ? " order-change-pending" : ""}"
+            class="card ${escapeHtml(statusMeta.cardClass)}${isAdminCreatedOrder ? " admin-created-order" : ""}${shouldShowOrderChangeAlert ? " order-change-pending" : ""}"
             data-status="${escapeHtml(orderStatus)}"
             data-readonly="true"
             data-order-no="${escapeHtml(orderNo)}"
+            data-order-source="${escapeHtml(orderSource)}"
             data-can-line-notify="${canLineNotify ? "true" : "false"}"
             data-payment-state="${escapeHtml(paymentState || "")}"
             data-notification-status="${escapeHtml(notificationStatus)}"
