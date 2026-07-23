@@ -4132,10 +4132,13 @@
               </select>
             </div>
             <div class="form-group">
-              <label>希望寄出批次</label>
-              <select id="new-requested-shipping-batch" class="form-control">
-                <option value="">未指定</option>
-              </select>
+              <label for="new-expected-shipping-date">確定出貨日期</label>
+              <input
+                type="date"
+                id="new-expected-shipping-date"
+                class="form-control"
+                required
+              />
             </div>
 
             <div class="admin-content-section-title">四、優惠與管理資訊</div>
@@ -4258,7 +4261,6 @@
       };
       let adminProductsReady = false;
       let latestAdminOrders = [];
-      let adminShippingBatches = [];
       let adminCreateOrderSubmitting = false;
       let adminSelectedCustomer = null;
       let adminCustomerSearchTimer = null;
@@ -12212,36 +12214,6 @@ ${adminNote}
         );
       }
 
-      async function fetchAdminShippingBatches() {
-        const response = await fetch(
-          `${GAS_ORDERS_API_URL}?action=readShippingBatches`,
-        );
-        const payload = await response.json();
-        if (
-          !response.ok ||
-          !payload ||
-          payload.ok !== true ||
-          payload.action !== "readShippingBatches" ||
-          !Array.isArray(payload.batches)
-        ) {
-          throw new Error("SHIPPING_BATCHES_READ_FAILED");
-        }
-
-        adminShippingBatches = payload.batches
-          .slice()
-          .sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder));
-        const select = document.getElementById("new-requested-shipping-batch");
-        if (select) {
-          select.innerHTML = [
-            '<option value="">未指定</option>',
-            ...adminShippingBatches.map(
-              (batch) =>
-                `<option value="${escapeHtml(batch.batchId)}">${escapeHtml(batch.displayLabel)}</option>`,
-            ),
-          ].join("");
-        }
-      }
-
       async function openAddOrderModal() {
         if (!adminProductsReady) {
           alert("商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。");
@@ -12250,17 +12222,6 @@ ${adminNote}
         resetAdminCustomerLookup();
         if (!document.querySelector("#modal-product-list .product-edit-row")) {
           resetModalProductRows();
-        }
-        try {
-          await fetchAdminShippingBatches();
-        } catch (error) {
-          adminShippingBatches = [];
-          const select = document.getElementById(
-            "new-requested-shipping-batch",
-          );
-          if (select) {
-            select.innerHTML = '<option value="">未指定</option>';
-          }
         }
         document.getElementById("addOrderModal").classList.add("open");
         document.body.style.overflow = "hidden";
@@ -12416,9 +12377,11 @@ ${adminNote}
             document.getElementById("new-admin-note")?.value.trim() || "",
           paymentState:
             document.getElementById("new-payment-method")?.value || "",
-          requestedShippingBatchId:
-            document.getElementById("new-requested-shipping-batch")?.value ||
-            "",
+          expectedShippingDate:
+            document.getElementById("new-expected-shipping-date")?.value || "",
+          // Rolling-deployment compatibility: the backend still accepts the
+          // previous admin page while this release reaches all browsers.
+          requestedShippingBatchId: "",
           discountAmount: Number(
             document.getElementById("new-discount-amount")?.value || 0,
           ),
@@ -12438,6 +12401,8 @@ ${adminNote}
           !payload.recipientAddress ||
           !payload.buyerName ||
           !payload.buyerPhone ||
+          !payload.expectedShippingDate ||
+          !adminWorkflowIsValidDate(payload.expectedShippingDate) ||
           !Number.isInteger(payload.discountAmount) ||
           payload.discountAmount < 0
         ) {
@@ -12514,8 +12479,10 @@ ${adminNote}
           submitButton.disabled = false;
           submitButton.innerText = "建立訂單";
           feedback.innerText =
-            error.message === "REQUESTED_SHIPPING_BATCH_UNAVAILABLE"
-              ? "希望寄出批次已失效，請重新選擇。"
+            error.message === "EXPECTED_SHIPPING_DATE_REQUIRED"
+              ? "請選擇確定出貨日期。"
+              : error.message === "EXPECTED_SHIPPING_DATE_INVALID"
+                ? "確定出貨日期格式不正確，請重新選擇。"
               : error.message === "PRODUCT_STOCK_INSUFFICIENT"
                 ? `庫存不足，訂單尚未建立。${
                     Array.isArray(error.shortages) && error.shortages.length
