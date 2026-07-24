@@ -4252,6 +4252,8 @@
       const ADMIN_DISPLAY_NAME_KEY = "milkpear_admin_display_name";
       const ADMIN_AUTH_TIMEOUT_MS = 15000;
       const ADMIN_READ_ORDERS_TIMEOUT_MS = 15000;
+      const ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS = 15000;
+      const ADMIN_SHIPPING_NOTICE_TIMEOUT_MS = 60000;
       const ADMIN_INITIAL_LOAD_SLOW_MS = 12000;
 
       let adminProductCatalog = [];
@@ -4382,7 +4384,21 @@
 
       async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
         if (typeof AbortController === "undefined") {
-          return fetch(url, options);
+          let fallbackTimer;
+          try {
+            return await Promise.race([
+              fetch(url, options),
+              new Promise((_, reject) => {
+                fallbackTimer = window.setTimeout(() => {
+                  const timeoutError = new Error("REQUEST_TIMEOUT");
+                  timeoutError.name = "AbortError";
+                  reject(timeoutError);
+                }, timeoutMs);
+              }),
+            ]);
+          } finally {
+            window.clearTimeout(fallbackTimer);
+          }
         }
         const controller = new AbortController();
         const timer = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -5788,16 +5804,20 @@
             throw new Error("ADMIN_SESSION_REQUIRED");
           }
 
-          const response = await fetch(baseUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "text/plain;charset=utf-8",
+          const response = await fetchWithTimeout(
+            baseUrl,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "text/plain;charset=utf-8",
+              },
+              body: JSON.stringify({
+                action: "adminReadProductCatalog",
+                adminSessionToken,
+              }),
             },
-            body: JSON.stringify({
-              action: "adminReadProductCatalog",
-              adminSessionToken,
-            }),
-          });
+            ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS,
+          );
           const payload = await response.json();
 
           if (
@@ -5953,9 +5973,15 @@
         }, 0);
       }
 
-      function applySingleOrderResponse(order, restoreState = null) {
+      function applySingleOrderResponse(
+        order,
+        restoreState = null,
+        options = {},
+      ) {
         if (!replaceAdminOrderLocally(order, restoreState)) return false;
-        refreshAdminOrdersInBackground();
+        if (options.refreshInBackground !== false) {
+          refreshAdminOrdersInBackground();
+        }
         return true;
       }
 
@@ -8830,26 +8856,30 @@
         let dedupedSucceeded = false;
         try {
           const action = "adminSendShippingDateNotice";
-          const response = await fetch(GAS_ORDERS_API_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "text/plain;charset=utf-8",
-            },
-            body: JSON.stringify({
-              action,
-              adminSessionToken,
-              orderNo,
-              requestKey: createAdminRequestKey(action, [
+          const response = await fetchWithTimeout(
+            GAS_ORDERS_API_URL,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "text/plain;charset=utf-8",
+              },
+              body: JSON.stringify({
+                action,
+                adminSessionToken,
                 orderNo,
-                noticeMode,
-                expectedShippingDate,
-              ]),
-              customMessage,
-              changedFieldsSnapshot:
-                card.dataset.pendingNoticeFields || "",
-              orderVersion: card.dataset.lastUpdatedAt || "",
-            }),
-          });
+                requestKey: createAdminRequestKey(action, [
+                  orderNo,
+                  noticeMode,
+                  expectedShippingDate,
+                ]),
+                customMessage,
+                changedFieldsSnapshot:
+                  card.dataset.pendingNoticeFields || "",
+                orderVersion: card.dataset.lastUpdatedAt || "",
+              }),
+            },
+            ADMIN_SHIPPING_NOTICE_TIMEOUT_MS,
+          );
           const payload = await response.json();
           if (
             !response.ok ||
@@ -8870,11 +8900,15 @@
           if (feedback) {
             feedback.classList.remove("is-error");
             feedback.innerText = dedupedSucceeded
-              ? "此通知已送出，未重複發送，正在背景同步…"
-              : "已送出，正在背景同步…";
+              ? "此通知已送出，未重複發送。"
+              : "通知已送出。";
           }
           if (payload.order) {
-            if (!applySingleOrderResponse(payload.order, restoreState)) {
+            if (
+              !applySingleOrderResponse(payload.order, restoreState, {
+                refreshInBackground: false,
+              })
+            ) {
               throw new Error("SHIPPING_DATE_NOTICE_REFRESH_FAILED");
             }
             return;
@@ -8903,6 +8937,16 @@
           restoreAdminOrderCardAfterRender(restoreState);
         } catch (error) {
           adminShippingDateNoticeSetSaving(card, false);
+          if (error?.name === "AbortError") {
+            button.disabled = true;
+            button.innerText = "通知結果待查核";
+            if (feedback) {
+              feedback.classList.add("is-error");
+              feedback.innerText =
+                "通知請求逾時，結果可能已送達。請先重新讀取或查核紀錄，勿重複發送。";
+            }
+            return;
+          }
           if (feedback) {
             feedback.classList.add("is-error");
             feedback.innerText =
@@ -10219,27 +10263,36 @@
           );
         }, ADMIN_INITIAL_LOAD_SLOW_MS);
 
-        await fetchAdminProductCatalogFromGas();
-        const adminOrders = await fetchAdminOrdersFromGas();
-        initialLoadFinished = true;
-        window.clearTimeout(initialLoadTimer);
+        const productCatalogPromise = fetchAdminProductCatalogFromGas();
+        try {
+          const adminOrders = await fetchAdminOrdersFromGas();
 
-        if (!Array.isArray(adminOrders)) {
-          return;
+          if (!Array.isArray(adminOrders)) {
+            return;
+          }
+
+          const rendered = renderAdminOrders(adminOrders);
+
+          if (!rendered) {
+            showAdminAuthOverlay(
+              "⚠️ 管理員訂單顯示失敗，請按下方重新讀取訂單。",
+              false,
+              true,
+            );
+            return;
+          }
+
+          updateStatsCounters();
+          applyCurrentFilter();
+          handleBatchCheckChange();
+          updateNotifyButton();
+          applyReadOnlyModeToRealOrders();
+          hideAdminAuthOverlay();
+        } finally {
+          initialLoadFinished = true;
+          window.clearTimeout(initialLoadTimer);
         }
-
-        const rendered = renderAdminOrders(adminOrders);
-
-        if (!rendered) {
-          return;
-        }
-
-        updateStatsCounters();
-        applyCurrentFilter();
-        handleBatchCheckChange();
-        updateNotifyButton();
-        applyReadOnlyModeToRealOrders();
-        hideAdminAuthOverlay();
+        await productCatalogPromise;
       });
       // ==========================================
       // ✨ 系統一：訂單狀態 badge/class 同步（由系統自動推導）
