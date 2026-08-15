@@ -9024,6 +9024,43 @@
         }));
       }
 
+      function parseAdminSortTime(value) {
+        const raw = String(value || "").trim();
+        if (!raw) return 0;
+
+        const taipeiDisplayMatch = raw.match(
+          /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})\s*(上午|下午)\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/,
+        );
+        if (taipeiDisplayMatch) {
+          const [, year, month, day, period, rawHour, minute, second = "0"] =
+            taipeiDisplayMatch;
+          let hour = Number(rawHour);
+          if (period === "上午" && hour === 12) hour = 0;
+          if (period === "下午" && hour < 12) hour += 12;
+          const time = Date.UTC(
+            Number(year),
+            Number(month) - 1,
+            Number(day),
+            hour,
+            Number(minute),
+            Number(second),
+          );
+          return Number.isFinite(time) ? time : 0;
+        }
+
+        const time = Date.parse(raw);
+        return Number.isFinite(time) ? time : 0;
+      }
+
+      function compareAdminOrdersByCreatedAtDesc(left, right) {
+        const leftTime = parseAdminSortTime(left?.createdAt);
+        const rightTime = parseAdminSortTime(right?.createdAt);
+        if (leftTime !== rightTime) return rightTime - leftTime;
+        return String(right?.orderNo || "").localeCompare(
+          String(left?.orderNo || ""),
+        );
+      }
+
       function attachAdminOrderSnapshotReadMeta(orders, payload = {}) {
         Object.defineProperty(orders, "adminReadMeta", {
           value: {
@@ -9056,17 +9093,7 @@
             );
             if (Array.isArray(bucketOrders)) orders.push(...bucketOrders);
           });
-        return orders.sort((left, right) => {
-          const createdComparison = String(right?.createdAt || "").localeCompare(
-            String(left?.createdAt || ""),
-          );
-          return (
-            createdComparison ||
-            String(right?.orderNo || "").localeCompare(
-              String(left?.orderNo || ""),
-            )
-          );
-        });
+        return orders.sort(compareAdminOrdersByCreatedAtDesc);
       }
 
       async function mergeAdminOrderSnapshotPayload(payload) {
@@ -9080,12 +9107,15 @@
           adminOrderSnapshotVersion = String(
             fallback.version || payload.version || "",
           );
-          return attachAdminOrderSnapshotReadMeta(fallback.orders.slice(), {
-            ...payload,
-            version: adminOrderSnapshotVersion,
-            orderCount: fallback.orderCount,
-            stale: true,
-          });
+          return attachAdminOrderSnapshotReadMeta(
+            fallback.orders.slice().sort(compareAdminOrdersByCreatedAtDesc),
+            {
+              ...payload,
+              version: adminOrderSnapshotVersion,
+              orderCount: fallback.orderCount,
+              stale: true,
+            },
+          );
         }
 
         if (!Array.isArray(payload?.manifest) || !Array.isArray(payload?.chunks)) {
@@ -16541,17 +16571,6 @@
         return currentNotificationFilter === "line"
           ? canLineNotify
           : !canLineNotify;
-      }
-
-      function parseAdminSortTime(value) {
-        const raw = String(value || "").trim();
-        if (!raw) return 0;
-        const normalized = raw
-          .replace(/\//g, "-")
-          .replace("上午", "AM")
-          .replace("下午", "PM");
-        const time = Date.parse(normalized);
-        return Number.isFinite(time) ? time : 0;
       }
 
       function compareText(a, b) {
