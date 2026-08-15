@@ -129,6 +129,6 @@ const configSource = readFileSync(
   new URL("./customer-config.js", import.meta.url),
   "utf8",
 );
-assert.match(configSource, /"adminOrderSnapshot": false/);
+assert.match(configSource, /"adminOrderSnapshot": true/);
 
 console.log("admin read observability and snapshot provider tests: PASS");
