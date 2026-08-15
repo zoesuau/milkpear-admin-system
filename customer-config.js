@@ -12,7 +12,8 @@ window.ORDER_SYSTEM_CONFIG = Object.freeze({
   "adminSiteUrl": "https://zoesuau.github.io/milkpear-admin-system",
   "features": {
     "adminOrderSnapshot": true,
-    "adminReadObservabilityLevel": "DEBUG"
+    "adminReadObservabilityLevel": "DEBUG",
+    "groupOrders": true
   },
   "line": {
     "liffId": "2010333281-Ra5txFF3",
