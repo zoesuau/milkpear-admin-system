@@ -6032,6 +6032,8 @@
           ? configuredLevel
           : "ERROR";
       })();
+      const ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED =
+        ORDER_SYSTEM_CONFIG.features?.adminOrderSnapshot === true;
       const ADMIN_AUTH_TIMEOUT_MS = 60000;
       const ADMIN_READ_ORDERS_TIMEOUT_MS = 60000;
       const ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS = 60000;
@@ -6055,6 +6057,9 @@
       let adminInventoryAdjustmentSubmitting = false;
       let adminProductsReady = false;
       let latestAdminOrders = [];
+      let adminOrderSnapshotVersion = "";
+      let adminOrderSnapshotManifest = [];
+      const adminOrderSnapshotChunks = new Map();
       let adminOrderReadMeta = {
         serverFiltered: true,
         totalCount: 0,
@@ -8818,11 +8823,11 @@
         return { dateStart: "", dateEnd: "" };
       }
 
-      async function fetchAdminOrdersFromGas(options = {}) {
+      async function performAdminOrdersFetchFromGas(options = {}) {
         const silent = options && options.silent === true;
         const adminReadStatusEl = document.getElementById("adminReadStatus");
         const observabilityRequestId =
-          createAdminDiagnosticRequestId("adminReadOrders");
+          options.requestId || createAdminDiagnosticRequestId("adminReadOrders");
         const observabilityStartedAt = Date.now();
         recordAdminReadBreadcrumb("FETCH_START", {
           requestId: observabilityRequestId,
@@ -8985,6 +8990,275 @@
 
           return null;
         }
+      }
+
+      async function decodeAdminSnapshotGzipBase64Json(base64Data) {
+        if (
+          typeof base64Data !== "string" ||
+          typeof DecompressionStream !== "function"
+        ) {
+          throw new Error("ADMIN_ORDER_SNAPSHOT_ENCODING_UNSUPPORTED");
+        }
+        const binary = atob(base64Data);
+        const bytes = Uint8Array.from(binary, (character) =>
+          character.charCodeAt(0),
+        );
+        const text = await new Response(
+          new Blob([bytes])
+            .stream()
+            .pipeThrough(new DecompressionStream("gzip")),
+        ).text();
+        return JSON.parse(text);
+      }
+
+      function getAdminOrderSnapshotKnownChunks() {
+        return adminOrderSnapshotManifest.map((entry) => ({
+          bucketId: Number(entry?.bucketId),
+          checksum: String(entry?.checksum || ""),
+        }));
+      }
+
+      function attachAdminOrderSnapshotReadMeta(orders, payload = {}) {
+        Object.defineProperty(orders, "adminReadMeta", {
+          value: {
+            searchMode: false,
+            query: "",
+            truncated: false,
+            serverFiltered: false,
+            totalCount: Math.max(0, Number(payload.orderCount) || orders.length),
+            page: 1,
+            pageSize: Math.max(1, orders.length || ADMIN_ORDERS_PER_PAGE),
+            totalPages: 1,
+            statusCounts: { pending: 0, notice: 0 },
+            snapshotVersion: String(payload.version || ""),
+            snapshotSource: String(payload.snapshotTier || payload.source || ""),
+            snapshotStale: payload.stale === true,
+          },
+          enumerable: false,
+        });
+        return orders;
+      }
+
+      function flattenAdminOrderSnapshotChunks(manifest) {
+        const orders = [];
+        manifest
+          .slice()
+          .sort((left, right) => Number(left.bucketId) - Number(right.bucketId))
+          .forEach((entry) => {
+            const bucketOrders = adminOrderSnapshotChunks.get(
+              Number(entry.bucketId),
+            );
+            if (Array.isArray(bucketOrders)) orders.push(...bucketOrders);
+          });
+        return orders.sort((left, right) => {
+          const createdComparison = String(right?.createdAt || "").localeCompare(
+            String(left?.createdAt || ""),
+          );
+          return (
+            createdComparison ||
+            String(right?.orderNo || "").localeCompare(
+              String(left?.orderNo || ""),
+            )
+          );
+        });
+      }
+
+      async function mergeAdminOrderSnapshotPayload(payload) {
+        if (payload?.source === "drive") {
+          const fallback = await decodeAdminSnapshotGzipBase64Json(payload.data);
+          if (!Array.isArray(fallback?.orders)) {
+            throw new Error("ADMIN_ORDER_SNAPSHOT_DRIVE_INVALID");
+          }
+          adminOrderSnapshotChunks.clear();
+          adminOrderSnapshotManifest = [];
+          adminOrderSnapshotVersion = String(
+            fallback.version || payload.version || "",
+          );
+          return attachAdminOrderSnapshotReadMeta(fallback.orders.slice(), {
+            ...payload,
+            version: adminOrderSnapshotVersion,
+            orderCount: fallback.orderCount,
+            stale: true,
+          });
+        }
+
+        if (!Array.isArray(payload?.manifest) || !Array.isArray(payload?.chunks)) {
+          throw new Error("ADMIN_ORDER_SNAPSHOT_RESPONSE_INVALID");
+        }
+        for (const chunk of payload.chunks) {
+          if (chunk?.encoding !== "gzip-base64") {
+            throw new Error("ADMIN_ORDER_SNAPSHOT_ENCODING_INVALID");
+          }
+          const decoded = await decodeAdminSnapshotGzipBase64Json(chunk.data);
+          if (
+            Number(decoded?.bucketId) !== Number(chunk.bucketId) ||
+            !Array.isArray(decoded?.orders)
+          ) {
+            throw new Error("ADMIN_ORDER_SNAPSHOT_CHUNK_INVALID");
+          }
+          adminOrderSnapshotChunks.set(Number(chunk.bucketId), decoded.orders);
+        }
+        const validBucketIds = new Set(
+          payload.manifest.map((entry) => Number(entry.bucketId)),
+        );
+        [...adminOrderSnapshotChunks.keys()].forEach((bucketId) => {
+          if (!validBucketIds.has(bucketId)) {
+            adminOrderSnapshotChunks.delete(bucketId);
+          }
+        });
+        adminOrderSnapshotManifest = payload.manifest.slice();
+        adminOrderSnapshotVersion = String(payload.version || "");
+        const orders = flattenAdminOrderSnapshotChunks(adminOrderSnapshotManifest);
+        if (orders.length !== Math.max(0, Number(payload.orderCount) || 0)) {
+          throw new Error("ADMIN_ORDER_SNAPSHOT_COUNT_MISMATCH");
+        }
+        return attachAdminOrderSnapshotReadMeta(orders, payload);
+      }
+
+      async function performAdminOrderSnapshotFetch(options = {}) {
+        const silent = options && options.silent === true;
+        const forceReload = options && options.forceReload === true;
+        const adminReadStatusEl = document.getElementById("adminReadStatus");
+        const requestId =
+          options.requestId ||
+          createAdminDiagnosticRequestId("adminReadOrderSnapshot");
+        const startedAt = Date.now();
+        recordAdminReadBreadcrumb("FETCH_START", { requestId });
+
+        try {
+          const baseUrl = String(GAS_ORDERS_API_URL || "").trim();
+          const adminSessionToken = String(
+            sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+          ).trim();
+          if (!baseUrl || !adminSessionToken) {
+            throw new Error("ADMIN_SESSION_REQUIRED");
+          }
+          if (adminReadStatusEl && !silent) {
+            setAdminStatusPanelVisible(true);
+            adminReadStatusEl.className = "gas-test-status";
+            adminReadStatusEl.innerText = "讀取版本化訂單快照中...";
+          }
+
+          const response = await fetchWithTimeout(
+            baseUrl,
+            {
+              method: "POST",
+              headers: { "Content-Type": "text/plain;charset=utf-8" },
+              body: JSON.stringify({
+                action: "adminReadOrderSnapshot",
+                adminSessionToken,
+                requestId,
+                knownVersion: forceReload ? "" : adminOrderSnapshotVersion,
+                knownChunks: forceReload
+                  ? []
+                  : getAdminOrderSnapshotKnownChunks(),
+              }),
+            },
+            ADMIN_READ_ORDERS_TIMEOUT_MS,
+          );
+
+          if (!response.ok) {
+            const httpError = new Error(`HTTP_${response.status}`);
+            httpError.adminFrontendStage = "FRONTEND_FETCH";
+            throw httpError;
+          }
+          let payload;
+          try {
+            payload = await response.json();
+          } catch (parseError) {
+            parseError.adminFrontendStage = "FRONTEND_PARSE";
+            throw parseError;
+          }
+          if (payload?.error === "ADMIN_SESSION_REQUIRED") {
+            throw new Error("ADMIN_SESSION_REQUIRED");
+          }
+          if (
+            payload?.ok !== true ||
+            payload?.action !== "adminReadOrderSnapshot"
+          ) {
+            const backendError = new Error(
+              String(payload?.error || "ADMIN_ORDER_SNAPSHOT_READ_FAILED"),
+            );
+            backendError.adminBackendError = true;
+            throw backendError;
+          }
+
+          const adminDisplayName = String(
+            payload?.admin?.displayName || "",
+          ).trim();
+          if (adminDisplayName) {
+            currentAdminName = adminDisplayName;
+            sessionStorage.setItem(ADMIN_DISPLAY_NAME_KEY, adminDisplayName);
+          }
+          const orders = payload.unchanged === true
+            ? attachAdminOrderSnapshotReadMeta(latestAdminOrders.slice(), payload)
+            : await mergeAdminOrderSnapshotPayload(payload);
+          if (
+            payload.unchanged === true &&
+            orders.length !== Math.max(0, Number(payload.orderCount) || 0)
+          ) {
+            throw new Error("ADMIN_ORDER_SNAPSHOT_COUNT_MISMATCH");
+          }
+          if (adminReadStatusEl && !silent) {
+            adminReadStatusEl.className = payload.stale
+              ? "gas-test-status warning"
+              : "gas-test-status";
+            adminReadStatusEl.innerText = payload.stale
+              ? "Firestore 暫時不可用，已改用上一份備援快照。"
+              : "";
+          }
+          if (!payload.stale && !silent) setAdminStatusPanelVisible(false);
+          updateAdminRefreshMeta();
+          recordAdminReadBreadcrumb("FETCH_SUCCESS", {
+            requestId,
+            elapsedMs: Date.now() - startedAt,
+            orderCount: orders.length,
+          });
+          return orders;
+        } catch (error) {
+          const classification = classifyAdminReadFrontendError(error);
+          recordAdminReadBreadcrumb(classification.event, {
+            requestId,
+            elapsedMs: Date.now() - startedAt,
+            errorStage:
+              String(error && error.message) === "ADMIN_SESSION_REQUIRED"
+                ? "SESSION"
+                : classification.stage,
+            errorCode: normalizeAdminReadErrorCode(
+              error && error.message,
+              classification.event,
+            ),
+          });
+          if (String(error && error.message) === "ADMIN_SESSION_REQUIRED") {
+            sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+            showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+            return null;
+          }
+          if (adminReadStatusEl && !silent) {
+            setAdminStatusPanelVisible(true);
+            adminReadStatusEl.className = "gas-test-status error";
+            adminReadStatusEl.innerText =
+              "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。";
+          }
+          if (!silent) {
+            showAdminAuthOverlay(
+              "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。",
+              false,
+              true,
+            );
+          }
+          return null;
+        }
+      }
+
+      async function fetchAdminOrdersFromGas(options = {}) {
+        const requestId = String(
+          options.requestId || createAdminDiagnosticRequestId("adminReadOrders"),
+        ).slice(0, 160);
+        if (!ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED) {
+          return performAdminOrdersFetchFromGas({ ...options, requestId });
+        }
+        return performAdminOrderSnapshotFetch({ ...options, requestId });
       }
 
       async function loadAdminOrdersForCurrentView(options = {}) {
