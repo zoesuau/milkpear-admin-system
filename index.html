@@ -6022,6 +6022,16 @@
       const ADMIN_LINE_CODE_VERIFIER_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-line-code-verifier`;
       const ADMIN_LINE_SESSION_TOKEN_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-session-token`;
       const ADMIN_DISPLAY_NAME_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-display-name`;
+      const ADMIN_READ_BREADCRUMB_STORAGE_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-read-breadcrumbs-v1`;
+      const ADMIN_READ_BREADCRUMB_REQUEST_LIMIT = 20;
+      const ADMIN_READ_OBSERVABILITY_LEVEL = (() => {
+        const configuredLevel = String(
+          ORDER_SYSTEM_CONFIG.features?.adminReadObservabilityLevel || "ERROR",
+        ).trim().toUpperCase();
+        return new Set(["OFF", "ERROR", "DEBUG"]).has(configuredLevel)
+          ? configuredLevel
+          : "ERROR";
+      })();
       const ADMIN_AUTH_TIMEOUT_MS = 60000;
       const ADMIN_READ_ORDERS_TIMEOUT_MS = 60000;
       const ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS = 60000;
@@ -6237,6 +6247,133 @@
           .join("|")
           .replace(/\s+/g, "")
           .slice(0, 160);
+      }
+
+      function createAdminDiagnosticRequestId(action) {
+        const nonce =
+          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID().replace(/-/g, "")
+            : `${Date.now()}${Math.random().toString(36).slice(2)}`;
+        return createAdminRequestKey(action, [nonce]);
+      }
+
+      const ADMIN_READ_ERROR_BREADCRUMB_EVENTS = new Set([
+        "FETCH_TIMEOUT",
+        "FETCH_ABORTED",
+        "NETWORK_ERROR",
+        "HTTP_ERROR",
+        "PARSE_ERROR",
+        "BACKEND_ERROR",
+      ]);
+      const ADMIN_READ_FAILURE_STAGES = new Set([
+        "SESSION",
+        "ROUTING",
+        "LEGACY_SHEETS_READ",
+        "SNAPSHOT_CACHE_READ",
+        "SNAPSHOT_FIRESTORE_READ",
+        "SNAPSHOT_DRIVE_FALLBACK",
+        "SERIALIZE",
+        "RESPONSE",
+        "FRONTEND_FETCH",
+        "FRONTEND_PARSE",
+      ]);
+
+      function normalizeAdminReadErrorCode(value, fallback = "REQUEST_FAILED") {
+        const normalized = String(value || "").trim().toUpperCase();
+        return /^[A-Z0-9_.:-]{1,100}$/.test(normalized)
+          ? normalized
+          : fallback;
+      }
+
+      function recordAdminReadBreadcrumb(event, data = {}) {
+        try {
+          const normalizedEvent = String(event || "").trim().toUpperCase();
+          const allowedEvents = new Set([
+            "FETCH_START",
+            "FETCH_SUCCESS",
+            ...ADMIN_READ_ERROR_BREADCRUMB_EVENTS,
+          ]);
+          if (!allowedEvents.has(normalizedEvent)) return;
+          if (ADMIN_READ_OBSERVABILITY_LEVEL === "OFF") return;
+          if (
+            ADMIN_READ_OBSERVABILITY_LEVEL !== "DEBUG" &&
+            !ADMIN_READ_ERROR_BREADCRUMB_EVENTS.has(normalizedEvent)
+          ) return;
+
+          const entry = {
+            requestId: String(data.requestId || "").slice(0, 160),
+            timestamp: new Date().toISOString(),
+            event: normalizedEvent,
+            elapsedMs: Math.max(0, Number(data.elapsedMs) || 0),
+            orderCount: Math.max(0, Number(data.orderCount) || 0),
+            errorStage: ADMIN_READ_FAILURE_STAGES.has(
+              String(data.errorStage || "").trim().toUpperCase(),
+            )
+              ? String(data.errorStage).trim().toUpperCase()
+              : "",
+            errorCode: data.errorCode
+              ? normalizeAdminReadErrorCode(data.errorCode)
+              : "",
+          };
+          if (!entry.requestId) return;
+
+          let breadcrumbs = [];
+          try {
+            const stored = JSON.parse(
+              localStorage.getItem(ADMIN_READ_BREADCRUMB_STORAGE_KEY) || "[]",
+            );
+            if (Array.isArray(stored)) breadcrumbs = stored;
+          } catch (readError) {
+            breadcrumbs = [];
+          }
+          breadcrumbs.push(entry);
+          const recentRequestIds = [];
+          for (let index = breadcrumbs.length - 1; index >= 0; index -= 1) {
+            const requestId = String(breadcrumbs[index]?.requestId || "");
+            if (requestId && !recentRequestIds.includes(requestId)) {
+              recentRequestIds.push(requestId);
+              if (
+                recentRequestIds.length >= ADMIN_READ_BREADCRUMB_REQUEST_LIMIT
+              ) break;
+            }
+          }
+          const retainedRequestIds = new Set(recentRequestIds);
+          breadcrumbs = breadcrumbs.filter((breadcrumb) =>
+            retainedRequestIds.has(String(breadcrumb?.requestId || "")),
+          );
+          localStorage.setItem(
+            ADMIN_READ_BREADCRUMB_STORAGE_KEY,
+            JSON.stringify(breadcrumbs),
+          );
+          const writer = ADMIN_READ_ERROR_BREADCRUMB_EVENTS.has(normalizedEvent)
+            ? console.error
+            : console.log;
+          writer.call(console, JSON.stringify({
+            scope: "admin_read_observability",
+            ...entry,
+          }));
+        } catch (observabilityError) {
+          // Breadcrumbs are best-effort and must never affect order reads.
+        }
+      }
+
+      function classifyAdminReadFrontendError(error) {
+        const message = String(error?.message || "").toUpperCase();
+        if (error?.name === "AbortError") {
+          return message.includes("ABORTED")
+            ? { event: "FETCH_ABORTED", stage: "FRONTEND_FETCH" }
+            : { event: "FETCH_TIMEOUT", stage: "FRONTEND_FETCH" };
+        }
+        if (
+          error?.adminFrontendStage === "FRONTEND_PARSE" ||
+          /RESPONSE_INVALID|GATEWAY_HTML|JSON|PARSE/.test(message)
+        ) {
+          return { event: "PARSE_ERROR", stage: "FRONTEND_PARSE" };
+        }
+        if (error?.adminBackendError === true) {
+          return { event: "BACKEND_ERROR", stage: "FRONTEND_FETCH" };
+        }
+        return { event: "NETWORK_ERROR", stage: "FRONTEND_FETCH" };
       }
 
       function getAdminCreatePayloadFingerprint(payload) {
@@ -8684,6 +8821,12 @@
       async function fetchAdminOrdersFromGas(options = {}) {
         const silent = options && options.silent === true;
         const adminReadStatusEl = document.getElementById("adminReadStatus");
+        const observabilityRequestId =
+          createAdminDiagnosticRequestId("adminReadOrders");
+        const observabilityStartedAt = Date.now();
+        recordAdminReadBreadcrumb("FETCH_START", {
+          requestId: observabilityRequestId,
+        });
 
         try {
           const baseUrl = String(GAS_ORDERS_API_URL || "").trim();
@@ -8712,12 +8855,28 @@
                 action: "adminReadOrders",
                 adminSessionToken,
                 viewMode: "complete",
+                requestId: observabilityRequestId,
               }),
             },
             ADMIN_READ_ORDERS_TIMEOUT_MS,
           );
 
-          const payload = await response.json();
+          if (!response.ok) {
+            recordAdminReadBreadcrumb("HTTP_ERROR", {
+              requestId: observabilityRequestId,
+              elapsedMs: Date.now() - observabilityStartedAt,
+              errorStage: "FRONTEND_FETCH",
+              errorCode: `HTTP_${response.status}`,
+            });
+          }
+
+          let payload;
+          try {
+            payload = await response.json();
+          } catch (parseError) {
+            parseError.adminFrontendStage = "FRONTEND_PARSE";
+            throw parseError;
+          }
 
           const adminDisplayName = String(
             payload?.admin?.displayName || "",
@@ -8733,7 +8892,9 @@
             payload.action === "adminReadOrders" &&
             payload.error === "ADMIN_SESSION_REQUIRED"
           ) {
-            throw new Error("ADMIN_SESSION_REQUIRED");
+            const sessionError = new Error("ADMIN_SESSION_REQUIRED");
+            sessionError.adminBackendError = true;
+            throw sessionError;
           }
 
           if (
@@ -8742,7 +8903,9 @@
             payload.action !== "adminReadOrders" ||
             !Array.isArray(payload.orders)
           ) {
-            throw new Error("ADMIN_ORDERS_READ_FAILED");
+            const backendError = new Error("ADMIN_ORDERS_READ_FAILED");
+            backendError.adminBackendError = true;
+            throw backendError;
           }
 
           const orders = payload.orders;
@@ -8779,8 +8942,26 @@
           if (!silent) setAdminStatusPanelVisible(false);
 
           updateAdminRefreshMeta();
+          recordAdminReadBreadcrumb("FETCH_SUCCESS", {
+            requestId: observabilityRequestId,
+            elapsedMs: Date.now() - observabilityStartedAt,
+            orderCount: orders.length,
+          });
           return orders;
         } catch (error) {
+          const classification = classifyAdminReadFrontendError(error);
+          recordAdminReadBreadcrumb(classification.event, {
+            requestId: observabilityRequestId,
+            elapsedMs: Date.now() - observabilityStartedAt,
+            errorStage:
+              String(error && error.message) === "ADMIN_SESSION_REQUIRED"
+                ? "SESSION"
+                : classification.stage,
+            errorCode: normalizeAdminReadErrorCode(
+              error && error.message,
+              classification.event,
+            ),
+          });
           if (String(error && error.message) === "ADMIN_SESSION_REQUIRED") {
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
             showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
