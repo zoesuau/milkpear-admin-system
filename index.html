@@ -5824,6 +5824,10 @@
           <form id="groupChildForm" onsubmit="submitGroupChild(event)">
             <input type="hidden" id="group-child-parent-id">
             <div id="group-child-parent-summary" class="group-order-meta"></div>
+            <div class="admin-content-section-title">訂購人資料（可依子單修改）</div>
+            <div class="form-group"><label>訂購人姓名</label><input id="group-child-buyer-name" class="form-control" required></div>
+            <div class="form-group"><label>訂購人電話</label><input id="group-child-buyer-phone" type="tel" class="form-control" required></div>
+            <div class="admin-content-section-title">收件人資料</div>
             <div class="form-group"><label>收件人姓名</label><input id="group-child-name" class="form-control" required></div>
             <div class="form-group"><label>收件人電話</label><input id="group-child-phone" type="tel" class="form-control" required></div>
             <div class="form-group"><label>收件地址</label><input id="group-child-address" class="form-control" required></div>
@@ -16230,6 +16234,8 @@
         document.getElementById("groupChildForm")?.reset();
         document.getElementById("group-child-parent-id").value = groupOrderId;
         document.getElementById("group-child-parent-summary").innerText = `${group.groupName}｜訂購人 ${group.buyerName}｜尚餘 ${group.items.reduce((sum, item) => sum + Number(item.remainingQty || 0), 0)} 盒`;
+        document.getElementById("group-child-buyer-name").value = group.buyerName || "";
+        document.getElementById("group-child-buyer-phone").value = group.buyerPhone || "";
         const list = document.getElementById("group-child-product-list");
         if (list) list.innerHTML = "";
         const firstRemaining = group.items.find((item) => Number(item.remainingQty || 0) > 0);
@@ -16253,6 +16259,8 @@
         const payload = {
           action: "adminCreateGroupOrderChild",
           groupOrderId: document.getElementById("group-child-parent-id")?.value || "",
+          buyerName: document.getElementById("group-child-buyer-name")?.value.trim() || "",
+          buyerPhone: document.getElementById("group-child-buyer-phone")?.value.trim() || "",
           recipientName: document.getElementById("group-child-name")?.value.trim() || "",
           recipientPhone: document.getElementById("group-child-phone")?.value.trim() || "",
           recipientAddress: document.getElementById("group-child-address")?.value.trim() || "",

@@ -89,6 +89,10 @@ await page.getByRole("button", { name: "＋ 新增收件人" }).click();
 const childModalBox = await page.locator("#groupChildModal .modal-container").boundingBox();
 assert.ok(childModalBox && childModalBox.width <= 390, "子單視窗需適合手機");
 assert.match(await page.locator("#group-child-parent-summary").innerText(), /尚餘 48 盒/);
+assert.equal(await page.locator("#group-child-buyer-name").inputValue(), "王小姐");
+assert.equal(await page.locator("#group-child-buyer-phone").inputValue(), "0912345678");
+await page.locator("#group-child-buyer-name").fill("李小姐");
+assert.equal(await page.locator("#group-child-buyer-name").inputValue(), "李小姐");
 
 await browser.close();
 console.log("group order mobile UI checks passed");
