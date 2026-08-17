@@ -4627,8 +4627,10 @@
               type="button"
               class="btn-refresh-orders"
               id="adminRefreshOrdersBtn"
+              disabled
+              aria-disabled="true"
             >
-              同步最新訂單
+              同步準備中…
             </button>
             <button
               class="btn-add-order-trigger"
@@ -8432,12 +8434,26 @@
         const button = document.getElementById("adminRefreshOrdersBtn");
         const meta = document.getElementById("adminRefreshMeta");
         if (button) {
-          button.disabled = !!isRefreshing;
+          button.disabled =
+            !!isRefreshing || button.dataset.syncReady !== "true";
+          button.setAttribute("aria-disabled", String(button.disabled));
           button.innerText = isRefreshing ? "同步中..." : "同步最新訂單";
         }
         if (meta && message) {
           meta.innerText = message;
         }
+      }
+
+      function initializeAdminManualRefreshControl() {
+        const button = document.getElementById("adminRefreshOrdersBtn");
+        if (!button || button.dataset.syncReady === "true") return;
+        button.dataset.syncReady = "true";
+        button.addEventListener("click", () => {
+          void refreshAdminOrdersManually();
+        });
+        button.disabled = false;
+        button.setAttribute("aria-disabled", "false");
+        button.innerText = "同步最新訂單";
       }
 
       function updateAdminRefreshMeta(date = new Date(), syncedCount = null) {
@@ -9310,6 +9326,7 @@
                 action: "adminReadOrderSnapshot",
                 adminSessionToken,
                 requestId,
+                requiredVersion: String(options.requiredVersion || "").trim(),
                 knownVersion: forceReload ? "" : adminOrderSnapshotVersion,
                 knownChunks: forceReload
                   ? []
@@ -9499,10 +9516,25 @@
           return;
         }
         const requestId = ++adminOrderQueryRequestId;
-        const adminOrders = await fetchAdminOrdersFromGas({ forceReload: true });
+        const requiredVersion = String(syncResult.version || "").trim();
+        const adminOrders = await fetchAdminOrdersFromGas({
+          forceReload: true,
+          requiredVersion: String(syncResult.version || "").trim(),
+        });
         if (requestId !== adminOrderQueryRequestId) return;
         if (!Array.isArray(adminOrders)) {
           setAdminRefreshState(false, "重新整理失敗，請稍後再試。");
+          return;
+        }
+        if (
+          requiredVersion &&
+          String(adminOrders.adminReadMeta?.snapshotVersion || "") !==
+            String(syncResult.version || "")
+        ) {
+          setAdminRefreshState(
+            false,
+            "同步版本尚未生效，原本畫面已保留；請稍後再試。",
+          );
           return;
         }
 
@@ -16324,6 +16356,7 @@
 
       // 頁面初始化
       window.addEventListener("DOMContentLoaded", async () => {
+        initializeAdminManualRefreshControl();
         const groupTabButton = document.getElementById("groupOrdersTabButton");
         if (GROUP_ORDERS_ENABLED && groupTabButton) {
           groupTabButton.hidden = false;
@@ -16353,9 +16386,6 @@
         if (closeBtn) {
           closeBtn.addEventListener("click", hideAdminAuthOverlay);
         }
-        document
-          .getElementById("adminRefreshOrdersBtn")
-          ?.addEventListener("click", refreshAdminOrdersManually);
         document
           .getElementById("admin-customer-search")
           ?.addEventListener("input", handleAdminCustomerSearchInput);
