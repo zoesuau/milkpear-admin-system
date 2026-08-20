@@ -14952,6 +14952,12 @@
             className: "is-exception",
           });
         }
+        if (Array.isArray(candidate.simplifiedToTraditionalFields) && candidate.simplifiedToTraditionalFields.length) {
+          lines.push({
+            text: `已自動轉繁：${candidate.simplifiedToTraditionalFields.join("、")}`,
+            className: "is-exception",
+          });
+        }
         if (selection?.mode === "reexport") {
           lines.push({
             text: `重新匯出：${getEzcatReexportReasonLabel(
