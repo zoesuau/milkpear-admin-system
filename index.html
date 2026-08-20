@@ -1071,6 +1071,33 @@
         margin-top: 2px;
       }
 
+      .shipping-manifest-load-status {
+        min-height: 22px;
+        margin-top: 6px;
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .shipping-manifest-load-status.is-ready {
+        color: #2f7d5b;
+      }
+
+      .shipping-manifest-load-status.is-error {
+        color: #d7263d;
+      }
+
+      .shipping-manifest-load-retry {
+        margin-left: 8px;
+        border: 1px solid #d7263d;
+        border-radius: 6px;
+        padding: 3px 8px;
+        background: #fff;
+        color: #d7263d;
+        cursor: pointer;
+        font: inherit;
+      }
+
       .shipping-manifest-print {
         flex: 0 0 auto;
         min-height: 36px;
@@ -3704,6 +3731,7 @@
         .admin-tab-bar,
         .shipping-print-control-panel,
         .shipping-blackcat-operations,
+        .shipping-manifest-load-status,
         .top-filter-panel,
         .admin-pagination,
         .cards-container,
@@ -5253,6 +5281,12 @@
             >
               請選擇出貨日期或日期區間
             </div>
+            <div
+              class="shipping-manifest-load-status"
+              id="shippingManifestLoadStatus"
+              role="status"
+              aria-live="polite"
+            ></div>
           </div>
           <button
             type="button"
@@ -6239,6 +6273,8 @@
       let shippingManifestRemoteBatches = [];
       let shippingManifestRemoteRangeKey = "";
       let shippingManifestLoadRequestId = 0;
+      let shippingManifestRemoteLoading = false;
+      let shippingManifestRemoteError = "";
       const OPEN_NOTIFICATION_STATUSES = new Set([
         "pending_send",
         "failed",
@@ -14171,14 +14207,25 @@
           shippingManifestRemoteOrders = [];
           shippingManifestRemoteCandidates = [];
           shippingManifestRemoteBatches = [];
-          return;
+          shippingManifestRemoteLoading = false;
+          shippingManifestRemoteError = "";
+          renderShippingManifest();
+          return false;
         }
         const adminSessionToken = String(
           sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
         ).trim();
-        if (!adminSessionToken) return;
+        if (!adminSessionToken) {
+          shippingManifestRemoteLoading = false;
+          shippingManifestRemoteError = "ADMIN_SESSION_REQUIRED";
+          renderShippingManifest();
+          return false;
+        }
         const requestId = ++shippingManifestLoadRequestId;
         const rangeKey = `${startDate}|${endDate}`;
+        shippingManifestRemoteLoading = true;
+        shippingManifestRemoteError = "";
+        renderShippingManifest();
         try {
           const response = await fetch(GAS_ORDERS_API_URL, {
             method: "POST",
@@ -14192,13 +14239,19 @@
           });
           const payload = await response.json();
           if (
-            requestId !== shippingManifestLoadRequestId ||
+            requestId !== shippingManifestLoadRequestId
+          ) {
+            return false;
+          }
+          if (
             !payload ||
             payload.ok !== true ||
             payload.action !== "adminReadEzcatExportCandidates" ||
             !Array.isArray(payload.candidates)
           ) {
-            return;
+            throw new Error(
+              String(payload?.errorCode || "SHIPPING_MANIFEST_READ_FAILED"),
+            );
           }
           shippingManifestRemoteRangeKey = rangeKey;
           shippingManifestRemoteCandidates = payload.candidates.slice();
@@ -14208,9 +14261,20 @@
           shippingManifestRemoteOrders = payload.candidates.map(
             mapShippingManifestRemoteOrder,
           );
+          shippingManifestRemoteLoading = false;
+          shippingManifestRemoteError = "";
           renderShippingManifest();
+          return true;
         } catch (error) {
           console.error("讀取完整出貨總表失敗", error);
+          if (requestId === shippingManifestLoadRequestId) {
+            shippingManifestRemoteLoading = false;
+            shippingManifestRemoteError = String(
+              error?.message || "SHIPPING_MANIFEST_READ_FAILED",
+            );
+            renderShippingManifest();
+          }
+          return false;
         }
       }
 
@@ -14602,6 +14666,9 @@
       function renderShippingManifest() {
         const panel = document.getElementById("shippingManifestPanel");
         const subtitle = document.getElementById("shippingManifestSubtitle");
+        const loadStatus = document.getElementById(
+          "shippingManifestLoadStatus",
+        );
         const summary = document.getElementById("shippingManifestSummary");
         const productSummary = document.getElementById(
           "shippingManifestProductSummary",
@@ -14614,6 +14681,7 @@
         if (
           !panel ||
           !subtitle ||
+          !loadStatus ||
           !summary ||
           !productSummary ||
           !empty ||
@@ -14629,6 +14697,11 @@
           adminWorkflowIsValidDate(startDate) &&
           adminWorkflowIsValidDate(endDate) &&
           startDate <= endDate;
+        const rangeKey = hasValidDateRange ? `${startDate}|${endDate}` : "";
+        const remoteDataReady =
+          !!rangeKey && shippingManifestRemoteRangeKey === rangeKey;
+        const remoteDataFailed =
+          hasValidDateRange && !!shippingManifestRemoteError;
         syncEzcatPrepareButton();
         const isRangeMode = shippingManifestDateMode === "range";
         const orders = hasValidDateRange
@@ -14656,6 +14729,17 @@
           : isRangeMode && startDate && endDate && startDate > endDate
             ? "開始日期不可晚於結束日期"
             : "請選擇出貨日期或日期區間";
+        loadStatus.classList.toggle("is-ready", remoteDataReady);
+        loadStatus.classList.toggle("is-error", remoteDataFailed);
+        loadStatus.innerHTML = !hasValidDateRange
+          ? ""
+          : shippingManifestRemoteLoading
+            ? "宅配單號載入中，完成前暫停列印…"
+            : remoteDataFailed
+              ? `⚠️ 宅配單號載入失敗，請重試。<button type="button" class="shipping-manifest-load-retry" onclick="loadCompleteShippingManifestOrders()">重新載入</button>`
+              : remoteDataReady
+                ? "✓ 宅配單號已同步，可以列印。"
+                : "宅配單號等待同步，完成前暫停列印…";
         summary.innerHTML = `
           <div class="shipping-manifest-stat"><span>${isRangeMode ? "出貨區間" : "出貨日期"}</span><strong>${escapeHtml(dateLabel)}</strong></div>
           <div class="shipping-manifest-stat"><span>訂單筆數</span><strong>${escapeHtml(stats.orderCount)} 筆</strong></div>
@@ -14677,11 +14761,14 @@
 
         if (!orders.length) {
           panel.classList.add("is-empty");
-          empty.innerText = normalizedSearchQuery
-            ? `找不到符合「${shippingManifestSearchQuery.trim()}」的出貨訂單`
-            : isRangeMode
-              ? "此日期區間沒有出貨訂單"
-              : "此日期沒有出貨訂單";
+          empty.innerText =
+            shippingManifestRemoteLoading || !remoteDataReady
+              ? "正在確認完整出貨資料…"
+              : normalizedSearchQuery
+                ? `找不到符合「${shippingManifestSearchQuery.trim()}」的出貨訂單`
+                : isRangeMode
+                  ? "此日期區間沒有出貨訂單"
+                  : "此日期沒有出貨訂單";
           tbody.innerHTML = "";
           if (printButton) printButton.disabled = true;
           return;
@@ -14689,7 +14776,12 @@
 
         panel.classList.remove("is-empty");
         empty.innerText = "";
-        if (printButton) printButton.disabled = false;
+        if (printButton) {
+          printButton.disabled =
+            shippingManifestRemoteLoading ||
+            remoteDataFailed ||
+            !remoteDataReady;
+        }
         const orderRowsHtml = orders
           .map((order, index) => {
             const note = getShippingManifestNote(order);
@@ -14727,10 +14819,14 @@
 
       function printShippingManifest() {
         const { startDate, endDate } = getShippingManifestDateRange();
+        const rangeKey = `${startDate}|${endDate}`;
         if (
           !startDate ||
           !endDate ||
           startDate > endDate ||
+          shippingManifestRemoteLoading ||
+          !!shippingManifestRemoteError ||
+          shippingManifestRemoteRangeKey !== rangeKey ||
           !getShippingManifestOrdersForRange(startDate, endDate).length
         ) {
           return;
@@ -16067,8 +16163,9 @@
                   .join("、")}`
               : "",
           ].filter(Boolean);
+          const resultMessage = resultLines.join("\n");
           setShippingTrackingImportFeedback(
-            resultLines.join("\n"),
+            resultMessage,
             conflicts.length > 0,
           );
           shippingTrackingImportPreview = null;
@@ -16076,7 +16173,18 @@
             "shippingTrackingFileInput",
           );
           if (fileInput) fileInput.value = "";
+          shippingManifestRemoteRangeKey = "";
+          shippingManifestRemoteLoading = true;
+          shippingManifestRemoteError = "";
+          renderShippingManifest();
           await refreshAdminOrdersManually();
+          const manifestSynced = await loadCompleteShippingManifestOrders();
+          if (!manifestSynced) {
+            setShippingTrackingImportFeedback(
+              `${resultMessage}\n⚠️ 宅配單號已寫入，但出貨總表同步失敗；請按「重新載入」後再列印。`,
+              true,
+            );
+          }
         } catch (error) {
           console.error("託運單號批次寫入失敗", error);
           const message =
