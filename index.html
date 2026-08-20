@@ -7780,7 +7780,11 @@
             result?.ok !== true ||
             result?.action !== "adminReadProductInventoryContext"
           ) {
-            throw new Error(result?.error || "INVENTORY_CONTEXT_READ_FAILED");
+            const failure = new Error(
+              result?.error || "INVENTORY_CONTEXT_READ_FAILED",
+            );
+            failure.details = result || {};
+            throw failure;
           }
           if (
             !adminInventoryAdjustmentContext ||
@@ -7815,10 +7819,16 @@
           renderProductInventoryAdjustmentPreview();
         } catch (error) {
           console.error("讀取商品庫存內容失敗", error);
+          const details = error.details || {};
+          const message = error.message === "PRODUCT_CATALOG_STALE"
+            ? "庫存已更新，請關閉後重新整理商品。"
+            : error.message === "PENDING_ORDER_ITEMS_UNREADABLE"
+              ? `訂單 ${String(details.orderNo || "").trim() || "（未提供編號）"}（第 ${Number(details.orderRowNumber || 0) || "?"} 列）的商品格式無法辨識，為避免少扣庫存，本次未更新。`
+              : error.message === "ADMIN_SESSION_REQUIRED"
+                ? "管理員登入已失效，請重新登入後再試。"
+                : "無法確認最新庫存，請稍後再試。";
           setProductInventoryAdjustmentFeedback(
-            error.message === "PRODUCT_CATALOG_STALE"
-              ? "庫存已更新，請關閉後重新整理商品。"
-              : "無法確認最新庫存，請稍後再試。",
+            message,
             "error",
           );
         }
