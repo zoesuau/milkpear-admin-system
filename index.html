@@ -6416,6 +6416,49 @@
         return createAdminRequestKey(action, [nonce]);
       }
 
+      function publishAdminAuthDiagnostic(diagnostic) {
+        const safeDiagnostic = {
+          requestId: String(diagnostic?.requestId || "").slice(0, 150),
+          event: String(diagnostic?.event || "ADMIN_AUTH_FAILURE").slice(0, 80),
+          errorCode: String(diagnostic?.errorCode || "UNKNOWN").slice(0, 80),
+          httpStatus: Number.isFinite(Number(diagnostic?.httpStatus))
+            ? Number(diagnostic.httpStatus)
+            : null,
+          responseFormat: String(diagnostic?.responseFormat || "").slice(0, 40),
+          timestamp: new Date().toISOString(),
+        };
+        if (document.documentElement) {
+          document.documentElement.dataset.adminAuthDiagnostic =
+            JSON.stringify(safeDiagnostic);
+        }
+        console.error("管理員登入診斷", safeDiagnostic);
+        return safeDiagnostic;
+      }
+
+      window.getAdminAuthDiagnostic = () => {
+        try {
+          const value = document.documentElement?.dataset.adminAuthDiagnostic;
+          return value ? JSON.parse(value) : null;
+        } catch (error) {
+          return null;
+        }
+      };
+
+      function getAdminAuthErrorMessage(errorCode) {
+        const messages = {
+          GOOGLE_AUTH_REQUIRED:
+            "⚠️ Google 授權需要重新確認，請按「再次確認」；不需要重新進入 LINE。",
+          GAS_TIMEOUT:
+            "⚠️ 系統回應逾時，請按「再次確認」；不需要重新進入 LINE。",
+          GAS_NON_JSON_RESPONSE:
+            "⚠️ 系統回傳格式異常，請按「再次確認」；不需要重新進入 LINE。",
+          GAS_SERVER_ERROR:
+            "⚠️ 系統服務暫時異常，請稍後按「再次確認」。",
+        };
+        return messages[errorCode] ||
+          "⚠️ 登入確認暫時沒有回應，請按下方再次確認；不需要重新進入 LINE。";
+      }
+
       const ADMIN_READ_ERROR_BREADCRUMB_EVENTS = new Set([
         "FETCH_TIMEOUT",
         "FETCH_ABORTED",
@@ -6730,6 +6773,7 @@
           ADMIN_LINE_CODE_VERIFIER_KEY,
         );
         const nonce = sessionStorage.getItem(ADMIN_LINE_NONCE_KEY);
+        const diagnosticRequestId = createAdminDiagnosticRequestId("adminAuth");
 
         if (!codeVerifier || !nonce) {
           clearAdminAuthSession();
@@ -6753,12 +6797,51 @@
                 redirectUri: ADMIN_AUTH_REDIRECT_URI,
                 codeVerifier,
                 nonce,
+                diagnosticRequestId,
               }),
             },
             ADMIN_AUTH_TIMEOUT_MS,
           );
 
-          const payload = await response.json();
+          const responseContentType = String(
+            response.headers.get("content-type") || "",
+          ).toLowerCase();
+          const responseText = await response.text();
+          let payload = null;
+          try {
+            payload = JSON.parse(responseText);
+          } catch (parseError) {
+            const looksLikeGoogleAuthPage =
+              response.status === 401 ||
+              response.status === 403 ||
+              /需要存取權|存取遭拒|access required|access denied/i.test(
+                responseText.slice(0, 1200),
+              );
+            const error = new Error(
+              looksLikeGoogleAuthPage
+                ? "GOOGLE_AUTH_REQUIRED"
+                : "GAS_NON_JSON_RESPONSE",
+            );
+            error.httpStatus = response.status;
+            error.responseFormat = responseContentType.includes("json")
+              ? "invalid-json"
+              : "non-json";
+            throw error;
+          }
+
+          if (!response.ok) {
+            const error = new Error(
+              response.status === 401 || response.status === 403
+                ? "GOOGLE_AUTH_REQUIRED"
+                : response.status >= 500
+                  ? "GAS_SERVER_ERROR"
+                  : String(payload?.error || "GAS_AUTH_REQUEST_FAILED"),
+            );
+            error.httpStatus = response.status;
+            error.responseFormat = "json";
+            error.payload = payload;
+            throw error;
+          }
 
           if (
             payload &&
@@ -6805,9 +6888,20 @@
           );
           return false;
         } catch (error) {
+          const rawErrorCode = String(error?.message || "").trim();
+          const errorCode =
+            error?.name === "AbortError" || rawErrorCode === "REQUEST_TIMEOUT"
+              ? "GAS_TIMEOUT"
+              : rawErrorCode || "UNKNOWN";
+          publishAdminAuthDiagnostic({
+            requestId: diagnosticRequestId,
+            errorCode,
+            httpStatus: error?.httpStatus,
+            responseFormat: error?.responseFormat,
+          });
           setAdminAuthRetryButtonMode(hasRetryableAdminAuthCallback());
           showAdminAuthOverlay(
-            "⚠️ 登入確認暫時沒有回應，請按下方再次確認；不需要重新進入 LINE。",
+            getAdminAuthErrorMessage(errorCode),
             true,
             false,
             true,
