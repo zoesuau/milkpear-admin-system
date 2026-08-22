@@ -8,6 +8,7 @@ window.ORDER_SYSTEM_CONFIG = Object.freeze({
   "publicSiteTitle": "三合院農園訂購系統",
   "adminSiteTitle": "三合院農園出貨後台",
   "gasApiUrl": "https://script.google.com/macros/s/AKfycby9r7QgpvOJ7KP_3uVI9eYHkzeJnPVFhP7Z3uQdQBvMogYglPoim79H3HJpjyUAgW57/exec",
+  "adminAuthDiagnosticsUrl": "",
   "publicSiteUrl": "https://zoesuau.github.io/milkpear-order-system/",
   "adminSiteUrl": "https://zoesuau.github.io/milkpear-admin-system",
   "features": {

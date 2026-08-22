@@ -6426,12 +6426,29 @@
             : null,
           responseFormat: String(diagnostic?.responseFormat || "").slice(0, 40),
           timestamp: new Date().toISOString(),
+          productId: String(ORDER_SYSTEM_CONFIG.productId || "").slice(0, 80),
+          customerId: String(ORDER_SYSTEM_CONFIG.customerId || "").slice(0, 80),
+          environment: String(ORDER_SYSTEM_CONFIG.environment || "").slice(0, 40),
+          frontendVersion: String(document.documentElement?.dataset?.releaseVersion || "unknown").slice(0, 80),
         };
         if (document.documentElement) {
           document.documentElement.dataset.adminAuthDiagnostic =
             JSON.stringify(safeDiagnostic);
         }
         console.error("管理員登入診斷", safeDiagnostic);
+        const diagnosticsUrl = String(
+          ORDER_SYSTEM_CONFIG.adminAuthDiagnosticsUrl || "",
+        ).trim();
+        if (diagnosticsUrl) {
+          fetch(diagnosticsUrl, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(safeDiagnostic),
+            keepalive: true,
+          }).catch(() => {
+            // 獨立診斷服務不可用時，不得阻塞登入復原流程。
+          });
+        }
         return safeDiagnostic;
       }
 
