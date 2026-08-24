@@ -14508,6 +14508,18 @@
           : "";
       }
 
+      function getShippingManifestProductDisplayLabel(productId) {
+        const product = adminProductCatalog.find(
+          (item) => String(item?.id || "").trim() === String(productId || "").trim(),
+        );
+        if (!product) return String(productId || "").trim();
+        const grade = String(product.grade || "").replace(/\s+/g, "").trim();
+        const count = String(product.count || "")
+          .replace(/顆/g, "粒")
+          .trim();
+        return [grade, count ? `${count}裝` : ""].filter(Boolean).join(" ");
+      }
+
       function buildShippingManifestProductSummary(stats) {
         if (!stats.orderCount) {
           return '<div class="shipping-manifest-product-lines">商品／箱數統計：—</div>';
@@ -14562,7 +14574,7 @@
             const productId = getShippingManifestProductId(label);
             const displayLabel =
               groupPattern && productId
-                ? productId
+                ? getShippingManifestProductDisplayLabel(productId)
                 : sizeMatch
                   ? `${Number(sizeMatch[1])} A`
                   : strippedLabel;
@@ -14904,8 +14916,6 @@
                 : "宅配單號等待同步，完成前暫停列印…";
         summary.innerHTML = `
           <div class="shipping-manifest-stat"><span>${isRangeMode ? "出貨區間" : "出貨日期"}</span><strong>${escapeHtml(dateLabel)}</strong></div>
-          <div class="shipping-manifest-stat"><span>訂單筆數</span><strong>${escapeHtml(stats.orderCount)} 筆</strong></div>
-          <div class="shipping-manifest-stat"><span>總出貨量</span><strong>${escapeHtml(stats.boxTotal !== null ? `${stats.boxTotal} 盒` : "逐筆核對")}</strong></div>
           <div class="shipping-manifest-stat"><span>120cm 件數</span><strong>${escapeHtml(stats.package120cmTotal !== null ? `${stats.package120cmTotal} 件` : "逐筆核對")}</strong></div>
           <div class="shipping-manifest-stat"><span>90cm 件數</span><strong>${escapeHtml(stats.package90cmTotal !== null ? `${stats.package90cmTotal} 件` : "逐筆核對")}</strong></div>
           <div class="shipping-manifest-stat"><span>訂單總金額</span><strong>$${escapeHtml(formatAdminMoney(stats.totalAmount))}</strong></div>
