@@ -9810,6 +9810,7 @@
           };
           setAdminProductCatalogState(true, "✅ 管理員商品目錄讀取成功");
           renderProductManagement();
+          renderShippingManifest();
           resetModalProductRows();
           updateNewOrderAmountPreview();
           return adminProductCatalog;
@@ -14485,10 +14486,17 @@
         const normalizedLabel = normalizeAdminProductCode(label);
         if (!normalizedLabel) return "";
         const candidates = adminProductCatalog.filter((product) => {
+          const id = normalizeAdminProductCode(product?.id);
           const code = normalizeAdminProductCode(product?.code);
-          if (!code) return false;
-          return new RegExp(`(?:^|[^A-Z0-9])${code}(?:[^A-Z0-9]|$)`).test(
-            normalizedLabel,
+          const grade = normalizeAdminProductCode(product?.grade);
+          if (id && id === normalizedLabel) return true;
+          if (code && code === normalizedLabel) return true;
+          if (grade && grade === normalizedLabel) return true;
+          return (
+            code &&
+            new RegExp(`(?:^|[^A-Z0-9])${code}(?:[^A-Z0-9]|$)`).test(
+              normalizedLabel,
+            )
           );
         });
         if (candidates.length === 1) return String(candidates[0].id || "").trim();
