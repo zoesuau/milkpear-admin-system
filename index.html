@@ -14422,6 +14422,9 @@
         let parsedBoxTotal = 0;
         let storedBoxTotal = 0;
         let storedBoxTotalReliable = orders.length > 0;
+        let package120cmTotal = 0;
+        let package90cmTotal = 0;
+        let packageCountsReliable = orders.length > 0;
         let totalAmount = 0;
 
         orders.forEach((order) => {
@@ -14446,6 +14449,21 @@
           } else {
             storedBoxTotalReliable = false;
           }
+
+          const orderBoxTotal = parsedItems.reliable
+            ? parsedItems.items.reduce((sum, item) => sum + item.qty, 0)
+            : Number.isFinite(storedBoxes) && storedBoxes >= 0
+              ? storedBoxes
+              : null;
+          if (orderBoxTotal === null) {
+            packageCountsReliable = false;
+          } else {
+            const full120cmPackages = Math.floor(orderBoxTotal / 3);
+            const remainder = orderBoxTotal % 3;
+            package120cmTotal +=
+              full120cmPackages + (remainder === 2 ? 1 : 0);
+            package90cmTotal += remainder === 1 ? 1 : 0;
+          }
         });
 
         return {
@@ -14458,7 +14476,36 @@
             : storedBoxTotalReliable
               ? storedBoxTotal
               : null,
+          package120cmTotal: packageCountsReliable ? package120cmTotal : null,
+          package90cmTotal: packageCountsReliable ? package90cmTotal : null,
         };
+      }
+
+      function getShippingManifestProductId(label) {
+        const normalizedLabel = normalizeAdminProductCode(label);
+        if (!normalizedLabel) return "";
+        const candidates = adminProductCatalog.filter((product) => {
+          const code = normalizeAdminProductCode(product?.code);
+          if (!code) return false;
+          return new RegExp(`(?:^|[^A-Z0-9])${code}(?:[^A-Z0-9]|$)`).test(
+            normalizedLabel,
+          );
+        });
+        if (candidates.length === 1) return String(candidates[0].id || "").trim();
+
+        const sizeMatch = normalizedLabel.match(/(\d+)A/);
+        const size = sizeMatch ? Number(sizeMatch[1]) : null;
+        const isTwoPiece = /(兩粒|二粒)/.test(String(label || ""));
+        const byGradeAndPackage = candidates.filter((product) => {
+          const grade = normalizeAdminProductCode(product?.grade);
+          const productSize = grade.match(/(\d+)A/);
+          if (!productSize || productSize[1] !== String(size || "")) return false;
+          const productIsTwoPiece = String(product?.category || "").includes("兩粒");
+          return productIsTwoPiece === isTwoPiece;
+        });
+        return byGradeAndPackage.length === 1
+          ? String(byGradeAndPackage[0].id || "").trim()
+          : "";
       }
 
       function buildShippingManifestProductSummary(stats) {
@@ -14512,9 +14559,13 @@
               ? label.replace(groupPattern, "").replace(/^[\s：:｜|-]+/, "").trim() ||
                 label
               : label;
-            const displayLabel = sizeMatch
-              ? `${Number(sizeMatch[1])} A`
-              : strippedLabel;
+            const productId = getShippingManifestProductId(label);
+            const displayLabel =
+              groupPattern && productId
+                ? productId
+                : sizeMatch
+                  ? `${Number(sizeMatch[1])} A`
+                  : strippedLabel;
             const key = displayLabel.replace(/\s+/g, "").toUpperCase();
             const existing = mergedEntries.get(key);
             mergedEntries.set(key, [
@@ -14855,6 +14906,8 @@
           <div class="shipping-manifest-stat"><span>${isRangeMode ? "出貨區間" : "出貨日期"}</span><strong>${escapeHtml(dateLabel)}</strong></div>
           <div class="shipping-manifest-stat"><span>訂單筆數</span><strong>${escapeHtml(stats.orderCount)} 筆</strong></div>
           <div class="shipping-manifest-stat"><span>總出貨量</span><strong>${escapeHtml(stats.boxTotal !== null ? `${stats.boxTotal} 盒` : "逐筆核對")}</strong></div>
+          <div class="shipping-manifest-stat"><span>120cm 件數</span><strong>${escapeHtml(stats.package120cmTotal !== null ? `${stats.package120cmTotal} 件` : "逐筆核對")}</strong></div>
+          <div class="shipping-manifest-stat"><span>90cm 件數</span><strong>${escapeHtml(stats.package90cmTotal !== null ? `${stats.package90cmTotal} 件` : "逐筆核對")}</strong></div>
           <div class="shipping-manifest-stat"><span>訂單總金額</span><strong>$${escapeHtml(formatAdminMoney(stats.totalAmount))}</strong></div>
         `;
         productSummary.innerHTML = productSummaryText;
