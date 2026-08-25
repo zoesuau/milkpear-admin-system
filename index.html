@@ -3992,12 +3992,27 @@
       }
 
       .group-order-card h3 { margin: 0; color: #203047; }
+      .group-order-card-title { min-width: 0; }
       .group-order-meta { margin-top: 6px; color: #64748b; font-size: 13px; }
       .group-order-progress { margin: 10px 0; font-weight: 700; color: #2f6847; }
       .group-order-items, .group-order-children { margin: 8px 0; font-size: 14px; line-height: 1.6; }
       .group-order-actions { flex-wrap: wrap; justify-content: flex-start; }
       .group-order-actions button { flex: 1 1 130px; }
       .group-order-empty { padding: 28px 10px; text-align: center; color: #64748b; }
+      .group-edit-fixed-row {
+        align-items: center;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        color: #475569;
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+        margin-bottom: 6px;
+        padding: 8px 10px;
+      }
+      .group-edit-fixed-row strong { color: #1e293b; }
+      .group-edit-input-row { margin-bottom: 10px; }
 
       .product-management-panel {
         max-width: 500px;
@@ -16962,8 +16977,11 @@
           return `
             <article class="group-order-card">
               <div class="group-order-card-header">
-                <h3>${escapeHtml(group.groupName)}</h3>
-                <span class="state-badge ${group.status === "open" ? "state-badge-confirmed" : "state-badge-shipped"}">${group.status === "open" ? "進行中" : "已結束"}</span>
+                <div class="group-order-card-title">
+                  <h3>${escapeHtml(group.groupName)}</h3>
+                  <span class="state-badge ${group.status === "open" ? "state-badge-confirmed" : "state-badge-shipped"}">${group.status === "open" ? "進行中" : "已結束"}</span>
+                </div>
+                ${group.status === "open" ? `<button type="button" class="btn-modal-cancel group-order-edit-trigger" onclick="openGroupOrderEditModal('${escapeHtml(group.groupOrderId)}')">✏️ 修改訂單</button>` : ""}
               </div>
               <div class="group-order-meta">${escapeHtml(group.groupOrderId)}｜寄件人 ${escapeHtml(group.buyerName)} ${escapeHtml(group.buyerPhone)}</div>
               <div class="group-order-progress">已分配 ${allocated}／${escapeHtml(group.totalBoxes)} 盒，尚餘 ${remaining} 盒</div>
@@ -16971,9 +16989,8 @@
               ${group.adminNote ? `<div class="group-order-meta">備註：${escapeHtml(group.adminNote)}</div>` : ""}
               <div class="group-order-children">${childRows || "尚未建立收件子單"}</div>
               <div class="group-order-actions">
-                ${group.status === "open" ? `<button type="button" class="btn-modal-cancel" onclick="openGroupOrderEditModal('${escapeHtml(group.groupOrderId)}')">編輯寄件人／未分配商品</button>` : ""}
                 ${group.status === "open" ? `<button type="button" class="btn-modal-submit" onclick="openGroupChildModal('${escapeHtml(group.groupOrderId)}')">＋ 新增收件人</button>` : ""}
-                ${unpaidCount ? `<button type="button" class="btn-modal-submit" onclick="batchMarkGroupOrderPaid('${escapeHtml(group.groupOrderId)}', ${unpaidCount})">批次轉帳已付款（${unpaidCount}）</button>` : ""}
+                ${unpaidCount ? `<button type="button" class="btn-modal-submit" onclick="batchMarkGroupOrderPaid('${escapeHtml(group.groupOrderId)}', ${unpaidCount})">批次已付款（${unpaidCount}）</button>` : ""}
                 ${group.status === "open" ? `<button type="button" class="btn-modal-cancel" onclick="closeGroupOrder('${escapeHtml(group.groupOrderId)}', ${remaining})">結束母單</button>` : ""}
               </div>
             </article>`;
@@ -17005,13 +17022,34 @@
         if (!list) return;
         const selectedCode = code || getDefaultAdminProduct()?.code || "";
         const isLocked = mode === "edit" && allocatedQty > 0;
+        const selectedProduct = getProductByCode(selectedCode);
+        const fixedSummary = selectedProduct
+          ? `${selectedProduct.variety || ""} ${selectedProduct.grade || selectedProduct.code || ""}｜${selectedProduct.category || ""}`
+          : selectedCode;
+        const editableQty = mode === "edit" ? Math.max(0, Number(qty) - allocatedQty) : qty;
+        if (mode === "edit") {
+          list.insertAdjacentHTML("beforeend", `
+            <div class="group-edit-item" data-allocated-code="${escapeHtml(selectedCode)}" data-allocated-qty="${allocatedQty}">
+              <div class="group-edit-fixed-row">
+                <strong>已分配 ${allocatedQty} 盒</strong>
+                <span>${escapeHtml(fixedSummary)}</span>
+              </div>
+              <div class="product-edit-row group-edit-input-row">
+                <select class="edit-select group-product-code">${buildAdminProductOptionsHtml(selectedCode)}</select>
+                <span>×</span>
+                <input type="number" class="edit-qty group-product-qty" min="0" value="${escapeHtml(editableQty)}">
+                <span class="group-order-meta">可修改未分配數量</span>
+                <button type="button" class="btn-modal-cancel" ${allocatedQty > 0 ? "disabled" : ""} onclick="this.closest('.group-edit-item').remove()">刪除</button>
+              </div>
+            </div>`);
+          return;
+        }
         list.insertAdjacentHTML("beforeend", `
           <div class="product-edit-row">
-            <select class="edit-select group-product-code" ${isLocked ? "disabled" : ""}>${buildAdminProductOptionsHtml(selectedCode)}</select>
+            <select class="edit-select group-product-code">${buildAdminProductOptionsHtml(selectedCode)}</select>
             <span>×</span>
-            <input type="number" class="edit-qty group-product-qty" min="${isLocked ? allocatedQty : 1}" value="${escapeHtml(qty)}">
-            ${mode === "edit" && allocatedQty > 0 ? `<span class="group-order-meta">已分配 ${allocatedQty} 盒</span>` : ""}
-            <button type="button" class="btn-modal-cancel" ${isLocked ? "disabled" : ""} onclick="this.parentElement.remove()">刪除</button>
+            <input type="number" class="edit-qty group-product-qty" min="1" value="${escapeHtml(qty)}">
+            <button type="button" class="btn-modal-cancel" onclick="this.parentElement.remove()">刪除</button>
           </div>`);
       }
 
@@ -17021,6 +17059,23 @@
           : mode === "child"
             ? "#group-child-product-list"
             : "#group-edit-product-list";
+        if (mode === "edit") {
+          const quantityByCode = Object.create(null);
+          [...document.querySelectorAll(`${selector} .group-edit-item`)].forEach((item) => {
+            const allocatedCode = item.dataset.allocatedCode || "";
+            const allocatedQty = Number(item.dataset.allocatedQty || 0);
+            const editableCode = item.querySelector(".group-product-code")?.value || "";
+            const editableQty = Number(item.querySelector(".group-product-qty")?.value || 0);
+            if (allocatedCode && allocatedQty > 0) {
+              quantityByCode[allocatedCode] = (quantityByCode[allocatedCode] || 0) + allocatedQty;
+            }
+            if (editableCode && Number.isInteger(editableQty) && editableQty > 0) {
+              quantityByCode[editableCode] = (quantityByCode[editableCode] || 0) + editableQty;
+            }
+          });
+          const items = Object.entries(quantityByCode).map(([code, qty]) => ({ code, qty }));
+          return items.length ? items : null;
+        }
         const items = [...document.querySelectorAll(`${selector} .product-edit-row`)].map((row) => ({
           code: row.querySelector(".group-product-code")?.value || "",
           qty: Number(row.querySelector(".group-product-qty")?.value || 0),
