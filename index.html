@@ -4447,6 +4447,106 @@
         padding: 3px 8px;
       }
 
+      .product-operations-chip {
+        align-items: center;
+        cursor: pointer;
+        display: inline-flex;
+        font-family: inherit;
+        gap: 6px;
+      }
+
+      .product-operations-chip:hover,
+      .product-operations-chip:focus-visible {
+        background: #f0fdf4;
+        border-color: #86b89c;
+        color: #166534;
+        outline: none;
+      }
+
+      .product-operations-chip-divider { color: #cbd5e1; }
+
+      .product-operations-tabs {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-bottom: 14px;
+      }
+
+      .product-operations-tab {
+        background: #f8fafc;
+        border: 1px solid #dbe3ec;
+        border-radius: 10px;
+        color: #64748b;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 900;
+        padding: 10px;
+      }
+
+      .product-operations-tab.active {
+        background: #eaf7ef;
+        border-color: #86b89c;
+        color: #166534;
+      }
+
+      .product-operations-note {
+        background: #f8fafc;
+        border-radius: 10px;
+        color: #64748b;
+        font-size: 13px;
+        line-height: 1.5;
+        margin-bottom: 12px;
+        padding: 10px 12px;
+      }
+
+      .product-operations-list { display: grid; gap: 8px; }
+
+      .product-operation-row {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+
+      .product-operation-row-top,
+      .product-operation-row-bottom {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+      }
+
+      .product-operation-row-top strong { color: #1e293b; font-size: 14px; }
+
+      .product-operation-qty {
+        color: #166534;
+        font-size: 14px;
+        font-weight: 900;
+        white-space: nowrap;
+      }
+
+      .product-operation-row-bottom {
+        color: #64748b;
+        flex-wrap: wrap;
+        font-size: 12px;
+        margin-top: 5px;
+      }
+
+      .product-operation-source {
+        background: #f1f5f9;
+        border-radius: 999px;
+        color: #475569;
+        font-weight: 800;
+        padding: 2px 7px;
+      }
+
+      .product-operations-empty {
+        color: #94a3b8;
+        font-size: 14px;
+        font-weight: 800;
+        padding: 24px 8px;
+        text-align: center;
+      }
+
       .product-status-active {
         border: 1px solid #05863d;
         border-radius: 999px;
@@ -5631,6 +5731,26 @@
       </div>
     </div>
 
+    <div class="modal-overlay" id="productOperationsModal">
+      <div class="modal-container" style="max-width: 620px">
+        <div class="modal-header">
+          <h3 id="productOperationsModalTitle">商品訂單資訊</h3>
+          <button type="button" class="modal-close-btn" aria-label="關閉商品訂單資訊" onclick="closeProductOperationsModal()">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="product-operations-tabs" role="tablist" aria-label="商品訂單分類">
+            <button type="button" class="product-operations-tab active" id="productOperationsBookedTab" role="tab" aria-selected="true" onclick="setProductOperationsModalTab('booked')">已訂 0盒</button>
+            <button type="button" class="product-operations-tab" id="productOperationsShippedTab" role="tab" aria-selected="false" onclick="setProductOperationsModalTab('shipped')">已寄 0盒</button>
+          </div>
+          <div class="product-operations-note" id="productOperationsModalNote"></div>
+          <div class="product-operations-list" id="productOperationsModalList"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-modal-cancel" onclick="closeProductOperationsModal()">關閉</button>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-overlay" id="shippingBatchModal">
       <div class="modal-container" style="max-width: 620px">
         <div class="modal-header">
@@ -6216,6 +6336,8 @@
       let adminShippingBatchSubmitting = false;
       let adminInventoryAdjustmentContext = null;
       let adminInventoryAdjustmentSubmitting = false;
+      let adminProductOperationsModalCode = "";
+      let adminProductOperationsModalMode = "booked";
       let adminProductsReady = false;
       let latestAdminOrders = [];
       let adminOrderSnapshotVersion = "";
@@ -7514,8 +7636,17 @@
                 <div class="product-admin-topline">
                   <div class="product-admin-chips">
                     <span class="${activeClass}">${activeText}</span>
-                    <span class="product-chip" title="有效一般訂單加團體母單預留；團體子單不重複計算">${escapeHtml(bookedText)}</span>
-                    <span class="product-chip" title="實際已標記寄出的訂單盒數，包含團體子單">${escapeHtml(shippedText)}</span>
+                    <button
+                      type="button"
+                      class="product-chip product-operations-chip"
+                      title="點選查看已訂與已寄訂單資訊"
+                      aria-label="查看 ${escapeHtml(product.grade || product.code || "")} ${escapeHtml(product.count || "")}的已訂與已寄訂單資訊"
+                      onclick="openProductOperationsModal('${escapeHtml(product.id)}')"
+                    >
+                      <span>${escapeHtml(bookedText)}</span>
+                      <span class="product-operations-chip-divider">｜</span>
+                      <span>${escapeHtml(shippedText)}</span>
+                    </button>
                     ${
                       Number.isInteger(product.stock) && product.stock >= 0
                         ? `<span class="product-chip" style="color:#ef4444;border-color:#fecaca;">可售 ${escapeHtml(product.stock)}</span>`
@@ -7543,6 +7674,108 @@
               </div>
             </article>
           `;
+      }
+
+      function getProductOperationsModalContext() {
+        const product = adminProductCatalog.find(
+          (item) => String(item.id || "") === adminProductOperationsModalCode,
+        );
+        if (!product) return null;
+        const code = normalizeAdminProductCode(product.code);
+        const operations = adminProductOperations?.byCode?.[code] || null;
+        return { product, operations };
+      }
+
+      function getProductOperationSourceLabel(detail) {
+        if (detail?.source === "group_order") return "團體母單預留";
+        if (detail?.source === "group_child") return "團體子單";
+        return "一般訂單";
+      }
+
+      function getProductOperationDateText(detail) {
+        const status = String(detail?.status || "").trim();
+        const actualDate = String(detail?.actualShippingDate || "").trim();
+        const expectedDate = String(detail?.expectedShippingDate || "").trim();
+        if (status === "已寄出" && actualDate) return `實際寄出 ${actualDate}`;
+        if (expectedDate) return `預計出貨 ${expectedDate}`;
+        return "未指定出貨日期";
+      }
+
+      function renderProductOperationsModal() {
+        const context = getProductOperationsModalContext();
+        const title = document.getElementById("productOperationsModalTitle");
+        const note = document.getElementById("productOperationsModalNote");
+        const list = document.getElementById("productOperationsModalList");
+        const bookedTab = document.getElementById("productOperationsBookedTab");
+        const shippedTab = document.getElementById("productOperationsShippedTab");
+        if (!context || !title || !note || !list || !bookedTab || !shippedTab) return;
+
+        const { product, operations } = context;
+        const bookedQty = Number(operations?.bookedQty || 0);
+        const shippedQty = Number(operations?.shippedQty || 0);
+        const isBooked = adminProductOperationsModalMode === "booked";
+        const details = Array.isArray(
+          isBooked ? operations?.bookedOrders : operations?.shippedOrders,
+        )
+          ? (isBooked ? operations.bookedOrders : operations.shippedOrders)
+          : [];
+
+        title.textContent = `${product.variety || ""} ${product.grade || product.code || ""}｜${product.count || ""}裝`;
+        bookedTab.textContent = `已訂 ${bookedQty}盒`;
+        shippedTab.textContent = `已寄 ${shippedQty}盒`;
+        bookedTab.classList.toggle("active", isBooked);
+        shippedTab.classList.toggle("active", !isBooked);
+        bookedTab.setAttribute("aria-selected", String(isBooked));
+        shippedTab.setAttribute("aria-selected", String(!isBooked));
+        note.textContent = isBooked
+          ? "已訂包含有效一般訂單與團體母單預留；團體子單不重複列入。已寄訂單仍包含在已訂總數中。"
+          : "已寄只列出訂單狀態已標記為「已寄出」的訂單，包含團體子單。";
+
+        if (!operations || !details.length) {
+          list.innerHTML = `<div class="product-operations-empty">${operations ? "目前沒有訂單資料" : "訂單資料尚未載入，請重新整理後再試"}</div>`;
+          return;
+        }
+
+        list.innerHTML = details
+          .map((detail) => {
+            const sourceLabel = getProductOperationSourceLabel(detail);
+            const orderNo = String(detail.orderNo || "").trim() || "—";
+            const recipientName = String(detail.recipientName || "").trim() ||
+              (detail.source === "group_order" ? "未命名團體母單" : "未填收件人");
+            const status = String(detail.status || "").trim() || "狀態未填";
+            return `
+              <div class="product-operation-row">
+                <div class="product-operation-row-top">
+                  <strong>${escapeHtml(recipientName)}</strong>
+                  <span class="product-operation-qty">${escapeHtml(Number(detail.qty || 0))}盒</span>
+                </div>
+                <div class="product-operation-row-bottom">
+                  <span class="product-operation-source">${escapeHtml(sourceLabel)}</span>
+                  <span>${escapeHtml(orderNo)}</span>
+                  <span>${escapeHtml(status)}</span>
+                  <span>${escapeHtml(getProductOperationDateText(detail))}</span>
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+      }
+
+      function openProductOperationsModal(productId) {
+        adminProductOperationsModalCode = String(productId || "");
+        adminProductOperationsModalMode = "booked";
+        renderProductOperationsModal();
+        document.getElementById("productOperationsModal")?.classList.add("open");
+      }
+
+      function closeProductOperationsModal() {
+        document.getElementById("productOperationsModal")?.classList.remove("open");
+        adminProductOperationsModalCode = "";
+      }
+
+      function setProductOperationsModalTab(mode) {
+        adminProductOperationsModalMode = mode === "shipped" ? "shipped" : "booked";
+        renderProductOperationsModal();
       }
 
       function renderProductManagementFields(product) {
