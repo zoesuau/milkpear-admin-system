@@ -7704,8 +7704,8 @@
       function getProductOperationTimestamp(value) {
         const text = String(value || "").trim();
         if (!text) return Number.MAX_SAFE_INTEGER;
-        const timestamp = Date.parse(text.replace(/\//g, "-"));
-        return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
+        const timestamp = parseAdminSortTime(text);
+        return timestamp || Number.MAX_SAFE_INTEGER;
       }
 
       function compareProductOperationDetails(left, right, mode) {
