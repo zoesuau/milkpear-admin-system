@@ -5097,6 +5097,13 @@
           >
             選取區間
           </button>
+          <button
+            type="button"
+            data-shipping-manifest-mode="pending"
+            onclick="setShippingManifestDateMode('pending', this)"
+          >
+            待排出貨日期
+          </button>
         </div>
         <div class="shipping-print-range" id="shippingManifestRange">
           <label>
@@ -13939,6 +13946,9 @@
       }
 
       function getShippingManifestDateRange() {
+        if (shippingManifestDateMode === "pending") {
+          return { startDate: "", endDate: "" };
+        }
         if (shippingManifestDateMode === "today") {
           const today = getTaipeiToday();
           return { startDate: today, endDate: today };
@@ -13974,6 +13984,7 @@
           "tomorrow",
           "custom",
           "range",
+          "pending",
         ].includes(mode)
           ? mode
           : "today";
@@ -14236,6 +14247,24 @@
       function getShippingManifestOrdersForRange(startDateString, endDateString) {
         const startDate = normalizeAdminDateValue(startDateString);
         const endDate = normalizeAdminDateValue(endDateString);
+        const isPendingDateMode = shippingManifestDateMode === "pending";
+        if (isPendingDateMode) {
+          const sourceOrders =
+            shippingManifestRemoteRangeKey === "pending"
+              ? shippingManifestRemoteOrders
+              : latestAdminOrders;
+          return applyShippingManifestOrdering(
+            sourceOrders
+              .filter((order) => String(order?.orderStatus || "").trim() !== "已取消")
+              .filter((order) => !normalizeAdminDateValue(order?.expectedShippingDate || ""))
+              .filter((order) =>
+                shippingManifestOrderMatchesSearch(
+                  order,
+                  shippingManifestSearchQuery,
+                ),
+              ),
+          );
+        }
         if (!startDate || !endDate || startDate > endDate) return [];
         const rangeKey = `${startDate}|${endDate}`;
         const sourceOrders =
@@ -14308,12 +14337,14 @@
 
       async function loadCompleteShippingManifestOrders() {
         const { startDate, endDate } = getShippingManifestDateRange();
+        const isPendingDateMode = shippingManifestDateMode === "pending";
         if (
-          !startDate ||
-          !endDate ||
-          startDate > endDate ||
-          !adminWorkflowIsValidDate(startDate) ||
-          !adminWorkflowIsValidDate(endDate)
+          (!isPendingDateMode &&
+            (!startDate ||
+              !endDate ||
+              startDate > endDate ||
+              !adminWorkflowIsValidDate(startDate) ||
+              !adminWorkflowIsValidDate(endDate)))
         ) {
           shippingManifestRemoteRangeKey = "";
           shippingManifestRemoteOrders = [];
@@ -14334,19 +14365,25 @@
           return false;
         }
         const requestId = ++shippingManifestLoadRequestId;
-        const rangeKey = `${startDate}|${endDate}`;
+        const rangeKey = isPendingDateMode
+          ? "pending"
+          : `${startDate}|${endDate}`;
         shippingManifestRemoteLoading = true;
         shippingManifestRemoteError = "";
         renderShippingManifest();
         try {
+          const manifestAction = isPendingDateMode
+            ? "adminReadShippingManifest"
+            : "adminReadEzcatExportCandidates";
           const response = await fetch(GAS_ORDERS_API_URL, {
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({
-              action: "adminReadEzcatExportCandidates",
+              action: manifestAction,
               adminSessionToken,
               startDate,
               endDate,
+              ...(isPendingDateMode ? { mode: "pending", requestId: `pending-${Date.now()}` } : {}),
             }),
           });
           const payload = await response.json();
@@ -14358,21 +14395,25 @@
           if (
             !payload ||
             payload.ok !== true ||
-            payload.action !== "adminReadEzcatExportCandidates" ||
-            !Array.isArray(payload.candidates)
+            payload.action !== manifestAction ||
+            (isPendingDateMode
+              ? !Array.isArray(payload.orders)
+              : !Array.isArray(payload.candidates))
           ) {
             throw new Error(
               String(payload?.errorCode || "SHIPPING_MANIFEST_READ_FAILED"),
             );
           }
           shippingManifestRemoteRangeKey = rangeKey;
-          shippingManifestRemoteCandidates = payload.candidates.slice();
+          shippingManifestRemoteCandidates = isPendingDateMode
+            ? []
+            : payload.candidates.slice();
           shippingManifestRemoteBatches = Array.isArray(payload.recentBatches)
             ? payload.recentBatches.slice()
             : [];
-          shippingManifestRemoteOrders = payload.candidates.map(
-            mapShippingManifestRemoteOrder,
-          );
+          shippingManifestRemoteOrders = isPendingDateMode
+            ? payload.orders.map((order) => order)
+            : payload.candidates.map(mapShippingManifestRemoteOrder);
           shippingManifestRemoteLoading = false;
           shippingManifestRemoteError = "";
           renderShippingManifest();
@@ -14411,7 +14452,11 @@
           if (!Number.isInteger(qty) || qty <= 0) {
             return { lines, reliable: false };
           }
-          parsed.push({ label, qty });
+          const priceMatch = line.match(/[（(]\s*\$\s*([\d,]+)/);
+          const unitPrice = priceMatch
+            ? Number(String(priceMatch[1] || "").replace(/,/g, ""))
+            : null;
+          parsed.push({ label, qty, unitPrice });
         }
 
         return { lines, reliable: true, items: parsed };
@@ -14437,9 +14482,16 @@
           } else {
             parsedItems.items.forEach((item) => {
               parsedBoxTotal += item.qty;
-              productTotals.set(
+              const productId = getShippingManifestProductId(
                 item.label,
-                (productTotals.get(item.label) || 0) + item.qty,
+                item.unitPrice,
+              );
+              const productLabel = productId
+                ? getShippingManifestProductDisplayLabel(productId)
+                : `${item.label}｜顆數待確認`;
+              productTotals.set(
+                productLabel,
+                (productTotals.get(productLabel) || 0) + item.qty,
               );
             });
           }
@@ -14482,16 +14534,17 @@
         };
       }
 
-      function getShippingManifestProductId(label) {
+      function getShippingManifestProductId(label, unitPrice = null) {
         const normalizedLabel = normalizeAdminProductCode(label);
         if (!normalizedLabel) return "";
-        const candidates = adminProductCatalog.filter((product) => {
+        let candidates = adminProductCatalog.filter((product) => {
           const id = normalizeAdminProductCode(product?.id);
           const code = normalizeAdminProductCode(product?.code);
           const grade = normalizeAdminProductCode(product?.grade);
           if (id && id === normalizedLabel) return true;
           if (code && code === normalizedLabel) return true;
           if (grade && grade === normalizedLabel) return true;
+          if (grade && normalizedLabel.includes(grade)) return true;
           return (
             code &&
             new RegExp(`(?:^|[^A-Z0-9])${code}(?:[^A-Z0-9]|$)`).test(
@@ -14499,6 +14552,19 @@
             )
           );
         });
+        if (candidates.length > 1 && Number.isInteger(unitPrice) && unitPrice > 0) {
+          const pricedCandidates = candidates.filter(
+            (product) => Number(product?.price) === unitPrice,
+          );
+          if (pricedCandidates.length) candidates = pricedCandidates;
+        }
+        if (candidates.length > 1) {
+          const countedCandidates = candidates.filter((product) => {
+            const count = normalizeAdminProductCode(product?.count);
+            return count && normalizedLabel.includes(count);
+          });
+          if (countedCandidates.length) candidates = countedCandidates;
+        }
         if (candidates.length === 1) return String(candidates[0].id || "").trim();
 
         const sizeMatch = normalizedLabel.match(/(\d+)A/);
@@ -14522,10 +14588,8 @@
         );
         if (!product) return String(productId || "").trim();
         const grade = String(product.grade || "").replace(/\s+/g, "").trim();
-        const count = String(product.count || "")
-          .replace(/顆/g, "粒")
-          .trim();
-        return [grade, count ? `${count}裝` : ""].filter(Boolean).join(" ");
+        const count = String(product.count || "").trim();
+        return [grade, count].filter(Boolean).join("｜");
       }
 
       function buildShippingManifestProductSummary(stats) {
@@ -14579,9 +14643,13 @@
               ? label.replace(groupPattern, "").replace(/^[\s：:｜|-]+/, "").trim() ||
                 label
               : label;
-            const productId = getShippingManifestProductId(label);
+            const productId = String(label).includes("｜")
+              ? ""
+              : getShippingManifestProductId(label);
             const displayLabel =
-              groupPattern && productId
+              String(label).includes("｜")
+                ? strippedLabel
+                : groupPattern && productId
                 ? getShippingManifestProductDisplayLabel(productId)
                 : sizeMatch
                   ? `${Number(sizeMatch[1])} A`
@@ -14873,13 +14941,19 @@
         }
 
         const { startDate, endDate } = getShippingManifestDateRange();
+        const isPendingDateMode = shippingManifestDateMode === "pending";
         const hasValidDateRange =
-          !!startDate &&
-          !!endDate &&
-          adminWorkflowIsValidDate(startDate) &&
-          adminWorkflowIsValidDate(endDate) &&
-          startDate <= endDate;
-        const rangeKey = hasValidDateRange ? `${startDate}|${endDate}` : "";
+          isPendingDateMode ||
+          (!!startDate &&
+            !!endDate &&
+            adminWorkflowIsValidDate(startDate) &&
+            adminWorkflowIsValidDate(endDate) &&
+            startDate <= endDate);
+        const rangeKey = hasValidDateRange
+          ? isPendingDateMode
+            ? "pending"
+            : `${startDate}|${endDate}`
+          : "";
         const remoteDataReady =
           !!rangeKey && shippingManifestRemoteRangeKey === rangeKey;
         const remoteDataFailed =
@@ -14892,7 +14966,9 @@
         syncShippingManifestOrderingControls(orders);
         const stats = buildShippingManifestStats(orders);
         const productSummaryText = buildShippingManifestProductSummary(stats);
-        const dateLabel = hasValidDateRange
+        const dateLabel = isPendingDateMode
+          ? "待排出貨日期"
+          : hasValidDateRange
           ? startDate === endDate
             ? formatShippingManifestDate(startDate)
             : `${formatShippingManifestDate(startDate)}～${formatShippingManifestDate(endDate)}`
@@ -14907,7 +14983,7 @@
           : "";
         const subtitleDetails = [orderingSummary, searchSummary].filter(Boolean);
         subtitle.innerText = hasValidDateRange
-          ? `${isRangeMode ? "出貨區間" : "出貨日期"}：${dateLabel}｜列印時間：${formatShippingManifestPrintTime()}${subtitleDetails.length ? `｜${subtitleDetails.join("｜")}` : ""}`
+          ? `${isPendingDateMode ? "待排出貨日期" : isRangeMode ? "出貨區間" : "出貨日期"}：${dateLabel}｜列印時間：${formatShippingManifestPrintTime()}${subtitleDetails.length ? `｜${subtitleDetails.join("｜")}` : ""}`
           : isRangeMode && startDate && endDate && startDate > endDate
             ? "開始日期不可晚於結束日期"
             : "請選擇出貨日期或日期區間";
@@ -14923,7 +14999,7 @@
                 ? "✓ 宅配單號已同步，可以列印。"
                 : "宅配單號等待同步，完成前暫停列印…";
         summary.innerHTML = `
-          <div class="shipping-manifest-stat"><span>${isRangeMode ? "出貨區間" : "出貨日期"}</span><strong>${escapeHtml(dateLabel)}</strong></div>
+          <div class="shipping-manifest-stat"><span>${isPendingDateMode ? "待排出貨日期" : isRangeMode ? "出貨區間" : "出貨日期"}</span><strong>${escapeHtml(dateLabel)}</strong></div>
           <div class="shipping-manifest-stat"><span>120cm 件數</span><strong>${escapeHtml(stats.package120cmTotal !== null ? `${stats.package120cmTotal} 件` : "逐筆核對")}</strong></div>
           <div class="shipping-manifest-stat"><span>90cm 件數</span><strong>${escapeHtml(stats.package90cmTotal !== null ? `${stats.package90cmTotal} 件` : "逐筆核對")}</strong></div>
           <div class="shipping-manifest-stat"><span>訂單總金額</span><strong>$${escapeHtml(formatAdminMoney(stats.totalAmount))}</strong></div>
@@ -14948,7 +15024,9 @@
               ? "正在確認完整出貨資料…"
               : normalizedSearchQuery
                 ? `找不到符合「${shippingManifestSearchQuery.trim()}」的出貨訂單`
-                : isRangeMode
+                : isPendingDateMode
+                  ? "目前沒有待排出貨日期的訂單"
+                  : isRangeMode
                   ? "此日期區間沒有出貨訂單"
                   : "此日期沒有出貨訂單";
           tbody.innerHTML = "";
@@ -15001,11 +15079,12 @@
 
       function printShippingManifest() {
         const { startDate, endDate } = getShippingManifestDateRange();
-        const rangeKey = `${startDate}|${endDate}`;
+        const isPendingDateMode = shippingManifestDateMode === "pending";
+        const rangeKey = isPendingDateMode
+          ? "pending"
+          : `${startDate}|${endDate}`;
         if (
-          !startDate ||
-          !endDate ||
-          startDate > endDate ||
+          (!isPendingDateMode && (!startDate || !endDate || startDate > endDate)) ||
           shippingManifestRemoteLoading ||
           !!shippingManifestRemoteError ||
           shippingManifestRemoteRangeKey !== rangeKey ||
