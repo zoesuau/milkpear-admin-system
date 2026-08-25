@@ -6202,6 +6202,11 @@
 
       let adminProductCatalog = [];
       let adminProductCatalogVersion = "";
+      let adminProductOperations = {
+        byCode: {},
+        complete: false,
+        unreadableOrderCount: 0,
+      };
       let adminSiteSettings = {
         bannerImageUrl:
           ORDER_SYSTEM_CONFIG.assets?.bannerImageUrl || "assets/banner.png",
@@ -7492,16 +7497,29 @@
         const publicStock = Number.isInteger(product.stock)
           ? Math.max(0, product.stock - reservedStock)
           : null;
+        const operations =
+          adminProductOperations?.byCode?.[
+            normalizeAdminProductCode(product.code)
+          ] || null;
+        const operationsComplete = adminProductOperations?.complete === true;
+        const bookedText = operations
+          ? `已訂 ${Number(operations.bookedQty || 0)}${operationsComplete ? "" : "＋待確認"}`
+          : "已訂待重試";
+        const shippedText = operations
+          ? `已寄 ${Number(operations.shippedQty || 0)}${operationsComplete ? "" : "＋待確認"}`
+          : "已寄待重試";
         return `
             <article class="product-admin-card${activeText === "上架" ? "" : " is-inactive"}" data-product-id="${escapeHtml(product.id)}">
               <div class="product-admin-summary">
                 <div class="product-admin-topline">
                   <div class="product-admin-chips">
                     <span class="${activeClass}">${activeText}</span>
+                    <span class="product-chip" title="有效一般訂單加團體母單預留；團體子單不重複計算">${escapeHtml(bookedText)}</span>
+                    <span class="product-chip" title="實際已標記寄出的訂單盒數，包含團體子單">${escapeHtml(shippedText)}</span>
                     ${
                       Number.isInteger(product.stock) && product.stock >= 0
-                        ? `<span class="product-chip" style="color:#ef4444;border-color:#fecaca;">庫存 ${escapeHtml(product.stock)}</span>`
-                        : ""
+                        ? `<span class="product-chip" style="color:#ef4444;border-color:#fecaca;">可售 ${escapeHtml(product.stock)}</span>`
+                        : '<span class="product-chip">可售未控管</span>'
                     }
                     ${reservedStock > 0 ? `<span class="product-chip">後台保留 ${escapeHtml(reservedStock)}｜前台可售 ${escapeHtml(publicStock)}</span>` : ""}
                   </div>
@@ -9811,6 +9829,11 @@
 
           adminProductCatalog = payload.products.slice();
           adminProductCatalogVersion = String(payload.catalogVersion || "");
+          adminProductOperations =
+            payload.productOperations &&
+            typeof payload.productOperations === "object"
+              ? payload.productOperations
+              : { byCode: {}, complete: false, unreadableOrderCount: 0 };
           adminSiteSettings = {
             ...adminSiteSettings,
             ...(payload.siteSettings || {}),
@@ -9825,6 +9848,11 @@
           console.error("GAS 商品目錄讀取失敗", error);
           adminProductCatalog = [];
           adminProductCatalogVersion = "";
+          adminProductOperations = {
+            byCode: {},
+            complete: false,
+            unreadableOrderCount: 0,
+          };
           setAdminProductCatalogState(
             false,
             "商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。",
