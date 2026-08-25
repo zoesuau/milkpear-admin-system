@@ -14489,9 +14489,14 @@
               const productLabel = productId
                 ? getShippingManifestProductDisplayLabel(productId)
                 : `${item.label}｜顆數待確認`;
+              const productKey = productId || `unresolved:${productLabel}`;
               productTotals.set(
-                productLabel,
-                (productTotals.get(productLabel) || 0) + item.qty,
+                productKey,
+                {
+                  label: productLabel,
+                  qty: (productTotals.get(productKey)?.qty || 0) + item.qty,
+                  productId: productId || "",
+                },
               );
             });
           }
@@ -14603,20 +14608,23 @@
         }
 
         const groups = { milk: [], sugar: [], other: [] };
-        [...stats.productTotals.entries()].forEach(([label, qty]) => {
+        [...stats.productTotals.values()].forEach((entry) => {
+          const label = String(entry?.label || "").trim();
+          const qty = Number(entry?.qty || 0);
+          const product = adminProductCatalog.find(
+            (item) => String(item?.id || "").trim() === String(entry?.productId || "").trim(),
+          );
           const normalizedLabel = String(label || "").trim();
           const sizeMatch = normalizedLabel.match(/(\d+)\s*A/i);
           const size = sizeMatch ? Number(sizeMatch[1]) : null;
           if (
-            normalizedLabel.includes("牛奶梨") ||
-            (!/(蔗香梨|薦香梨)/.test(normalizedLabel) &&
-              size !== null &&
-              size <= 15)
+            product?.variety === "牛奶梨" ||
+            (!product && normalizedLabel.includes("牛奶梨"))
           ) {
             groups.milk.push([normalizedLabel, qty]);
           } else if (
-            /(蔗香梨|薦香梨)/.test(normalizedLabel) ||
-            (size !== null && size >= 17)
+            product?.variety === "蔗香梨" ||
+            (!product && /(蔗香梨|薦香梨)/.test(normalizedLabel))
           ) {
             groups.sugar.push([normalizedLabel, qty]);
           } else {
