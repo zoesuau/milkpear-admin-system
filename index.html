@@ -10588,6 +10588,32 @@
         };
       }
 
+      function shouldShowOrderChangeAlertForCard({
+        isAdminCreatedOrder,
+        orderStatus,
+        lastNotificationType,
+        isPendingNotification,
+        isManualRescheduleDecision,
+        shouldHideManualOrderConfirmationNotice,
+        shouldHideCancellationNotice,
+      }) {
+        if (isAdminCreatedOrder) {
+          return (
+            orderStatus !== "已寄出" &&
+            orderStatus !== "已取消" &&
+            lastNotificationType === "change_notice" &&
+            (isPendingNotification || isManualRescheduleDecision)
+          );
+        }
+
+        return (
+          orderStatus !== "已取消" &&
+          !shouldHideManualOrderConfirmationNotice &&
+          !shouldHideCancellationNotice &&
+          (isPendingNotification || isManualRescheduleDecision)
+        );
+      }
+
       function buildAdminOrderCardHtml(order) {
         const statusMeta = getAdminOrderStatusMeta(order?.orderStatus);
         const orderStatus = String(order?.orderStatus ?? "").trim();
@@ -10706,10 +10732,17 @@
             ? "出貨日期異動"
             : "出貨日期已確認";
         const shouldShowOrderChangeAlert =
-          orderStatus !== "已取消" &&
-          !shouldHideManualOrderConfirmationNotice &&
-          !shouldHideCancellationNotice &&
-          (isPendingNotification || isManualRescheduleDecision);
+          shouldShowOrderChangeAlertForCard({
+            isAdminCreatedOrder,
+            orderStatus,
+            lastNotificationType,
+            isPendingNotification,
+            isManualRescheduleDecision,
+            shouldHideManualOrderConfirmationNotice,
+            shouldHideCancellationNotice,
+          });
+        const shouldShowAdminCreatedChangeAlert =
+          isAdminCreatedOrder && shouldShowOrderChangeAlert;
         const shouldShowManualRescheduleContactText =
           isManualRescheduleDecision && !canLineNotify;
         const shouldBundleChangeNoticeWithFirstSchedule =
@@ -11065,7 +11098,9 @@
                 ? `
                   <div class="order-change-alert" style="display:block">
                     <div class="order-change-title">${
-                      shouldShowShipmentNoticeActionButton
+                      shouldShowAdminCreatedChangeAlert
+                        ? "⚠️ 以下資訊已異動"
+                        : shouldShowShipmentNoticeActionButton
                         ? "⚠️ 寄出通知尚未完成"
                         : shouldShowShippingDateNoticeActionButton &&
                             shippingDateNoticeMode === "initial"
