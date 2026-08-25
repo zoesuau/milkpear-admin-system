@@ -4468,7 +4468,7 @@
       .product-operations-tabs {
         display: grid;
         gap: 8px;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         margin-bottom: 14px;
       }
 
@@ -5740,6 +5740,7 @@
         <div class="modal-body">
           <div class="product-operations-tabs" role="tablist" aria-label="商品訂單分類">
             <button type="button" class="product-operations-tab active" id="productOperationsBookedTab" role="tab" aria-selected="true" onclick="setProductOperationsModalTab('booked')">已訂 0盒</button>
+            <button type="button" class="product-operations-tab" id="productOperationsUnshippedTab" role="tab" aria-selected="false" onclick="setProductOperationsModalTab('unshipped')">未寄 0盒</button>
             <button type="button" class="product-operations-tab" id="productOperationsShippedTab" role="tab" aria-selected="false" onclick="setProductOperationsModalTab('shipped')">已寄 0盒</button>
           </div>
           <div class="product-operations-note" id="productOperationsModalNote"></div>
@@ -7728,43 +7729,87 @@
         return String(left?.orderNo || "").localeCompare(String(right?.orderNo || ""));
       }
 
+      function getProductOperationUnshippedDetails(operations) {
+        const bookedOrders = Array.isArray(operations?.bookedOrders)
+          ? operations.bookedOrders
+          : [];
+        const shippedByGroupOrderId = Object.create(null);
+        (Array.isArray(operations?.shippedOrders) ? operations.shippedOrders : [])
+          .filter((detail) => detail?.source === "group_child")
+          .forEach((detail) => {
+            const groupOrderId = String(detail?.groupOrderId || "").trim();
+            if (!groupOrderId) return;
+            shippedByGroupOrderId[groupOrderId] =
+              Number(shippedByGroupOrderId[groupOrderId] || 0) + Number(detail?.qty || 0);
+          });
+        return bookedOrders
+          .filter((detail) => String(detail?.status || "").trim() !== "已寄出")
+          .map((detail) => {
+            if (detail?.source !== "group_order") return detail;
+            const groupOrderId = String(detail?.groupOrderId || "").trim();
+            const remainingQty = Math.max(
+              0,
+              Number(detail?.qty || 0) - Number(shippedByGroupOrderId[groupOrderId] || 0),
+            );
+            return { ...detail, qty: remainingQty };
+          })
+          .filter((detail) => Number(detail?.qty || 0) > 0);
+      }
+
       function renderProductOperationsModal() {
         const context = getProductOperationsModalContext();
         const title = document.getElementById("productOperationsModalTitle");
         const note = document.getElementById("productOperationsModalNote");
         const list = document.getElementById("productOperationsModalList");
         const bookedTab = document.getElementById("productOperationsBookedTab");
+        const unshippedTab = document.getElementById("productOperationsUnshippedTab");
         const shippedTab = document.getElementById("productOperationsShippedTab");
-        if (!context || !title || !note || !list || !bookedTab || !shippedTab) return;
+        if (!context || !title || !note || !list || !bookedTab || !unshippedTab || !shippedTab) return;
 
         const { product, operations } = context;
         const bookedQty = Number(operations?.bookedQty || 0);
         const shippedQty = Number(operations?.shippedQty || 0);
         const isBooked = adminProductOperationsModalMode === "booked";
+        const isUnshipped = adminProductOperationsModalMode === "unshipped";
+        const unshippedDetails = getProductOperationUnshippedDetails(operations);
+        const unshippedQty = unshippedDetails.reduce(
+          (total, detail) => total + Number(detail?.qty || 0),
+          0,
+        );
+        const sourceDetails = isBooked
+          ? operations?.bookedOrders
+          : isUnshipped
+            ? unshippedDetails
+            : operations?.shippedOrders;
         const details = Array.isArray(
-          isBooked ? operations?.bookedOrders : operations?.shippedOrders,
+          sourceDetails,
         )
-          ? (isBooked ? operations.bookedOrders : operations.shippedOrders)
+          ? sourceDetails
               .slice()
               .sort((left, right) =>
                 compareProductOperationDetails(
                   left,
                   right,
-                  isBooked ? "booked" : "shipped",
+                  isBooked ? "booked" : isUnshipped ? "unshipped" : "shipped",
                 ),
               )
           : [];
 
         title.textContent = `${product.variety || ""} ${product.grade || product.code || ""}｜${product.count || ""}裝`;
         bookedTab.textContent = `已訂 ${bookedQty}盒`;
+        unshippedTab.textContent = `未寄 ${unshippedQty}盒`;
         shippedTab.textContent = `已寄 ${shippedQty}盒`;
         bookedTab.classList.toggle("active", isBooked);
-        shippedTab.classList.toggle("active", !isBooked);
+        unshippedTab.classList.toggle("active", isUnshipped);
+        shippedTab.classList.toggle("active", !isBooked && !isUnshipped);
         bookedTab.setAttribute("aria-selected", String(isBooked));
-        shippedTab.setAttribute("aria-selected", String(!isBooked));
+        unshippedTab.setAttribute("aria-selected", String(isUnshipped));
+        shippedTab.setAttribute("aria-selected", String(!isBooked && !isUnshipped));
         note.textContent = isBooked
           ? "已訂包含有效一般訂單與團體母單預留；團體子單不重複列入。已寄訂單仍包含在已訂總數中。"
-          : "已寄只列出訂單狀態已標記為「已寄出」的訂單，包含團體子單。";
+          : isUnshipped
+            ? "未寄數量為已訂扣除已寄；下方列出目前尚未標記為「已寄出」的已訂資料。"
+            : "已寄只列出訂單狀態已標記為「已寄出」的訂單，包含團體子單。";
 
         if (!operations || !details.length) {
           list.innerHTML = `<div class="product-operations-empty">${operations ? "目前沒有訂單資料" : "訂單資料尚未載入，請重新整理後再試"}</div>`;
@@ -7774,7 +7819,6 @@
         list.innerHTML = details
           .map((detail) => {
             const sourceLabel = getProductOperationSourceLabel(detail);
-            const orderNo = String(detail.orderNo || "").trim() || "—";
             const recipientName = String(detail.recipientName || "").trim() ||
               (detail.source === "group_order" ? "未命名團體母單" : "未填收件人");
             const status = String(detail.status || "").trim() || "狀態未填";
@@ -7786,9 +7830,7 @@
                 </div>
                 <div class="product-operation-row-bottom">
                   <span class="product-operation-source">${escapeHtml(sourceLabel)}</span>
-                  <span>${escapeHtml(orderNo)}</span>
                   <span>${escapeHtml(status)}</span>
-                  <span>${escapeHtml(detail.createdAt ? `下單 ${detail.createdAt}` : "下單時間未記錄")}</span>
                   <span>${escapeHtml(getProductOperationDateText(detail))}</span>
                 </div>
               </div>
@@ -7810,7 +7852,9 @@
       }
 
       function setProductOperationsModalTab(mode) {
-        adminProductOperationsModalMode = mode === "shipped" ? "shipped" : "booked";
+        adminProductOperationsModalMode = ["booked", "unshipped", "shipped"].includes(mode)
+          ? mode
+          : "booked";
         renderProductOperationsModal();
       }
 
