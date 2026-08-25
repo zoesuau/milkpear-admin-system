@@ -7701,6 +7701,33 @@
         return "未指定出貨日期";
       }
 
+      function getProductOperationTimestamp(value) {
+        const text = String(value || "").trim();
+        if (!text) return Number.MAX_SAFE_INTEGER;
+        const timestamp = Date.parse(text.replace(/\//g, "-"));
+        return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
+      }
+
+      function compareProductOperationDetails(left, right, mode) {
+        const leftShipped = String(left?.status || "").trim() === "已寄出";
+        const rightShipped = String(right?.status || "").trim() === "已寄出";
+        if (mode === "booked" && leftShipped !== rightShipped) {
+          return leftShipped ? 1 : -1;
+        }
+        const leftPrimary = leftShipped
+          ? getProductOperationTimestamp(left?.actualShippingDate)
+          : getProductOperationTimestamp(left?.createdAt);
+        const rightPrimary = rightShipped
+          ? getProductOperationTimestamp(right?.actualShippingDate)
+          : getProductOperationTimestamp(right?.createdAt);
+        if (leftPrimary !== rightPrimary) return leftPrimary - rightPrimary;
+        const createdDifference =
+          getProductOperationTimestamp(left?.createdAt) -
+          getProductOperationTimestamp(right?.createdAt);
+        if (createdDifference !== 0) return createdDifference;
+        return String(left?.orderNo || "").localeCompare(String(right?.orderNo || ""));
+      }
+
       function renderProductOperationsModal() {
         const context = getProductOperationsModalContext();
         const title = document.getElementById("productOperationsModalTitle");
@@ -7718,6 +7745,14 @@
           isBooked ? operations?.bookedOrders : operations?.shippedOrders,
         )
           ? (isBooked ? operations.bookedOrders : operations.shippedOrders)
+              .slice()
+              .sort((left, right) =>
+                compareProductOperationDetails(
+                  left,
+                  right,
+                  isBooked ? "booked" : "shipped",
+                ),
+              )
           : [];
 
         title.textContent = `${product.variety || ""} ${product.grade || product.code || ""}｜${product.count || ""}裝`;
@@ -7753,6 +7788,7 @@
                   <span class="product-operation-source">${escapeHtml(sourceLabel)}</span>
                   <span>${escapeHtml(orderNo)}</span>
                   <span>${escapeHtml(status)}</span>
+                  <span>${escapeHtml(detail.createdAt ? `下單 ${detail.createdAt}` : "下單時間未記錄")}</span>
                   <span>${escapeHtml(getProductOperationDateText(detail))}</span>
                 </div>
               </div>
