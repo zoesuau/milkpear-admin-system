@@ -4802,14 +4802,6 @@
           <button onclick="filterByStatus('已安排出貨', this)">
             已安排出貨日期
           </button>
-          <button onclick="filterByStatus('待通知', this)">
-            改單再通知
-            <span
-              class="admin-tab-badge"
-              id="statusBadgeNotice"
-              aria-label="待處理通知數"
-            ></span>
-          </button>
           <button onclick="filterByStatus('已寄出', this)">已寄出</button>
           <button onclick="filterByStatus('已取消', this)">已取消</button>
         </div>
@@ -9324,19 +9316,17 @@
 
       function getOrderNotificationActionLabel(card) {
         const canLineNotify = isLineOrder(card);
+        if (!canLineNotify) return "";
         const notificationType = String(
           card?.dataset.lastNotificationType || "",
         ).trim();
         if (notificationType === "change_notice") {
-          return canLineNotify ? "發送異動通知" : "已電話通知";
+          return "發送異動通知";
         }
         if (notificationType === "shipment_notice") {
-          return canLineNotify ? "重新發送寄出通知" : "已電話通知";
+          return "重新發送寄出通知";
         }
-        if (notificationType === "schedule_notice" && !canLineNotify) {
-          return "已電話通知";
-        }
-        return canLineNotify ? "重新發送通知" : "電話已通知";
+        return "重新發送通知";
       }
 
       function updateNotifyButton() {
@@ -10630,6 +10620,8 @@
         const lastNotificationType = String(
           order?.lastNotificationType ?? "",
         ).trim();
+        const orderSource = String(order?.orderSource ?? "").trim();
+        const isAdminCreatedOrder = orderSource === "管理端";
         const notificationFieldLabels = {
           收件人姓名: "收件人",
           收件人: "收件人",
@@ -10731,17 +10723,13 @@
         const shouldShowChangeNoticeActionButton =
           isPendingNotification &&
           lastNotificationType === "change_notice" &&
+          canLineNotify &&
           !shouldBundleChangeNoticeWithFirstSchedule &&
           pendingNoticeLabels.length > 0 &&
           !(
             hasExpectedShippingDateChange &&
             shippingDateNoticeMode === "reschedule"
           );
-        const shouldShowManualScheduleNoticeDoneButton =
-          isPendingNotification &&
-          lastNotificationType === "schedule_notice" &&
-          !canLineNotify &&
-          pendingNoticeLabels.length > 0;
         const cancelNotificationLabel = "";
         const adminWorkflowEditable =
           !!orderNo &&
@@ -10823,12 +10811,10 @@
         const customerNote = String(order?.customerNote ?? "").trim();
         const adminNote = String(order?.adminNote ?? "");
         const hasAdminNote = adminNote.trim().length > 0;
-        const orderSource = String(order?.orderSource ?? "").trim();
         const groupOrderId = String(order?.groupOrderId ?? "").trim();
         const orderSourceDisplay = groupOrderId
           ? `管理端－團體訂單 ${groupOrderId}`
           : orderSource;
-        const isAdminCreatedOrder = orderSource === "管理端";
         const lineDisplayName = String(order?.lineDisplayName ?? "").trim();
         const createdAt = String(order?.createdAt ?? "").trim();
         const lastUpdatedAt = String(order?.lastUpdatedAt ?? "").trim();
@@ -11109,17 +11095,14 @@
                     }
                     ${
                       shouldShowChangeNoticeActionButton
-                        ? `<button type="button" class="btn-resend-notice">${canLineNotify ? "發送異動通知" : "已電話通知"}</button>`
+                        ? `<button type="button" class="btn-resend-notice">發送異動通知</button>`
                         : ""
                     }
                     ${
                       shouldShowShipmentNoticeActionButton
-                        ? `<button type="button" class="btn-resend-notice">${canLineNotify ? "重新發送寄出通知" : "已電話通知"}</button>`
-                        : ""
-                    }
-                    ${
-                      shouldShowManualScheduleNoticeDoneButton
-                        ? `<button type="button" class="btn-resend-notice">已電話通知</button>`
+                        ? canLineNotify
+                          ? `<button type="button" class="btn-resend-notice">重新發送寄出通知</button>`
+                          : ""
                         : ""
                     }
                     ${
@@ -17555,18 +17538,13 @@
             "statusBadgePending",
             adminOrderReadMeta.statusCounts.pending,
           );
-          updateStatusTabBadge(
-            "statusBadgeNotice",
-            adminOrderReadMeta.statusCounts.notice,
-          );
           return;
         }
         const cards = latestAdminOrders.map(buildAdminOrderFilterCard);
         let pending = 0,
           confirmed = 0,
           shipped = 0,
-          cancelled = 0,
-          noticeWork = 0;
+          cancelled = 0;
 
         cards.forEach((card) => {
           const status = card.getAttribute("data-status") || "待確認";
@@ -17574,7 +17552,6 @@
           else if (status === "已安排出貨") confirmed++;
           else if (status === "已寄出") shipped++;
           else if (status === "已取消") cancelled++;
-          if (isNoticeWorkCard(card)) noticeWork++;
         });
 
         const pendingEl = document.getElementById("stat-pending");
@@ -17586,7 +17563,6 @@
         if (shippedEl) shippedEl.innerText = shipped;
         if (cancelledEl) cancelledEl.innerText = cancelled;
         updateStatusTabBadge("statusBadgePending", pending);
-        updateStatusTabBadge("statusBadgeNotice", noticeWork);
       }
 
       function setActiveFilterButton(rowId, activeButton) {
@@ -17886,7 +17862,7 @@
 
       function isNoticeWorkCard(card) {
         // 已取消訂單的取消通知會在取消當下處理；即使歷史資料殘留舊的
-        // 異動欄位或失敗任務，也不應再出現在「改單再通知」。
+        // 異動欄位或失敗任務，也不應再被當成通知操作入口。
         if (String(card.dataset.status || "").trim() === "已取消") {
           return false;
         }
@@ -17902,8 +17878,8 @@
           card.dataset.pendingNoticeFields || "",
         ).trim();
 
-        // 管理員新增、沒有 LINE 的訂單不需要補發「下單通知」；卡片也沒有
-        // 對應操作，因此不要把這類人工狀態列入「改單再通知」。
+        // 管理員新增、沒有 LINE 的訂單不需要補發「下單通知」；卡片只保留
+        // 通知事件提示，不提供電話確認按鈕。
         if (
           notificationStatus === "manual_required" &&
           lastNotificationType === "order_confirmation" &&
@@ -18959,28 +18935,8 @@ ${adminNote}
       }
 
       function getBatchOpenNotificationBlockReason(order) {
-        const notificationStatus = String(
-          order?.notificationStatus || "",
-        ).trim();
-        const lastNotificationType = String(
-          order?.lastNotificationType || "",
-        ).trim();
-        const canLineNotify = order?.canLineNotify === true;
-        if (!isOpenNotificationStatus(notificationStatus)) return "";
-        if (
-          !canLineNotify &&
-          notificationStatus === "manual_required" &&
-          lastNotificationType === "order_confirmation"
-        ) {
-          return "";
-        }
-        if (lastNotificationType === "change_notice") {
-          return "此訂單有待通知資料異動，請先單筆處理。";
-        }
-        if (notificationStatus === "manual_required") {
-          return "此訂單有待人工電話通知，請先完成通知或改用單筆處理。";
-        }
-        return "此訂單通知尚未完成或發送失敗，請先處理通知後再批量寄出。";
+        // 待處理通知事件只保留為卡片提示，不再限制出貨狀態變更。
+        return "";
       }
 
       function getBatchShippedDisabledReason(order) {
@@ -19002,9 +18958,6 @@ ${adminNote}
         if (String(order?.actualShippingDate || "").trim()) {
           return "此訂單已經有實際寄出日期。";
         }
-        if (String(order?.changedFields || "").trim()) {
-          return "此訂單有待通知資料異動，請先單筆處理。";
-        }
         return getBatchOpenNotificationBlockReason(order);
       }
 
@@ -19017,9 +18970,7 @@ ${adminNote}
           order?.orderStatus === "已安排出貨" &&
           expectedShippingDate !== "" &&
           adminWorkflowIsValidDate(expectedShippingDate) &&
-          !String(order?.actualShippingDate || "").trim() &&
-          !String(order?.changedFields || "").trim() &&
-          !getBatchOpenNotificationBlockReason(order)
+          !String(order?.actualShippingDate || "").trim()
         );
       }
 
@@ -19098,7 +19049,7 @@ ${adminNote}
             const reasons = [];
             if (!shippedEligible) {
               reasons.push(
-                "已選訂單中包含尚未安排完成、已寄出、待資料異動通知或通知尚未完成的訂單，無法批量已寄出。",
+                "已選訂單中包含尚未安排完成或已寄出的訂單，無法批量已寄出。",
               );
             }
             setBatchFeedback(reasons.join("\n"), reasons.length > 0);
@@ -19171,7 +19122,7 @@ ${adminNote}
         }
         if (
           !window.confirm(
-            `將 ${orderNos.length} 張訂單標為已寄出，並建立寄出通知？\n\n有 LINE 的訂單會嘗試自動發送；無 LINE／管理員新增的訂單會留下待人工電話通知。\n批次功能僅處理沒有待通知資料異動的訂單；有異動的訂單請使用單筆「確認已寄出」，自行選擇是否合併通知。\n\n通知結果請以各訂單卡片的通知狀態為準。`,
+            `將 ${orderNos.length} 張訂單標為已寄出，並建立寄出通知？\n\n有 LINE 的訂單會嘗試自動發送；無 LINE／管理員新增的訂單仍保留通知事件紀錄。\n待處理通知事件不會阻擋本次狀態變更。\n\n通知結果請以各訂單卡片的通知狀態為準。`,
           )
         ) {
           return;
