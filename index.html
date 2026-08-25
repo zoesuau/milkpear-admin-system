@@ -14557,6 +14557,18 @@
             )
           );
         });
+
+        const labelVariety = String(label || "").includes("牛奶梨")
+          ? "牛奶梨"
+          : /(蔗香梨|薦香梨)/.test(String(label || ""))
+            ? "蔗香梨"
+            : "";
+        if (candidates.length > 1 && labelVariety) {
+          const varietyCandidates = candidates.filter(
+            (product) => String(product?.variety || "").trim() === labelVariety,
+          );
+          if (varietyCandidates.length) candidates = varietyCandidates;
+        }
         if (candidates.length > 1 && Number.isInteger(unitPrice) && unitPrice > 0) {
           const pricedCandidates = candidates.filter(
             (product) => Number(product?.price) === unitPrice,
@@ -14574,13 +14586,50 @@
 
         const sizeMatch = normalizedLabel.match(/(\d+)A/);
         const size = sizeMatch ? Number(sizeMatch[1]) : null;
-        const isTwoPiece = /(兩粒|二粒)/.test(String(label || ""));
-        const byGradeAndPackage = candidates.filter((product) => {
+        const hasPackageHint = /(兩粒|二粒|2顆)/.test(String(label || ""));
+        if (candidates.length > 1 && hasPackageHint) {
+          const packageCandidates = candidates.filter((product) =>
+            String(product?.category || "").includes("兩粒"),
+          );
+          if (packageCandidates.length) candidates = packageCandidates;
+        }
+        if (candidates.length === 1) return String(candidates[0].id || "").trim();
+
+        const equivalentSignatures = new Set(
+          candidates.map((product) =>
+            [
+              String(product?.variety || "").trim(),
+              normalizeAdminProductCode(product?.grade),
+              normalizeAdminProductCode(product?.count),
+              String(product?.category || "").trim(),
+              Number(product?.price) || 0,
+            ].join("|"),
+          ),
+        );
+        if (candidates.length > 1 && equivalentSignatures.size === 1) {
+          const statusRank = { 上架: 1, 僅後台販售: 2, 停售: 3 };
+          candidates.sort(
+            (a, b) =>
+              (statusRank[String(a?.status || "").trim()] || 9) -
+              (statusRank[String(b?.status || "").trim()] || 9),
+          );
+          return String(candidates[0]?.id || "").trim();
+        }
+
+        const byGradeAndPackage = adminProductCatalog.filter((product) => {
           const grade = normalizeAdminProductCode(product?.grade);
           const productSize = grade.match(/(\d+)A/);
           if (!productSize || productSize[1] !== String(size || "")) return false;
-          const productIsTwoPiece = String(product?.category || "").includes("兩粒");
-          return productIsTwoPiece === isTwoPiece;
+          if (
+            labelVariety &&
+            String(product?.variety || "").trim() !== labelVariety
+          ) {
+            return false;
+          }
+          if (Number.isInteger(unitPrice) && unitPrice > 0) {
+            return Number(product?.price) === unitPrice;
+          }
+          return true;
         });
         return byGradeAndPackage.length === 1
           ? String(byGradeAndPackage[0].id || "").trim()
