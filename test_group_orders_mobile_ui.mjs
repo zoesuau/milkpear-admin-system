@@ -76,7 +76,7 @@ await page.evaluate(() => {
 
 assert.equal(await page.getByRole("button", { name: "團體訂單" }).isVisible(), true);
 assert.match(await page.locator("#groupOrderCards").innerText(), /已分配 2／50 盒，尚餘 48 盒/);
-assert.equal(await page.getByRole("button", { name: /批次轉帳已付款/ }).count(), 1);
+assert.equal(await page.getByRole("button", { name: /批次已付款/ }).count(), 1);
 const panelBox = await page.locator(".group-order-panel").boundingBox();
 assert.ok(panelBox && panelBox.width <= 390, "團體訂單頁不可超出 390px 手機畫面");
 

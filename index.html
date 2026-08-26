@@ -6346,6 +6346,7 @@
       const ADMIN_CREATE_CHECK_TIMEOUT_MS = 15000;
       const ADMIN_CREATE_AUTO_CHECK_DELAYS_MS = [0, 2500, 6000];
       const ADMIN_CREATE_PENDING_STORAGE_KEY = `${ADMIN_STORAGE_NAMESPACE}:pending-admin-create-v1`;
+      const ADMIN_GROUP_CREATE_PENDING_STORAGE_KEY = `${ADMIN_STORAGE_NAMESPACE}:pending-admin-group-create-v1`;
       const ADMIN_SHIPPING_NOTICE_TIMEOUT_MS = 60000;
       const ADMIN_INITIAL_LOAD_SLOW_MS = 12000;
 
@@ -6391,6 +6392,7 @@
       let adminGroupOrdersLoaded = false;
       let adminGroupOrderSubmitting = false;
       let adminCreateRequestContext = null;
+      let adminGroupCreateRequestContext = null;
       let adminCreateRecoveryPromise = null;
       let adminSelectedCustomer = null;
       let adminCustomerSearchTimer = null;
@@ -6848,6 +6850,139 @@
 
       function isPendingAdminCreateRequestActive(requestKey) {
         return loadPendingAdminCreateRequest()?.requestKey === requestKey;
+      }
+
+      function getAdminGroupCreatePayloadFingerprint(payload) {
+        const comparable = { ...payload };
+        delete comparable.adminSessionToken;
+        delete comparable.requestKey;
+        return JSON.stringify(comparable);
+      }
+
+      function loadPendingAdminGroupCreateRequest() {
+        try {
+          const parsed = JSON.parse(
+            sessionStorage.getItem(ADMIN_GROUP_CREATE_PENDING_STORAGE_KEY) ||
+              "null",
+          );
+          const action = String(parsed?.action || "").trim();
+          const requestKey = String(parsed?.requestKey || "").trim();
+          const payload =
+            parsed?.payload &&
+            Object.prototype.toString.call(parsed.payload) === "[object Object]"
+              ? { ...parsed.payload }
+              : null;
+          if (
+            !["adminCreateGroupOrder", "adminCreateGroupOrderChild"].includes(
+              action,
+            ) ||
+            !/^[A-Za-z0-9_|-]{16,160}$/.test(requestKey) ||
+            !payload
+          ) {
+            return null;
+          }
+          delete payload.adminSessionToken;
+          payload.action = action;
+          payload.requestKey = requestKey;
+          return {
+            action,
+            requestKey,
+            fingerprint: getAdminGroupCreatePayloadFingerprint(payload),
+            submittedAt: Math.max(0, Number(parsed?.submittedAt) || 0),
+            payload,
+          };
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function ensureAdminGroupCreateRequestContext(payload) {
+        const action = String(payload?.action || "").trim();
+        const fingerprint = getAdminGroupCreatePayloadFingerprint(payload);
+        if (
+          adminGroupCreateRequestContext?.action === action &&
+          adminGroupCreateRequestContext?.fingerprint === fingerprint
+        ) {
+          return adminGroupCreateRequestContext;
+        }
+
+        const pending = loadPendingAdminGroupCreateRequest();
+        if (pending) {
+          if (
+            pending.action === action &&
+            pending.fingerprint === fingerprint
+          ) {
+            adminGroupCreateRequestContext = {
+              action,
+              fingerprint,
+              requestKey: pending.requestKey,
+            };
+            return adminGroupCreateRequestContext;
+          }
+          throw new Error("GROUP_CREATE_PENDING_CONFLICT");
+        }
+
+        adminGroupCreateRequestContext = {
+          action,
+          fingerprint,
+          requestKey: createAdminRequestKey(action, [
+            createAdminDiagnosticRequestId("group-create"),
+          ]),
+        };
+        return adminGroupCreateRequestContext;
+      }
+
+      function storePendingAdminGroupCreateRequest(payload) {
+        const action = String(payload?.action || "").trim();
+        const requestKey = String(payload?.requestKey || "").trim();
+        if (
+          !["adminCreateGroupOrder", "adminCreateGroupOrderChild"].includes(
+            action,
+          ) ||
+          !/^[A-Za-z0-9_|-]{16,160}$/.test(requestKey)
+        ) {
+          throw new Error("REQUEST_KEYS_INVALID");
+        }
+        const storedPayload = { ...payload };
+        delete storedPayload.adminSessionToken;
+        storedPayload.action = action;
+        storedPayload.requestKey = requestKey;
+        sessionStorage.setItem(
+          ADMIN_GROUP_CREATE_PENDING_STORAGE_KEY,
+          JSON.stringify({
+            action,
+            requestKey,
+            submittedAt: Date.now(),
+            payload: storedPayload,
+          }),
+        );
+      }
+
+      function clearPendingAdminGroupCreateRequest() {
+        sessionStorage.removeItem(ADMIN_GROUP_CREATE_PENDING_STORAGE_KEY);
+        adminGroupCreateRequestContext = null;
+      }
+
+      function shouldPreservePendingAdminGroupCreateRequest(error) {
+        if (String(error?.message || "") === "GROUP_CREATE_PENDING_CONFLICT") {
+          return true;
+        }
+        if (error?.serverConfirmed !== true) return true;
+        const confirmedPreCommitErrors = new Set([
+          "ADMIN_SESSION_REQUIRED",
+          "FINAL_AMOUNT_INVALID",
+          "GROUP_CHILD_VALUE_INVALID",
+          "GROUP_ORDER_BUSY",
+          "GROUP_ORDER_CLOSED",
+          "GROUP_ORDER_NOT_FOUND",
+          "GROUP_ORDER_VALUE_INVALID",
+          "GROUP_ORDERS_DISABLED",
+          "GROUP_RESERVED_QUANTITY_INSUFFICIENT",
+          "ITEMS_INVALID",
+          "PRODUCT_STOCK_INSUFFICIENT",
+          "REQUEST_KEYS_INVALID",
+        ]);
+        return !confirmedPreCommitErrors.has(String(error?.message || ""));
       }
 
       function clearAdminAuthSession() {
@@ -16958,6 +17093,7 @@
           }
           const error = new Error(result?.errorCode || "GROUP_ORDER_REQUEST_FAILED");
           error.details = result;
+          error.serverConfirmed = true;
           throw error;
         }
         return result;
@@ -17191,19 +17327,28 @@
           buyerPhone: document.getElementById("group-buyer-phone")?.value.trim() || "",
           adminNote: document.getElementById("group-admin-note")?.value.trim() || "",
           items,
-          requestKey: createAdminRequestKey("adminCreateGroupOrder", [createAdminDiagnosticRequestId("group")]),
         };
-        adminGroupOrderSubmitting = true;
         try {
+          const requestContext = ensureAdminGroupCreateRequestContext(payload);
+          payload.requestKey = requestContext.requestKey;
+          storePendingAdminGroupCreateRequest(payload);
+          adminGroupOrderSubmitting = true;
           const result = await postGroupOrderAction(payload);
           adminGroupOrders = result.groups || [];
           adminGroupOrdersLoaded = true;
           renderAdminGroupOrders();
           adminGroupOrderSubmitting = false;
           closeGroupOrderModal();
+          clearPendingAdminGroupCreateRequest();
           setGroupOrderFeedback("母單已建立，庫存已一次預留。", false);
         } catch (error) {
-          const shortage = error?.message === "PRODUCT_STOCK_INSUFFICIENT" ? "庫存不足，母單未建立。" : "母單建立失敗，資料與庫存未確認變更。";
+          const preservePending = shouldPreservePendingAdminGroupCreateRequest(error);
+          if (!preservePending) clearPendingAdminGroupCreateRequest();
+          const shortage = error?.message === "PRODUCT_STOCK_INSUFFICIENT"
+            ? "庫存不足，母單未建立。"
+            : preservePending
+              ? "母單結果尚未確認。請保留原內容再次送出；系統會沿用同一識別碼，不會重複預留庫存。"
+              : "母單建立失敗，後端已確認未建立；請修正後再試。";
           setGroupOrderFeedback(shortage, true, "group-order-modal-feedback");
         } finally { adminGroupOrderSubmitting = false; }
       }
@@ -17251,19 +17396,28 @@
           customerNote: document.getElementById("group-child-note")?.value.trim() || "",
           adminNote: document.getElementById("group-child-admin-note")?.value.trim() || "",
           items,
-          requestKey: createAdminRequestKey("adminCreateGroupOrderChild", [createAdminDiagnosticRequestId("group-child")]),
         };
-        adminGroupOrderSubmitting = true;
         try {
+          const requestContext = ensureAdminGroupCreateRequestContext(payload);
+          payload.requestKey = requestContext.requestKey;
+          storePendingAdminGroupCreateRequest(payload);
+          adminGroupOrderSubmitting = true;
           const result = await postGroupOrderAction(payload);
           adminGroupOrders = result.groups || [];
           renderAdminGroupOrders();
           if (result.order) applySingleOrderResponse(result.order, null, { refreshInBackground: true });
           adminGroupOrderSubmitting = false;
           closeGroupChildModal();
+          clearPendingAdminGroupCreateRequest();
           setGroupOrderFeedback(`收件子單 ${result.orderNo} 已建立；庫存沒有重複扣除。`);
         } catch (error) {
-          const message = error?.message === "GROUP_RESERVED_QUANTITY_INSUFFICIENT" ? "超過母單尚餘數量，子單未建立。" : "收件子單建立失敗，請確認資料後再試。";
+          const preservePending = shouldPreservePendingAdminGroupCreateRequest(error);
+          if (!preservePending) clearPendingAdminGroupCreateRequest();
+          const message = error?.message === "GROUP_RESERVED_QUANTITY_INSUFFICIENT"
+            ? "超過母單尚餘數量，子單未建立。"
+            : preservePending
+              ? "收件子單結果尚未確認。請保留原內容再次送出；系統會沿用同一識別碼，不會建立第二張子單。"
+              : "收件子單建立失敗，後端已確認未建立；請修正後再試。";
           setGroupOrderFeedback(message, true, "group-child-modal-feedback");
         } finally { adminGroupOrderSubmitting = false; }
       }
