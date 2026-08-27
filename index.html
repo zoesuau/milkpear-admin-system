@@ -1690,6 +1690,22 @@
         background: #f1f5f9;
         color: #334155;
       }
+      .group-child-badge {
+        display: inline-flex;
+        align-items: center;
+        max-width: min(100%, 260px);
+        padding: 2px 7px;
+        overflow: hidden;
+        border: 1px solid #a78bfa;
+        border-radius: 4px;
+        background: #f5f3ff;
+        color: #5b21b6;
+        font-size: 11px;
+        font-weight: 900;
+        line-height: 1.25;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
 
       .edit-icon-btn {
         font-size: 14px;
@@ -11006,6 +11022,13 @@
         const adminNote = String(order?.adminNote ?? "");
         const hasAdminNote = adminNote.trim().length > 0;
         const groupOrderId = String(order?.groupOrderId ?? "").trim();
+        const groupName = String(order?.groupName ?? "").trim();
+        const groupChildLabel = groupOrderId
+          ? `👥 團體子單｜${groupName || groupOrderId}`
+          : "";
+        const groupChildBadgeHtml = groupChildLabel
+          ? `<span class="group-child-badge" title="${escapeHtml(`母單：${groupName || groupOrderId}`)}">${escapeHtml(groupChildLabel)}</span>`
+          : "";
         const orderSourceDisplay = groupOrderId
           ? `管理端－團體訂單 ${groupOrderId}`
           : orderSource;
@@ -11092,6 +11115,7 @@
               </div>
               <div class="admin-card-list-status">
                 <span class="state-badge ${escapeHtml(statusMeta.badgeClass)}" title="${escapeHtml(statusMeta.badgeText)}">${escapeHtml(listStatusLabel)}</span>
+                ${groupChildBadgeHtml}
                 ${shouldShowOrderChangeAlert ? `<span class="admin-card-list-change" title="${escapeHtml(listChangeTitle)}">資料異動</span>` : ""}
               </div>
               <div class="admin-card-list-product" title="${escapeHtml(listProductSummary)}">${escapeHtml(listProductSummary)}</div>
@@ -11108,6 +11132,7 @@
               <div class="customer-info-group">
                 <div class="customer-status-row">
                   <span class="state-badge ${escapeHtml(statusMeta.badgeClass)}">${escapeHtml(statusMeta.badgeText)}</span>
+                  ${groupChildBadgeHtml}
                 </div>
                 <div class="name">${escapeHtml(recipientName || "未提供")}</div>
                 <div class="phone">${escapeHtml(recipientPhone || "未提供")}</div>
