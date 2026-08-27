@@ -6369,6 +6369,7 @@
       let adminProductOperationsModalCode = "";
       let adminProductOperationsModalMode = "booked";
       let adminProductsReady = false;
+      let adminProductCatalogLoadPromise = null;
       let latestAdminOrders = [];
       let adminOrderSnapshotVersion = "";
       let adminOrderSnapshotManifest = [];
@@ -10259,6 +10260,11 @@
       window.hideAdminAuthOverlay = hideAdminAuthOverlay;
 
       async function fetchAdminProductCatalogFromGas() {
+        if (adminProductCatalogLoadPromise) {
+          return adminProductCatalogLoadPromise;
+        }
+
+        const loadPromise = (async () => {
         const baseUrl = String(GAS_ORDERS_API_URL || "").trim();
         const adminSessionToken = String(
           sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
@@ -10340,6 +10346,16 @@
           );
           renderProductManagement();
           return null;
+        }
+        })();
+
+        adminProductCatalogLoadPromise = loadPromise;
+        try {
+          return await loadPromise;
+        } finally {
+          if (adminProductCatalogLoadPromise === loadPromise) {
+            adminProductCatalogLoadPromise = null;
+          }
         }
       }
 
@@ -11734,7 +11750,7 @@
         `;
       }
 
-      function enterAdminContentEdit(card) {
+      async function enterAdminContentEdit(card) {
         if (!card || card.dataset.contentEditing === "true") return;
 
         const orderNo = card.dataset.orderNo || "";
@@ -11746,10 +11762,18 @@
         if (!order || !host || status === "已取消") return;
         ensureAdminCardExpandedForEditing(card);
         if (!shippedOnly && !adminProductsReady) {
-          alert(
-            "商品目錄尚未就緒，暫時無法安全編輯訂單內容；請重新整理後再試。",
-          );
-          return;
+          const trigger = card.querySelector(".admin-content-edit-trigger");
+          trigger?.setAttribute("disabled", "disabled");
+          trigger?.setAttribute("aria-busy", "true");
+          const products = await fetchAdminProductCatalogFromGas();
+          trigger?.removeAttribute("aria-busy");
+          if (!Array.isArray(products)) {
+            trigger?.removeAttribute("disabled");
+            alert(
+              "商品目錄讀取失敗，暫時無法安全編輯訂單內容；請稍後再試。",
+            );
+            return;
+          }
         }
 
         const parsedItems = adminProductsReady
