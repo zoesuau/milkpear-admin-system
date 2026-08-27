@@ -17173,6 +17173,12 @@
         ) || null;
       }
 
+      function compareAdminGroupOrdersForDisplay(left, right) {
+        const leftEnded = String(left?.status || "").trim() === "open" ? 0 : 1;
+        const rightEnded = String(right?.status || "").trim() === "open" ? 0 : 1;
+        return leftEnded - rightEnded;
+      }
+
       function renderAdminGroupOrders() {
         const container = document.getElementById("groupOrderCards");
         if (!container) return;
@@ -17180,7 +17186,10 @@
           container.innerHTML = '<div class="group-order-empty">目前沒有團體母單。</div>';
           return;
         }
-        container.innerHTML = adminGroupOrders.map((group) => {
+        const displayGroups = adminGroupOrders
+          .slice()
+          .sort(compareAdminGroupOrdersForDisplay);
+        container.innerHTML = displayGroups.map((group) => {
           const items = Array.isArray(group.items) ? group.items : [];
           const allocated = items.reduce((sum, item) => sum + Number(item.allocatedQty || 0), 0);
           const remaining = items.reduce((sum, item) => sum + Number(item.remainingQty || 0), 0);
