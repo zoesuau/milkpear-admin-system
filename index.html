@@ -4828,29 +4828,7 @@
           </button>
           <button onclick="filterByDateRange('今日', this)">今天</button>
           <button onclick="filterByDateRange('明天', this)">明天</button>
-          <button
-            id="currentWeekFilterButton"
-            onclick="filterByDateRange('本週', this)"
-          >
-            本週
-          </button>
-          <button
-            id="nextWeekFilterButton"
-            onclick="filterByDateRange('下週', this)"
-          >
-            下週
-          </button>
           <button onclick="filterByDateRange('自訂', this)">自訂</button>
-          <div class="single-date-filter">
-            <input
-              type="date"
-              id="singleShippingDateInput"
-              aria-label="指定單日"
-            />
-            <button type="button" onclick="filterBySingleShippingDate(this)">
-              指定單日
-            </button>
-          </div>
         </div>
         <div class="filter-custom-range" id="customDateRange">
           <input type="hidden" id="customDateStart" aria-label="自訂開始日期" />
