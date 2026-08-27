@@ -928,6 +928,19 @@
         margin-top: 12px;
       }
 
+      .shipping-manifest-search-sort-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+        align-items: start;
+        gap: 12px;
+        margin-top: 12px;
+      }
+
+      .shipping-manifest-search-sort-row .shipping-manifest-search,
+      .shipping-manifest-search-sort-row .shipping-manifest-ordering {
+        margin-top: 0;
+      }
+
       .shipping-manifest-search-label {
         color: #475569;
         font-size: 12px;
@@ -1013,6 +1026,12 @@
 
       .shipping-manifest-sender-filter[hidden] {
         display: none;
+      }
+
+      @media screen and (max-width: 767px) {
+        .shipping-manifest-search-sort-row {
+          grid-template-columns: minmax(0, 1fr);
+        }
       }
 
       .shipping-manifest-panel.is-empty .shipping-manifest-table-wrap {
@@ -5211,58 +5230,60 @@
             ></div>
           </div>
         </div>
-        <div class="shipping-manifest-search">
-          <label
-            class="shipping-manifest-search-label"
-            for="shippingManifestSearchInput"
-          >
-            搜尋出貨單
-          </label>
-          <span class="shipping-manifest-search-row">
-            <input
-              type="search"
-              id="shippingManifestSearchInput"
-              placeholder="姓名、電話、地址、訂單編號、母單或宅配單號"
-              autocomplete="off"
-              oninput="setShippingManifestSearchQuery(this.value)"
-            />
-            <button
-              type="button"
-              class="shipping-manifest-search-clear"
-              onclick="clearShippingManifestSearch()"
+        <div class="shipping-manifest-search-sort-row">
+          <div class="shipping-manifest-search">
+            <label
+              class="shipping-manifest-search-label"
+              for="shippingManifestSearchInput"
             >
-              清除
-            </button>
-          </span>
-          <span class="shipping-manifest-search-note">
-            僅篩選下方出貨總表與列印內容，不影響黑貓 CSV 匯出。
-          </span>
-        </div>
-        <div class="shipping-manifest-ordering">
-          <label>
-            出貨總表排列方式
-            <select
-              id="shippingManifestSortMode"
-              onchange="setShippingManifestSortMode(this.value)"
+              搜尋出貨單
+            </label>
+            <span class="shipping-manifest-search-row">
+              <input
+                type="search"
+                id="shippingManifestSearchInput"
+                placeholder="姓名、電話、地址、訂單編號、母單或宅配單號"
+                autocomplete="off"
+                oninput="setShippingManifestSearchQuery(this.value)"
+              />
+              <button
+                type="button"
+                class="shipping-manifest-search-clear"
+                onclick="clearShippingManifestSearch()"
+              >
+                清除
+              </button>
+            </span>
+            <span class="shipping-manifest-search-note">
+              僅篩選下方出貨總表與列印內容，不影響黑貓 CSV 匯出。
+            </span>
+          </div>
+          <div class="shipping-manifest-ordering">
+            <label>
+              出貨總表排列方式
+              <select
+                id="shippingManifestSortMode"
+                onchange="setShippingManifestSortMode(this.value)"
+              >
+                <option value="original">原本順序</option>
+                <option value="sender_grouped">依寄件人集中排列</option>
+                <option value="priority_sender">指定寄件人排最前面</option>
+              </select>
+            </label>
+            <label
+              class="shipping-manifest-priority-sender"
+              id="shippingManifestPrioritySenderWrap"
+              hidden
             >
-              <option value="original">原本順序</option>
-              <option value="sender_grouped">依寄件人集中排列</option>
-              <option value="priority_sender">指定寄件人排最前面</option>
-            </select>
-          </label>
-          <label
-            class="shipping-manifest-priority-sender"
-            id="shippingManifestPrioritySenderWrap"
-            hidden
-          >
-            優先寄件人
-            <select
-              id="shippingManifestPrioritySender"
-              onchange="setShippingManifestPrioritySender(this.value)"
-            >
-              <option value="">請選擇寄件人</option>
-            </select>
-          </label>
+              優先寄件人
+              <select
+                id="shippingManifestPrioritySender"
+                onchange="setShippingManifestPrioritySender(this.value)"
+              >
+                <option value="">請選擇寄件人</option>
+              </select>
+            </label>
+          </div>
         </div>
         <div class="shipping-manifest-ordering">
           <label>

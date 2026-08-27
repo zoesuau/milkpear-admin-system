@@ -47,6 +47,16 @@ assert.ok(
     shippingSortIndex < shippingSenderFilterIndex,
   "出貨總表排列方式必須緊接搜尋之後，並位於寄件人篩選之前",
 );
+assert.match(
+  html,
+  /class="shipping-manifest-search-sort-row"[\s\S]*?id="shippingManifestSearchInput"[\s\S]*?id="shippingManifestSortMode"[\s\S]*?<\/div>\s*<\/div>/,
+  "搜尋出貨單與出貨總表排列方式必須位於同一列容器",
+);
+assert.match(
+  html,
+  /@media screen and \(max-width: 767px\)[\s\S]*?\.shipping-manifest-search-sort-row\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/,
+  "窄螢幕時搜尋與排列控制必須自動改為單欄",
+);
 
 const shippingDateRangeStart = html.indexOf(
   "function getShippingManifestDateRange",
