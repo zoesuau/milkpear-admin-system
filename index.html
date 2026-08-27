@@ -8176,6 +8176,12 @@
         );
       }
 
+      function getAdminProductOrderDisplayName(product) {
+        const baseName = getAdminProductDisplayName(product);
+        const count = String(product?.count || "").trim();
+        return [baseName, count].filter(Boolean).join("｜") || baseName;
+      }
+
       function renderProductBannerSettings() {
         const preview = document.getElementById("productBannerPreview");
         const bannerUrl = String(
@@ -11560,6 +11566,10 @@
           if (!qtyMatch) return null;
 
           const qty = Number(qtyMatch[1]);
+          const priceMatch = line.match(/[（(]\s*\$\s*([\d,]+)/);
+          const unitPrice = priceMatch
+            ? Number(String(priceMatch[1] || "").replace(/,/g, ""))
+            : null;
           const identity = line
             .replace(/[（(].*$/, "")
             .replace(/\s+/g, "")
@@ -11567,6 +11577,7 @@
           const matches = adminProductCatalog.filter((product) => {
             return [
               product.code,
+              getAdminProductOrderDisplayName(product),
               getAdminProductDisplayName(product),
               product.grade,
             ].some(
@@ -11576,18 +11587,22 @@
                   .toUpperCase() === identity,
             );
           });
+          const resolvedMatches =
+            matches.length > 1 && Number.isInteger(unitPrice) && unitPrice > 0
+              ? matches.filter((product) => Number(product?.price) === unitPrice)
+              : matches;
 
           if (
-            matches.length !== 1 ||
+            resolvedMatches.length !== 1 ||
             !Number.isInteger(qty) ||
             qty <= 0 ||
-            seenCodes.has(matches[0].code)
+            seenCodes.has(resolvedMatches[0]?.code)
           ) {
             return null;
           }
 
-          seenCodes.add(matches[0].code);
-          items.push({ code: matches[0].code, qty });
+          seenCodes.add(resolvedMatches[0].code);
+          items.push({ code: resolvedMatches[0].code, qty });
         }
 
         return items;
