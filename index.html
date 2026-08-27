@@ -1042,6 +1042,10 @@
         display: none;
       }
 
+      .shipping-manifest-sender-filter[hidden] {
+        display: none;
+      }
+
       .shipping-manifest-panel.is-empty .shipping-manifest-table-wrap {
         display: none;
       }
@@ -5235,7 +5239,7 @@
             <input
               type="search"
               id="shippingManifestSearchInput"
-              placeholder="姓名、電話、地址、訂單編號或宅配單號"
+              placeholder="姓名、電話、地址、訂單編號、母單或宅配單號"
               autocomplete="off"
               oninput="setShippingManifestSearchQuery(this.value)"
             />
@@ -5250,6 +5254,32 @@
           <span class="shipping-manifest-search-note">
             僅篩選下方出貨總表與列印內容，不影響黑貓 CSV 匯出。
           </span>
+        </div>
+        <div class="shipping-manifest-ordering">
+          <label>
+            寄件人篩選
+            <select
+              id="shippingManifestSenderFilterMode"
+              onchange="setShippingManifestSenderFilterMode(this.value)"
+            >
+              <option value="all">全部寄件人</option>
+              <option value="include">只顯示指定寄件人</option>
+              <option value="exclude">排除指定寄件人</option>
+            </select>
+          </label>
+          <label
+            class="shipping-manifest-sender-filter"
+            id="shippingManifestSenderFilterWrap"
+            hidden
+          >
+            指定寄件人
+            <select
+              id="shippingManifestSenderFilter"
+              onchange="setShippingManifestSenderFilterKey(this.value)"
+            >
+              <option value="">請選擇寄件人</option>
+            </select>
+          </label>
         </div>
         <div class="shipping-manifest-ordering">
           <label>
@@ -6402,6 +6432,13 @@
       let adminNotificationSkipSubmitting = false;
       const ADMIN_ORDERS_PER_PAGE = 20;
       const ADMIN_CARD_VIEW_MODE_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-card-view-mode-v2`;
+      const ADMIN_ACTIVE_TAB_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-active-tab-v1`;
+      const ADMIN_TAB_NAMES = new Set([
+        "orders",
+        "groupOrders",
+        "shippingPrint",
+        "products",
+      ]);
       const ADMIN_CARD_VIEW_MODES = new Set(["full", "compact", "list"]);
       const ADMIN_ORDER_SEARCH_DEBOUNCE_MS = 350;
       const OFFSHORE_SHIPPING_KEYWORDS = ["金門", "澎湖", "連江", "馬祖", "綠島"];
@@ -6421,6 +6458,8 @@
       let shippingManifestSortMode = "original";
       let shippingManifestPrioritySenderKey = "";
       let shippingManifestSearchQuery = "";
+      let shippingManifestSenderFilterMode = "all";
+      let shippingManifestSenderFilterKey = "";
       let shippingTrackingImportPreview = null;
       let shippingTrackingImportSubmitting = false;
       let ezcatExportCandidates = [];
@@ -7270,6 +7309,12 @@
       }
 
       function switchAdminTab(tabName) {
+        const normalizedTabName =
+          ADMIN_TAB_NAMES.has(tabName) &&
+          (tabName !== "groupOrders" || GROUP_ORDERS_ENABLED)
+            ? tabName
+            : "orders";
+        sessionStorage.setItem(ADMIN_ACTIVE_TAB_KEY, normalizedTabName);
         const orderSection = document.getElementById("order-page-section");
         const shippingPrintSection = document.getElementById(
           "shipping-print-page-section",
@@ -7281,34 +7326,46 @@
         const tabButtons = document.querySelectorAll(".admin-tab-btn");
 
         if (orderSection) {
-          orderSection.style.display = tabName === "orders" ? "" : "none";
+          orderSection.style.display =
+            normalizedTabName === "orders" ? "" : "none";
         }
         if (shippingPrintSection) {
           shippingPrintSection.style.display =
-            tabName === "shippingPrint" ? "" : "none";
+            normalizedTabName === "shippingPrint" ? "" : "none";
         }
         if (productSection) {
-          productSection.style.display = tabName === "products" ? "" : "none";
+          productSection.style.display =
+            normalizedTabName === "products" ? "" : "none";
         }
         if (groupOrderSection) {
           groupOrderSection.style.display =
-            tabName === "groupOrders" ? "" : "none";
+            normalizedTabName === "groupOrders" ? "" : "none";
         }
         tabButtons.forEach((button) => {
-          button.classList.toggle("active", button.dataset.tab === tabName);
+          button.classList.toggle(
+            "active",
+            button.dataset.tab === normalizedTabName,
+          );
         });
 
-        if (tabName === "products") {
+        if (normalizedTabName === "products") {
           renderProductManagement();
           if (!adminShippingBatchesLoaded) fetchAdminShippingBatchesFromGas();
         }
-        if (tabName === "shippingPrint") {
+        if (normalizedTabName === "shippingPrint") {
           renderShippingManifest();
           loadCompleteShippingManifestOrders();
         }
-        if (tabName === "groupOrders" && !adminGroupOrdersLoaded) {
+        if (normalizedTabName === "groupOrders" && !adminGroupOrdersLoaded) {
           fetchAdminGroupOrders();
         }
+      }
+
+      function restoreAdminTab() {
+        const storedTabName = String(
+          sessionStorage.getItem(ADMIN_ACTIVE_TAB_KEY) || "orders",
+        ).trim();
+        switchAdminTab(storedTabName);
       }
 
       function setShippingBatchManagementFeedback(message, type = "") {
@@ -14655,6 +14712,10 @@
           order?.recipientAddress,
           order?.buyerName,
           order?.buyerPhone,
+          order?.groupOrderId,
+          order?.groupName,
+          order?.groupBuyerName,
+          order?.groupBuyerPhone,
           order?.trackingNo,
         ];
         const searchableText = normalizeShippingManifestSearchText(
@@ -14695,15 +14756,28 @@
         return String(order?.buyerName || "").trim() || "未填寄件人";
       }
 
+      function getShippingManifestSenderPhone(order) {
+        return String(order?.buyerPhone || "").trim();
+      }
+
+      function getShippingManifestSenderKey(order) {
+        const senderName = getShippingManifestSenderName(order);
+        const senderPhone = compactShippingManifestSearchText(
+          getShippingManifestSenderPhone(order),
+        );
+        return `${normalizeShippingManifestSenderKey(senderName) || senderName}\u001f${senderPhone}`;
+      }
+
       function getShippingManifestSenderMeta(orders) {
         const senderMeta = new Map();
         orders.forEach((order, index) => {
           const senderName = getShippingManifestSenderName(order);
-          const senderKey =
-            normalizeShippingManifestSenderKey(senderName) || senderName;
+          const senderPhone = getShippingManifestSenderPhone(order);
+          const senderKey = getShippingManifestSenderKey(order);
           const current = senderMeta.get(senderKey) || {
             key: senderKey,
             name: senderName,
+            phone: senderPhone,
             orderCount: 0,
             boxCount: 0,
             firstIndex: index,
@@ -14723,10 +14797,7 @@
           .map((order, index) => ({
             order,
             index,
-            senderKey:
-              normalizeShippingManifestSenderKey(
-                getShippingManifestSenderName(order),
-              ) || getShippingManifestSenderName(order),
+            senderKey: getShippingManifestSenderKey(order),
           }))
           .sort((a, b) => {
             if (shippingManifestSortMode === "priority_sender") {
@@ -14776,7 +14847,7 @@
             .map(
               (sender) => `
                 <option value="${escapeHtml(sender.key)}">
-                  ${escapeHtml(sender.name)}（${escapeHtml(sender.orderCount)}筆／${escapeHtml(sender.boxCount)}盒）
+                  ${escapeHtml(sender.name)}${sender.phone ? `｜${escapeHtml(sender.phone)}` : ""}（${escapeHtml(sender.orderCount)}筆／${escapeHtml(sender.boxCount)}盒）
                 </option>
               `,
             )
@@ -14802,6 +14873,94 @@
         renderShippingManifest();
       }
 
+      function applyShippingManifestSenderFilter(orders) {
+        if (
+          shippingManifestSenderFilterMode === "all" ||
+          !shippingManifestSenderFilterKey
+        ) {
+          return orders.slice();
+        }
+        const shouldInclude = shippingManifestSenderFilterMode === "include";
+        return orders.filter((order) => {
+          const matches =
+            getShippingManifestSenderKey(order) ===
+            shippingManifestSenderFilterKey;
+          return shouldInclude ? matches : !matches;
+        });
+      }
+
+      function syncShippingManifestSenderFilterControls(orders) {
+        const modeSelect = document.getElementById(
+          "shippingManifestSenderFilterMode",
+        );
+        const senderWrap = document.getElementById(
+          "shippingManifestSenderFilterWrap",
+        );
+        const senderSelect = document.getElementById(
+          "shippingManifestSenderFilter",
+        );
+        if (modeSelect) modeSelect.value = shippingManifestSenderFilterMode;
+        if (senderWrap) {
+          senderWrap.hidden = shippingManifestSenderFilterMode === "all";
+        }
+        if (!senderSelect) return;
+        const senderMeta = getShippingManifestSenderMeta(orders);
+        if (
+          shippingManifestSenderFilterKey &&
+          !senderMeta.has(shippingManifestSenderFilterKey)
+        ) {
+          shippingManifestSenderFilterKey = "";
+        }
+        senderSelect.innerHTML = `
+          <option value="">請選擇寄件人</option>
+          ${[...senderMeta.values()]
+            .sort((a, b) => a.firstIndex - b.firstIndex)
+            .map(
+              (sender) => `
+                <option value="${escapeHtml(sender.key)}">
+                  ${escapeHtml(sender.name)}${sender.phone ? `｜${escapeHtml(sender.phone)}` : ""}（${escapeHtml(sender.orderCount)}筆／${escapeHtml(sender.boxCount)}盒）
+                </option>
+              `,
+            )
+            .join("")}
+        `;
+        senderSelect.value = shippingManifestSenderFilterKey;
+        senderSelect.disabled = senderMeta.size === 0;
+      }
+
+      function setShippingManifestSenderFilterMode(mode) {
+        shippingManifestSenderFilterMode = ["all", "include", "exclude"].includes(
+          mode,
+        )
+          ? mode
+          : "all";
+        if (shippingManifestSenderFilterMode === "all") {
+          shippingManifestSenderFilterKey = "";
+        }
+        renderShippingManifest();
+      }
+
+      function setShippingManifestSenderFilterKey(senderKey) {
+        shippingManifestSenderFilterKey = String(senderKey || "");
+        renderShippingManifest();
+      }
+
+      function getShippingManifestSenderFilterSummary(orders) {
+        if (
+          shippingManifestSenderFilterMode === "all" ||
+          !shippingManifestSenderFilterKey
+        ) {
+          return "";
+        }
+        const sender = getShippingManifestSenderMeta(orders).get(
+          shippingManifestSenderFilterKey,
+        );
+        if (!sender) return "";
+        const action =
+          shippingManifestSenderFilterMode === "include" ? "只顯示" : "已排除";
+        return `${action}寄件人：${sender.name}（${sender.orderCount}筆／${sender.boxCount}盒）`;
+      }
+
       function getShippingManifestOrderingSummary(orders) {
         if (shippingManifestSortMode === "sender_grouped") {
           return "排列：寄件人集中";
@@ -14820,7 +14979,7 @@
           : "";
       }
 
-      function getShippingManifestOrdersForRange(startDateString, endDateString) {
+      function getShippingManifestBaseOrdersForRange(startDateString, endDateString) {
         const startDate = normalizeAdminDateValue(startDateString);
         const endDate = normalizeAdminDateValue(endDateString);
         const isPendingDateMode = shippingManifestDateMode === "pending";
@@ -14829,8 +14988,7 @@
             shippingManifestRemoteRangeKey === "pending"
               ? shippingManifestRemoteOrders
               : latestAdminOrders;
-          return applyShippingManifestOrdering(
-            sourceOrders
+          return sourceOrders
               .filter((order) => String(order?.orderStatus || "").trim() !== "已取消")
               .filter((order) => !normalizeAdminDateValue(order?.expectedShippingDate || ""))
               .filter((order) =>
@@ -14838,8 +14996,7 @@
                   order,
                   shippingManifestSearchQuery,
                 ),
-              ),
-          );
+              );
         }
         if (!startDate || !endDate || startDate > endDate) return [];
         const rangeKey = `${startDate}|${endDate}`;
@@ -14883,7 +15040,15 @@
               "zh-Hant",
             );
           });
-        return applyShippingManifestOrdering(baseOrders);
+        return baseOrders;
+      }
+
+      function getShippingManifestOrdersForRange(startDateString, endDateString) {
+        return applyShippingManifestOrdering(
+          applyShippingManifestSenderFilter(
+            getShippingManifestBaseOrdersForRange(startDateString, endDateString),
+          ),
+        );
       }
 
       function mapShippingManifestRemoteOrder(candidate, candidateIndex) {
@@ -14892,6 +15057,10 @@
           orderNo: candidate?.orderNo,
           createdAt: manifest.createdAt,
           orderSource: manifest.orderSource,
+          groupOrderId: manifest.groupOrderId,
+          groupName: manifest.groupName,
+          groupBuyerName: manifest.groupBuyerName,
+          groupBuyerPhone: manifest.groupBuyerPhone,
           showOaTextOrderMarker:
             manifest.showOaTextOrderMarker === true,
           _manifestSourceIndex: candidateIndex,
@@ -15593,9 +15762,13 @@
           hasValidDateRange && !!shippingManifestRemoteError;
         syncEzcatPrepareButton();
         const isRangeMode = shippingManifestDateMode === "range";
-        const orders = hasValidDateRange
-          ? getShippingManifestOrdersForRange(startDate, endDate)
+        const baseOrders = hasValidDateRange
+          ? getShippingManifestBaseOrdersForRange(startDate, endDate)
           : [];
+        syncShippingManifestSenderFilterControls(baseOrders);
+        const orders = applyShippingManifestOrdering(
+          applyShippingManifestSenderFilter(baseOrders),
+        );
         syncShippingManifestOrderingControls(orders);
         const stats = buildShippingManifestStats(orders);
         const productSummaryText = buildShippingManifestProductSummary(stats);
@@ -15608,13 +15781,19 @@
           : "—";
 
         const orderingSummary = getShippingManifestOrderingSummary(orders);
+        const senderFilterSummary =
+          getShippingManifestSenderFilterSummary(baseOrders);
         const normalizedSearchQuery = normalizeShippingManifestSearchText(
           shippingManifestSearchQuery,
         );
         const searchSummary = normalizedSearchQuery
           ? `搜尋：${shippingManifestSearchQuery.trim()}`
           : "";
-        const subtitleDetails = [orderingSummary, searchSummary].filter(Boolean);
+        const subtitleDetails = [
+          senderFilterSummary,
+          orderingSummary,
+          searchSummary,
+        ].filter(Boolean);
         subtitle.innerText = hasValidDateRange
           ? `${isPendingDateMode ? "待排出貨日期" : isRangeMode ? "出貨區間" : "出貨日期"}：${dateLabel}｜列印時間：${formatShippingManifestPrintTime()}${subtitleDetails.length ? `｜${subtitleDetails.join("｜")}` : ""}`
           : isRangeMode && startDate && endDate && startDate > endDate
@@ -15656,8 +15835,11 @@
             shippingManifestRemoteLoading || !remoteDataReady
               ? "正在確認完整出貨資料…"
               : normalizedSearchQuery
-                ? `找不到符合「${shippingManifestSearchQuery.trim()}」的出貨訂單`
-                : isPendingDateMode
+              ? `找不到符合「${shippingManifestSearchQuery.trim()}」的出貨訂單`
+              : shippingManifestSenderFilterMode !== "all" &&
+                  shippingManifestSenderFilterKey
+                ? "寄件人篩選後沒有可列印的出貨訂單"
+              : isPendingDateMode
                   ? "目前沒有待排出貨日期的訂單"
                   : isRangeMode
                   ? "此日期區間沒有出貨訂單"
@@ -17647,6 +17829,7 @@
         if (isAdminAllowed !== true) {
           return;
         }
+        restoreAdminTab();
 
         let initialLoadFinished = false;
         const initialLoadTimer = window.setTimeout(() => {

@@ -49,6 +49,8 @@ const context = {
   document: { getElementById: element },
   shippingManifestDateMode: "today",
   shippingManifestSearchQuery: "",
+  shippingManifestSenderFilterMode: "all",
+  shippingManifestSenderFilterKey: "",
   shippingManifestRemoteRangeKey: "",
   shippingManifestRemoteLoading: true,
   shippingManifestRemoteError: "",
@@ -58,9 +60,12 @@ const context = {
   }),
   adminWorkflowIsValidDate: () => true,
   syncEzcatPrepareButton() {},
-  getShippingManifestOrdersForRange: () => [
+  getShippingManifestBaseOrdersForRange: () => [
     { orderNo: "P1", buyerName: "寄件人", finalAmount: 1000 },
   ],
+  applyShippingManifestSenderFilter: (orders) => orders,
+  applyShippingManifestOrdering: (orders) => orders,
+  syncShippingManifestSenderFilterControls() {},
   syncShippingManifestOrderingControls() {},
   buildShippingManifestStats: () => ({
     orderCount: 1,
@@ -70,6 +75,7 @@ const context = {
   buildShippingManifestProductSummary: () => "商品統計",
   formatShippingManifestDate: () => "2026/8/20",
   getShippingManifestOrderingSummary: () => "",
+  getShippingManifestSenderFilterSummary: () => "",
   normalizeShippingManifestSearchText: (value) => String(value || ""),
   formatShippingManifestPrintTime: () => "2026/08/20 13:00",
   escapeHtml: (value) => String(value),
