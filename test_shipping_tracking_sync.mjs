@@ -17,7 +17,7 @@ assert.match(
   /shippingManifestRemoteRangeKey\s*=\s*"";[\s\S]*?shippingManifestRemoteLoading\s*=\s*true;[\s\S]*?await refreshAdminOrdersManually\(\);[\s\S]*?await loadCompleteShippingManifestOrders\(\);[\s\S]*?宅配單號已寫入，但出貨總表同步失敗/,
 );
 
-const renderStart = html.indexOf("function renderShippingManifest");
+const renderStart = html.indexOf("function renderShippingManifest()");
 const renderEnd = html.indexOf(
   "function filterBySingleShippingDate",
   renderStart,

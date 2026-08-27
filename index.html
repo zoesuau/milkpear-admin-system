@@ -922,37 +922,6 @@
         margin-bottom: 0;
       }
 
-      .shipping-print-range {
-        display: none;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
-        margin-top: 10px;
-      }
-
-      .shipping-print-range.active {
-        display: grid;
-      }
-
-      .shipping-print-range label {
-        display: grid;
-        gap: 5px;
-        color: #475569;
-        font-size: 12px;
-        font-weight: 800;
-      }
-
-      .shipping-print-range input {
-        box-sizing: border-box;
-        width: 100%;
-        min-height: 38px;
-        border: 1px solid #cbd5e1;
-        border-radius: 8px;
-        background: #ffffff;
-        color: #1f2937;
-        padding: 7px 9px;
-        font: inherit;
-      }
-
       .shipping-manifest-search {
         display: grid;
         gap: 5px;
@@ -5181,26 +5150,12 @@
           >
             明天
           </button>
-          <div class="single-date-filter">
-            <input
-              type="date"
-              id="shippingManifestDateInput"
-              aria-label="指定出貨單日期"
-            />
-            <button
-              type="button"
-              data-shipping-manifest-mode="custom"
-              onclick="setShippingManifestDateMode('custom', this)"
-            >
-              指定日期
-            </button>
-          </div>
           <button
             type="button"
-            data-shipping-manifest-mode="range"
-            onclick="setShippingManifestDateMode('range', this)"
+            data-shipping-manifest-mode="custom"
+            onclick="setShippingManifestDateMode('custom', this)"
           >
-            選取區間
+            自訂
           </button>
           <button
             type="button"
@@ -5210,23 +5165,51 @@
             待排出貨日期
           </button>
         </div>
-        <div class="shipping-print-range" id="shippingManifestRange">
-          <label>
-            開始日期
-            <input
-              type="date"
-              id="shippingManifestStartDateInput"
-              aria-label="出貨區間開始日期"
-            />
-          </label>
-          <label>
-            結束日期
-            <input
-              type="date"
-              id="shippingManifestEndDateInput"
-              aria-label="出貨區間結束日期"
-            />
-          </label>
+        <div class="filter-custom-range" id="shippingManifestCustomDateRange">
+          <input
+            type="hidden"
+            id="shippingManifestCustomDateStart"
+            aria-label="出貨總表自訂開始日期"
+          />
+          <input
+            type="hidden"
+            id="shippingManifestCustomDateEnd"
+            aria-label="出貨總表自訂結束日期"
+          />
+          <div class="range-calendar" aria-label="出貨總表自訂日期區間選擇器">
+            <div class="range-calendar-header">
+              <button
+                type="button"
+                class="range-calendar-nav"
+                aria-label="出貨總表上一個月"
+                onclick="moveShippingManifestCustomDateCalendarMonth(-1)"
+              >
+                ‹
+              </button>
+              <div
+                class="range-calendar-title"
+                id="shippingManifestCustomDateCalendarTitle"
+              >
+                -
+              </div>
+              <button
+                type="button"
+                class="range-calendar-nav"
+                aria-label="出貨總表下一個月"
+                onclick="moveShippingManifestCustomDateCalendarMonth(1)"
+              >
+                ›
+              </button>
+            </div>
+            <div class="range-calendar-weekdays" aria-hidden="true">
+              <span>日</span><span>一</span><span>二</span><span>三</span
+              ><span>四</span><span>五</span><span>六</span>
+            </div>
+            <div
+              class="range-calendar-grid"
+              id="shippingManifestCustomDateCalendarGrid"
+            ></div>
+          </div>
         </div>
         <div class="shipping-manifest-search">
           <label
@@ -5257,32 +5240,6 @@
         </div>
         <div class="shipping-manifest-ordering">
           <label>
-            寄件人篩選
-            <select
-              id="shippingManifestSenderFilterMode"
-              onchange="setShippingManifestSenderFilterMode(this.value)"
-            >
-              <option value="all">全部寄件人</option>
-              <option value="include">只顯示指定寄件人</option>
-              <option value="exclude">排除指定寄件人</option>
-            </select>
-          </label>
-          <label
-            class="shipping-manifest-sender-filter"
-            id="shippingManifestSenderFilterWrap"
-            hidden
-          >
-            指定寄件人
-            <select
-              id="shippingManifestSenderFilter"
-              onchange="setShippingManifestSenderFilterKey(this.value)"
-            >
-              <option value="">請選擇寄件人</option>
-            </select>
-          </label>
-        </div>
-        <div class="shipping-manifest-ordering">
-          <label>
             出貨總表排列方式
             <select
               id="shippingManifestSortMode"
@@ -5302,6 +5259,32 @@
             <select
               id="shippingManifestPrioritySender"
               onchange="setShippingManifestPrioritySender(this.value)"
+            >
+              <option value="">請選擇寄件人</option>
+            </select>
+          </label>
+        </div>
+        <div class="shipping-manifest-ordering">
+          <label>
+            寄件人篩選
+            <select
+              id="shippingManifestSenderFilterMode"
+              onchange="setShippingManifestSenderFilterMode(this.value)"
+            >
+              <option value="all">全部寄件人</option>
+              <option value="include">只顯示指定寄件人</option>
+              <option value="exclude">排除指定寄件人</option>
+            </select>
+          </label>
+          <label
+            class="shipping-manifest-sender-filter"
+            id="shippingManifestSenderFilterWrap"
+            hidden
+          >
+            指定寄件人
+            <select
+              id="shippingManifestSenderFilter"
+              onchange="setShippingManifestSenderFilterKey(this.value)"
             >
               <option value="">請選擇寄件人</option>
             </select>
@@ -5445,7 +5428,7 @@
           id="shippingManifestProductSummary"
         ></div>
         <div class="shipping-manifest-empty" id="shippingManifestEmpty">
-          選擇今天、明天、指定日期或日期區間後顯示出貨總表。
+          選擇今天、明天，或用自訂日曆選取單日或日期區間。
         </div>
         <div class="shipping-manifest-table-wrap">
           <table class="shipping-manifest-table">
@@ -6455,6 +6438,9 @@
       let currentDateFilter = "全部";
       let currentNotificationFilter = "全部";
       let shippingManifestDateMode = "today";
+      let shippingManifestCustomDateCalendarYear = 0;
+      let shippingManifestCustomDateCalendarMonth = 0;
+      let shippingManifestCustomDateRangeSelectingEnd = false;
       let shippingManifestSortMode = "original";
       let shippingManifestPrioritySenderKey = "";
       let shippingManifestSearchQuery = "";
@@ -14578,6 +14564,150 @@
         return escapeHtml(String(value ?? "").trim()).replace(/\r?\n/g, "<br>");
       }
 
+      function getShippingManifestCustomCalendarMonthSeed() {
+        const start =
+          document.getElementById("shippingManifestCustomDateStart")?.value ||
+          "";
+        const startParts = getDateParts(start);
+        if (startParts) return startParts;
+        return (
+          getDateParts(getTaipeiToday()) || {
+            year: new Date().getFullYear(),
+            month: new Date().getMonth() + 1,
+            day: 1,
+          }
+        );
+      }
+
+      function setShippingManifestCustomCalendarMonth(year, month) {
+        const date = new Date(Date.UTC(year, month - 1, 1));
+        shippingManifestCustomDateCalendarYear = date.getUTCFullYear();
+        shippingManifestCustomDateCalendarMonth = date.getUTCMonth() + 1;
+      }
+
+      function renderShippingManifestCustomDateCalendar() {
+        const title = document.getElementById(
+          "shippingManifestCustomDateCalendarTitle",
+        );
+        const grid = document.getElementById(
+          "shippingManifestCustomDateCalendarGrid",
+        );
+        if (!title || !grid) return;
+
+        if (
+          !shippingManifestCustomDateCalendarYear ||
+          !shippingManifestCustomDateCalendarMonth
+        ) {
+          const seed = getShippingManifestCustomCalendarMonthSeed();
+          setShippingManifestCustomCalendarMonth(seed.year, seed.month);
+        }
+
+        title.innerText = `${shippingManifestCustomDateCalendarYear}年${shippingManifestCustomDateCalendarMonth}月`;
+        const firstDay = new Date(
+          Date.UTC(
+            shippingManifestCustomDateCalendarYear,
+            shippingManifestCustomDateCalendarMonth - 1,
+            1,
+          ),
+        ).getUTCDay();
+        const dayCount = getMonthDayCount(
+          shippingManifestCustomDateCalendarYear,
+          shippingManifestCustomDateCalendarMonth,
+        );
+        const startValue =
+          document.getElementById("shippingManifestCustomDateStart")?.value ||
+          "";
+        const endValue =
+          document.getElementById("shippingManifestCustomDateEnd")?.value ||
+          "";
+        const today = getTaipeiToday();
+        const cells = [];
+
+        for (let index = 0; index < firstDay; index++) {
+          cells.push(
+            '<button type="button" class="range-calendar-day is-empty" tabindex="-1" aria-hidden="true"></button>',
+          );
+        }
+
+        for (let day = 1; day <= dayCount; day++) {
+          const dateValue = formatAdminDateFromParts(
+            shippingManifestCustomDateCalendarYear,
+            shippingManifestCustomDateCalendarMonth,
+            day,
+          );
+          const inRange =
+            startValue &&
+            endValue &&
+            dateValue >= startValue &&
+            dateValue <= endValue;
+          const classes = ["range-calendar-day"];
+          if (dateValue === today) classes.push("is-today");
+          if (inRange) classes.push("in-range");
+          if (dateValue === startValue) classes.push("range-start");
+          if (dateValue === endValue) classes.push("range-end");
+          cells.push(
+            `<button type="button" class="${classes.join(" ")}" data-date="${dateValue}" onclick="selectShippingManifestCustomDateRangeDay('${dateValue}')" aria-label="${dateValue}"><span>${day}</span></button>`,
+          );
+        }
+
+        grid.innerHTML = cells.join("");
+      }
+
+      function setShippingManifestCustomDateRange(start, end) {
+        const startInput = document.getElementById(
+          "shippingManifestCustomDateStart",
+        );
+        const endInput = document.getElementById(
+          "shippingManifestCustomDateEnd",
+        );
+        if (!startInput || !endInput) return;
+        startInput.value = start || "";
+        endInput.value = end || "";
+        renderShippingManifestCustomDateCalendar();
+      }
+
+      function selectShippingManifestCustomDateRangeDay(dateValue) {
+        shippingManifestDateMode = "custom";
+        document
+          .querySelectorAll(".shipping-print-date-row button")
+          .forEach((button) => {
+            button.classList.toggle(
+              "active",
+              button.dataset.shippingManifestMode === "custom",
+            );
+          });
+        document
+          .getElementById("shippingManifestCustomDateRange")
+          ?.classList.add("active");
+
+        const startInput = document.getElementById(
+          "shippingManifestCustomDateStart",
+        );
+        const start = startInput?.value || "";
+
+        if (!start || !shippingManifestCustomDateRangeSelectingEnd) {
+          shippingManifestCustomDateRangeSelectingEnd = true;
+          setShippingManifestCustomDateRange(dateValue, dateValue);
+        } else if (dateValue < start) {
+          shippingManifestCustomDateRangeSelectingEnd = false;
+          setShippingManifestCustomDateRange(dateValue, start);
+        } else {
+          shippingManifestCustomDateRangeSelectingEnd = false;
+          setShippingManifestCustomDateRange(start, dateValue);
+        }
+
+        renderShippingManifest();
+        loadCompleteShippingManifestOrders();
+      }
+
+      function moveShippingManifestCustomDateCalendarMonth(offset) {
+        setShippingManifestCustomCalendarMonth(
+          shippingManifestCustomDateCalendarYear,
+          shippingManifestCustomDateCalendarMonth + offset,
+        );
+        renderShippingManifestCustomDateCalendar();
+      }
+
       function getShippingManifestDateRange() {
         if (shippingManifestDateMode === "pending") {
           return { startDate: "", endDate: "" };
@@ -14591,20 +14721,14 @@
           return { startDate: tomorrow, endDate: tomorrow };
         }
         if (shippingManifestDateMode === "custom") {
-          const selectedDate = normalizeAdminDateValue(
-            document.getElementById("shippingManifestDateInput")?.value || "",
-          );
-          return { startDate: selectedDate, endDate: selectedDate };
-        }
-        if (shippingManifestDateMode === "range") {
           return {
             startDate: normalizeAdminDateValue(
-              document.getElementById("shippingManifestStartDateInput")
+              document.getElementById("shippingManifestCustomDateStart")
                 ?.value || "",
             ),
             endDate: normalizeAdminDateValue(
-              document.getElementById("shippingManifestEndDateInput")?.value ||
-                "",
+              document.getElementById("shippingManifestCustomDateEnd")
+                ?.value || "",
             ),
           };
         }
@@ -14616,7 +14740,6 @@
           "today",
           "tomorrow",
           "custom",
-          "range",
           "pending",
         ].includes(mode)
           ? mode
@@ -14627,28 +14750,19 @@
           .forEach((button) => button.classList.remove("active"));
         if (btnElement) btnElement.classList.add("active");
 
-        const dateInput = document.getElementById("shippingManifestDateInput");
-        if (
-          shippingManifestDateMode === "custom" &&
-          dateInput &&
-          !dateInput.value
-        ) {
-          dateInput.value = getTaipeiToday();
-        }
-        const rangePanel = document.getElementById("shippingManifestRange");
-        rangePanel?.classList.toggle(
-          "active",
-          shippingManifestDateMode === "range",
+        const customPanel = document.getElementById(
+          "shippingManifestCustomDateRange",
         );
-        if (shippingManifestDateMode === "range") {
-          const startInput = document.getElementById(
-            "shippingManifestStartDateInput",
-          );
-          const endInput = document.getElementById(
-            "shippingManifestEndDateInput",
-          );
-          if (startInput && !startInput.value) startInput.value = getTaipeiToday();
-          if (endInput && !endInput.value) endInput.value = getTaipeiToday();
+        customPanel?.classList.toggle(
+          "active",
+          shippingManifestDateMode === "custom",
+        );
+        if (shippingManifestDateMode === "custom") {
+          const seed = getShippingManifestCustomCalendarMonthSeed();
+          setShippingManifestCustomCalendarMonth(seed.year, seed.month);
+          renderShippingManifestCustomDateCalendar();
+        } else {
+          shippingManifestCustomDateRangeSelectingEnd = false;
         }
         renderShippingManifest();
         loadCompleteShippingManifestOrders();
@@ -15761,7 +15875,10 @@
         const remoteDataFailed =
           hasValidDateRange && !!shippingManifestRemoteError;
         syncEzcatPrepareButton();
-        const isRangeMode = shippingManifestDateMode === "range";
+        const isRangeMode =
+          !isPendingDateMode &&
+          hasValidDateRange &&
+          startDate !== endDate;
         const baseOrders = hasValidDateRange
           ? getShippingManifestBaseOrdersForRange(startDate, endDate)
           : [];
@@ -15823,7 +15940,7 @@
           empty.innerText =
             isRangeMode && startDate && endDate && startDate > endDate
               ? "開始日期不可晚於結束日期，請重新選擇。"
-              : "選擇今天、明天、指定日期或日期區間後顯示出貨總表。";
+              : "請用自訂日曆選取單日或日期區間。";
           tbody.innerHTML = "";
           if (printButton) printButton.disabled = true;
           return;
@@ -17768,50 +17885,13 @@
               ?.classList.remove("active");
             applyCurrentFilter();
           });
-        const shippingManifestDateInput = document.getElementById(
-          "shippingManifestDateInput",
+        const shippingManifestCalendarSeed =
+          getShippingManifestCustomCalendarMonthSeed();
+        setShippingManifestCustomCalendarMonth(
+          shippingManifestCalendarSeed.year,
+          shippingManifestCalendarSeed.month,
         );
-        if (shippingManifestDateInput) {
-          shippingManifestDateInput.value = getTaipeiToday();
-          shippingManifestDateInput.addEventListener("change", () => {
-            shippingManifestDateMode = "custom";
-            document
-              .querySelectorAll(".shipping-print-date-row button")
-              .forEach((button) => {
-                button.classList.toggle(
-                  "active",
-                  button.dataset.shippingManifestMode === "custom",
-                );
-              });
-            renderShippingManifest();
-            loadCompleteShippingManifestOrders();
-          });
-        }
-        const shippingManifestStartDateInput = document.getElementById(
-          "shippingManifestStartDateInput",
-        );
-        const shippingManifestEndDateInput = document.getElementById(
-          "shippingManifestEndDateInput",
-        );
-        const handleShippingManifestRangeChange = () => {
-          renderShippingManifest();
-          loadCompleteShippingManifestOrders();
-        };
-        if (shippingManifestStartDateInput) {
-          shippingManifestStartDateInput.value = getTaipeiToday();
-          shippingManifestStartDateInput.addEventListener(
-            "change",
-            handleShippingManifestRangeChange,
-          );
-        }
-        if (shippingManifestEndDateInput) {
-          shippingManifestEndDateInput.value = getTaipeiToday();
-          shippingManifestEndDateInput.addEventListener(
-            "change",
-            handleShippingManifestRangeChange,
-          );
-        }
-        handleShippingManifestRangeChange();
+        renderShippingManifestCustomDateCalendar();
 
         bindAdminWorkflowEvents();
         updateCurrentWeekFilterButtonLabel();

@@ -19,6 +19,118 @@ assert.match(
   /id="shippingManifestSenderFilterMode"[\s\S]*?value="include"[\s\S]*?value="exclude"/,
   "出貨總表必須提供只顯示及排除寄件人模式",
 );
+assert.match(
+  html,
+  /data-shipping-manifest-mode="today"[\s\S]*?data-shipping-manifest-mode="tomorrow"[\s\S]*?data-shipping-manifest-mode="custom"[\s\S]*?>\s*自訂\s*</,
+  "出貨總表日期列必須提供今天、明天與自訂頁籤",
+);
+assert.doesNotMatch(
+  html,
+  /shippingManifestDateInput|shippingManifestStartDateInput|shippingManifestEndDateInput|data-shipping-manifest-mode="range"/,
+  "舊的指定日期與獨立區間控制不得殘留",
+);
+for (const id of [
+  "shippingManifestCustomDateStart",
+  "shippingManifestCustomDateEnd",
+  "shippingManifestCustomDateCalendarGrid",
+]) {
+  assert.ok(html.includes(`id="${id}"`), `缺少自訂日期控制：${id}`);
+}
+const shippingSearchIndex = html.indexOf('id="shippingManifestSearchInput"');
+const shippingSortIndex = html.indexOf('id="shippingManifestSortMode"');
+const shippingSenderFilterIndex = html.indexOf(
+  'id="shippingManifestSenderFilterMode"',
+);
+assert.ok(
+  shippingSearchIndex >= 0 &&
+    shippingSearchIndex < shippingSortIndex &&
+    shippingSortIndex < shippingSenderFilterIndex,
+  "出貨總表排列方式必須緊接搜尋之後，並位於寄件人篩選之前",
+);
+
+const shippingDateRangeStart = html.indexOf(
+  "function getShippingManifestDateRange",
+);
+const shippingDateRangeEnd = html.indexOf(
+  "function setShippingManifestDateMode",
+  shippingDateRangeStart,
+);
+assert.ok(
+  shippingDateRangeStart >= 0 && shippingDateRangeEnd > shippingDateRangeStart,
+  "必須能擷取出貨總表日期範圍函式",
+);
+const shippingDateValues = {
+  shippingManifestCustomDateStart: { value: "2026-08-28" },
+  shippingManifestCustomDateEnd: { value: "2026-08-28" },
+};
+const shippingDateContext = vm.createContext({
+  shippingManifestDateMode: "custom",
+  document: {
+    getElementById: (id) => shippingDateValues[id] || null,
+  },
+  normalizeAdminDateValue: (value) => String(value || ""),
+  getTaipeiToday: () => "2026-08-28",
+  addDaysToDateString: () => "2026-08-29",
+});
+vm.runInContext(
+  html.slice(shippingDateRangeStart, shippingDateRangeEnd),
+  shippingDateContext,
+);
+assert.deepEqual(
+  { ...shippingDateContext.getShippingManifestDateRange() },
+  { startDate: "2026-08-28", endDate: "2026-08-28" },
+  "自訂日曆第一次選取必須可作為單日篩選",
+);
+shippingDateValues.shippingManifestCustomDateEnd.value = "2026-08-31";
+assert.deepEqual(
+  { ...shippingDateContext.getShippingManifestDateRange() },
+  { startDate: "2026-08-28", endDate: "2026-08-31" },
+  "自訂日曆第二次選取必須可形成日期區間",
+);
+
+const shippingDateSelectStart = html.indexOf(
+  "function setShippingManifestCustomDateRange",
+);
+const shippingDateSelectEnd = html.indexOf(
+  "function moveShippingManifestCustomDateCalendarMonth",
+  shippingDateSelectStart,
+);
+assert.ok(
+  shippingDateSelectStart >= 0 && shippingDateSelectEnd > shippingDateSelectStart,
+  "必須能擷取出貨總表日期選取函式",
+);
+const selectedShippingDates = {
+  shippingManifestCustomDateStart: { value: "" },
+  shippingManifestCustomDateEnd: { value: "" },
+};
+const shippingDateSelectContext = vm.createContext({
+  shippingManifestDateMode: "today",
+  shippingManifestCustomDateRangeSelectingEnd: false,
+  document: {
+    getElementById: (id) =>
+      selectedShippingDates[id] || {
+        classList: { add() {} },
+      },
+    querySelectorAll: () => [],
+  },
+  renderShippingManifestCustomDateCalendar() {},
+  renderShippingManifest() {},
+  loadCompleteShippingManifestOrders() {},
+});
+vm.runInContext(
+  html.slice(shippingDateSelectStart, shippingDateSelectEnd),
+  shippingDateSelectContext,
+);
+shippingDateSelectContext.selectShippingManifestCustomDateRangeDay(
+  "2026-08-28",
+);
+assert.equal(selectedShippingDates.shippingManifestCustomDateStart.value, "2026-08-28");
+assert.equal(selectedShippingDates.shippingManifestCustomDateEnd.value, "2026-08-28");
+shippingDateSelectContext.selectShippingManifestCustomDateRangeDay(
+  "2026-08-31",
+);
+assert.equal(selectedShippingDates.shippingManifestCustomDateStart.value, "2026-08-28");
+assert.equal(selectedShippingDates.shippingManifestCustomDateEnd.value, "2026-08-31");
 const helperStart = html.indexOf(
   "function normalizeShippingManifestSenderKey",
 );

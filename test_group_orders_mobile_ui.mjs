@@ -24,7 +24,14 @@ await page.addInitScript(() => {
     return original(type, listener, options);
   };
 });
-await page.setContent(source, { waitUntil: "domcontentloaded" });
+await page.route("https://admin.test/**", (route) =>
+  route.fulfill({
+    status: 200,
+    contentType: "text/html; charset=utf-8",
+    body: source,
+  }),
+);
+await page.goto("https://admin.test/", { waitUntil: "domcontentloaded" });
 await page.evaluate(() => {
   adminProductCatalog = [
     {
