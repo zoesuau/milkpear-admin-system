@@ -11882,6 +11882,9 @@
         const lockedDisplayItems = parseAdminDisplayItemsSummary(
           order.itemsSummary,
         );
+        const isGroupChildOrder = Boolean(
+          String(order?.groupOrderId || "").trim(),
+        );
         const productsEditable = !shippedOnly && Array.isArray(parsedItems);
         const lockedAttribute = shippedOnly ? "disabled" : "";
 
@@ -11924,6 +11927,11 @@
             </div>
             <div class="admin-content-section">
               <div class="admin-content-section-title">4. 商品內容</div>
+              ${
+                isGroupChildOrder && !shippedOnly
+                  ? `<div class="admin-content-lock-message">修改團體子單商品或數量時，系統會同步更新母單的已分配與尚餘數量，不會再次扣除一般庫存。</div>`
+                  : ""
+              }
               ${
                 Array.isArray(parsedItems)
                   ? `
@@ -12129,15 +12137,24 @@
 
       function adminContentErrorMessage(errorCode, shortages = []) {
         if (
-          errorCode === "PRODUCT_STOCK_INSUFFICIENT" &&
+          [
+            "PRODUCT_STOCK_INSUFFICIENT",
+            "GROUP_RESERVED_QUANTITY_INSUFFICIENT",
+          ].includes(errorCode) &&
           Array.isArray(shortages) &&
           shortages.length
         ) {
           const lines = shortages.map((item) => {
             const name = String(item?.grade || item?.code || "商品");
-            return `${name} 目前可追加 ${Number(item?.available) || 0} 盒，本次欲追加 ${Number(item?.requested) || 0} 盒。`;
+            return errorCode === "GROUP_RESERVED_QUANTITY_INSUFFICIENT"
+              ? `${name} 此子單目前最多可調整為 ${Number(item?.available) || 0} 盒，本次輸入 ${Number(item?.requested) || 0} 盒。`
+              : `${name} 目前可追加 ${Number(item?.available) || 0} 盒，本次欲追加 ${Number(item?.requested) || 0} 盒。`;
           });
-          return `庫存不足，訂單尚未修改。\n${lines.join("\n")}`;
+          const title =
+            errorCode === "GROUP_RESERVED_QUANTITY_INSUFFICIENT"
+              ? "超過母單尚餘數量，子單尚未修改。"
+              : "庫存不足，訂單尚未修改。";
+          return `${title}\n${lines.join("\n")}`;
         }
         const messages = {
           ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入 LINE。",
@@ -12147,6 +12164,12 @@
           ITEMS_INVALID: "商品或數量不正確，請重新確認。",
           FINAL_AMOUNT_INVALID: "優惠金額不可大於原始應收金額。",
           ORDER_CONTENT_UPDATE_BUSY: "系統忙碌，請稍後再試。",
+          GROUP_CHILD_ITEMS_LOCKED:
+            "團體子單商品與數量已鎖定；若數量錯誤，請取消後回團體訂單重新新增。",
+          GROUP_CHILD_UPDATE_FAILED:
+            "團體子單與母單分配同步失敗，本次修改已取消，請稍後再試。",
+          GROUP_ORDER_CLOSED:
+            "母單已結束，不能再修改子單商品或數量。",
           PRODUCT_STOCK_INSUFFICIENT:
             "庫存不足，訂單尚未修改，請重新讀取商品庫存。",
           ORDER_INVENTORY_UPDATE_FAILED:
@@ -17829,6 +17852,7 @@
       async function submitGroupChild(event) {
         event.preventDefault();
         if (adminGroupOrderSubmitting) return;
+        const submitButton = document.getElementById("group-child-submit");
         const items = readGroupProductRows("child");
         if (!items) return setGroupOrderFeedback("商品不可重複，數量須為正整數。", true, "group-child-modal-feedback");
         const payload = {
@@ -17852,8 +17876,25 @@
           payload.requestKey = requestContext.requestKey;
           storePendingAdminGroupCreateRequest(payload);
           adminGroupOrderSubmitting = true;
+          if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.innerText = "建立中…";
+          }
+          setGroupOrderFeedback(
+            "正在建立收件子單，完成前不需要重複按送出。",
+            false,
+            "group-child-modal-feedback",
+          );
           const result = await postGroupOrderAction(payload);
-          adminGroupOrders = result.groups || [];
+          if (Array.isArray(result.groups)) {
+            adminGroupOrders = result.groups;
+          } else if (result.group?.groupOrderId) {
+            const groupIndex = adminGroupOrders.findIndex(
+              (group) => group.groupOrderId === result.group.groupOrderId,
+            );
+            if (groupIndex >= 0) adminGroupOrders[groupIndex] = result.group;
+            else adminGroupOrders.unshift(result.group);
+          }
           renderAdminGroupOrders();
           if (result.order) applySingleOrderResponse(result.order, null, { refreshInBackground: true });
           adminGroupOrderSubmitting = false;
@@ -17869,7 +17910,13 @@
               ? "收件子單結果尚未確認。請保留原內容再次送出；系統會沿用同一識別碼，不會建立第二張子單。"
               : "收件子單建立失敗，後端已確認未建立；請修正後再試。";
           setGroupOrderFeedback(message, true, "group-child-modal-feedback");
-        } finally { adminGroupOrderSubmitting = false; }
+        } finally {
+          adminGroupOrderSubmitting = false;
+          if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.innerText = "建立收件子單";
+          }
+        }
       }
 
       async function batchMarkGroupOrderPaid(groupOrderId, count) {
