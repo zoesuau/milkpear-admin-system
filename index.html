@@ -15212,6 +15212,11 @@
           orderStatus: manifest.orderStatus,
           adminNote: manifest.adminNote,
           trackingNo: manifest.trackingNo,
+          packageSpecs: Array.isArray(candidate?.packageSpecs)
+            ? candidate.packageSpecs.slice()
+            : Array.isArray(manifest.packageSpecs)
+              ? manifest.packageSpecs.slice()
+              : [],
         };
       }
 
@@ -15342,6 +15347,51 @@
         return { lines, reliable: true, items: parsed };
       }
 
+      function getShippingManifestOrderPackageSpecs(order) {
+        const parsedItems = parseShippingManifestItems(order?.itemsSummary);
+        if (!parsedItems.reliable) return null;
+
+        let generalBoxes = 0;
+        let twoPieceBoxes = 0;
+        for (const item of parsedItems.items) {
+          const productId = getShippingManifestProductId(
+            item.label,
+            item.unitPrice,
+          );
+          const product = adminProductCatalog.find(
+            (entry) => String(entry?.id || "").trim() === productId,
+          );
+          if (!product) return null;
+          if (normalizeAdminProductCategory(product.category) === "兩粒禮盒") {
+            twoPieceBoxes += item.qty;
+          } else {
+            generalBoxes += item.qty;
+          }
+        }
+
+        const parsedPhysicalBoxes = generalBoxes + twoPieceBoxes;
+        const storedPhysicalBoxes = Number(
+          String(order?.totalBoxes || "").trim(),
+        );
+        if (
+          twoPieceBoxes % 2 !== 0 ||
+          (Number.isFinite(storedPhysicalBoxes) &&
+            storedPhysicalBoxes > 0 &&
+            storedPhysicalBoxes !== parsedPhysicalBoxes)
+        ) {
+          return null;
+        }
+
+        const packageSpecs = [];
+        let remainingShippingUnits = generalBoxes + twoPieceBoxes / 2;
+        while (remainingShippingUnits > 0) {
+          const unitsInPackage = Math.min(3, remainingShippingUnits);
+          packageSpecs.push(unitsInPackage === 1 ? "2" : "3");
+          remainingShippingUnits -= unitsInPackage;
+        }
+        return packageSpecs.length ? packageSpecs : null;
+      }
+
       function buildShippingManifestStats(orders) {
         const productTotals = new Map();
         let allItemsReliable = orders.length > 0;
@@ -15388,19 +15438,16 @@
             storedBoxTotalReliable = false;
           }
 
-          const orderBoxTotal = parsedItems.reliable
-            ? parsedItems.items.reduce((sum, item) => sum + item.qty, 0)
-            : Number.isFinite(storedBoxes) && storedBoxes >= 0
-              ? storedBoxes
-              : null;
-          if (orderBoxTotal === null) {
+          const packageSpecs = getShippingManifestOrderPackageSpecs(order);
+          if (!packageSpecs) {
             packageCountsReliable = false;
           } else {
-            const full120cmPackages = Math.floor(orderBoxTotal / 3);
-            const remainder = orderBoxTotal % 3;
-            package120cmTotal +=
-              full120cmPackages + (remainder === 2 ? 1 : 0);
-            package90cmTotal += remainder === 1 ? 1 : 0;
+            package120cmTotal += packageSpecs.filter(
+              (spec) => String(spec) === "3",
+            ).length;
+            package90cmTotal += packageSpecs.filter(
+              (spec) => String(spec) === "2",
+            ).length;
           }
         });
 
@@ -15793,17 +15840,13 @@
       }
 
       function buildShippingTrackingNumberSlotsHtml(order) {
-        const boxCount = getShippingManifestOrderBoxCount(order);
         const trackingNumbers = getActiveShippingTrackingNumbersFromStoredValue(
           order?.trackingNo,
         );
-        const packageSizes = [];
-        let remainingBoxes = boxCount;
-        while (remainingBoxes > 0) {
-          const boxesInPackage = Math.min(3, remainingBoxes);
-          packageSizes.push(boxesInPackage === 1 ? "90cm" : "120cm");
-          remainingBoxes -= boxesInPackage;
-        }
+        const packageSpecs = getShippingManifestOrderPackageSpecs(order) || [];
+        const packageSizes = packageSpecs.map((spec) =>
+          String(spec) === "2" ? "90cm" : "120cm",
+        );
         const slotCount = Math.max(
           1,
           packageSizes.length,
@@ -16201,20 +16244,10 @@
         const specs = Array.isArray(candidate?.packageSpecs)
           ? candidate.packageSpecs
           : [];
-        const totalBoxes = Number(
-          String(candidate?.fields?.totalBoxes || "").trim(),
-        );
-        let remainingBoxes =
-          Number.isInteger(totalBoxes) && totalBoxes > 0
-            ? totalBoxes
-            : null;
         return specs.map((spec, index) => {
-          const boxesInPackage =
-            remainingBoxes === null ? null : Math.min(3, remainingBoxes);
-          if (remainingBoxes !== null) remainingBoxes -= boxesInPackage;
           const packageText = `包裹${index + 1}：${
-            boxesInPackage === null ? "" : `${boxesInPackage}盒｜`
-          }${String(spec) === "2" ? "90cm" : "120cm"}`;
+            String(spec) === "2" ? "90cm" : "120cm"
+          }`;
           const codText =
             index === 0 && candidate.codAmount !== ""
               ? `代收 $${formatAdminMoney(candidate.codAmount)}`
