@@ -6415,6 +6415,7 @@
       let adminOrderSearchRequestId = 0;
       let adminBackgroundRefreshTimer = null;
       let adminBackgroundRefreshRequestId = 0;
+      const pendingAdminSnapshotOrderOverlays = new Map();
       let adminCreateOrderSubmitting = false;
       let adminCreateOrderChecking = false;
       let adminGroupOrders = [];
@@ -10454,6 +10455,9 @@
         }
 
         try {
+          const visibleAdminOrders = mergePendingAdminSnapshotOrderOverlays(
+            adminOrders,
+          );
           const readMeta = adminOrders.adminReadMeta || {};
           adminOrderReadMeta = {
             serverFiltered: readMeta.serverFiltered === true,
@@ -10476,8 +10480,8 @@
             },
           };
           adminCurrentPage = adminOrderReadMeta.page;
-          latestAdminOrders = adminOrders.slice();
-          if (adminOrders.length === 0) {
+          latestAdminOrders = visibleAdminOrders;
+          if (visibleAdminOrders.length === 0) {
             cardsContainer.innerHTML = `
               <div class="status-msg">
                 目前沒有正式訂單
@@ -10574,11 +10578,69 @@
         restoreState = null,
         options = {},
       ) {
+        if (options.preserveUntilSnapshot === true) {
+          preserveAdminOrderUntilSnapshot(order);
+        }
         if (!replaceAdminOrderLocally(order, restoreState)) return false;
         if (options.refreshInBackground === true) {
           refreshAdminOrdersInBackground();
         }
         return true;
+      }
+
+      function getAdminSnapshotOverlayComparableFields() {
+        return [
+          "orderStatus",
+          "itemsSummary",
+          "paymentStatus",
+          "expectedShippingDate",
+          "lastUpdatedAt",
+          "notificationStatus",
+          "lastNotificationType",
+        ];
+      }
+
+      function isAdminSnapshotOrderCurrent(sourceOrder, pendingOrder) {
+        if (!sourceOrder || !pendingOrder) return false;
+        return getAdminSnapshotOverlayComparableFields().every((field) => {
+          const pendingValue = String(pendingOrder?.[field] ?? "").trim();
+          if (!pendingValue) return true;
+          return String(sourceOrder?.[field] ?? "").trim() === pendingValue;
+        });
+      }
+
+      function preserveAdminOrderUntilSnapshot(order) {
+        const orderNo = String(order?.orderNo || "").trim();
+        if (!orderNo) return false;
+        pendingAdminSnapshotOrderOverlays.set(orderNo, { ...order });
+        return true;
+      }
+
+      function mergePendingAdminSnapshotOrderOverlays(adminOrders) {
+        const visibleOrders = Array.isArray(adminOrders)
+          ? adminOrders.slice()
+          : [];
+        pendingAdminSnapshotOrderOverlays.forEach((pendingOrder, orderNo) => {
+          const index = visibleOrders.findIndex(
+            (order) => String(order?.orderNo || "").trim() === orderNo,
+          );
+          if (
+            index >= 0 &&
+            isAdminSnapshotOrderCurrent(visibleOrders[index], pendingOrder)
+          ) {
+            pendingAdminSnapshotOrderOverlays.delete(orderNo);
+            return;
+          }
+          if (index >= 0) {
+            visibleOrders[index] = {
+              ...visibleOrders[index],
+              ...pendingOrder,
+            };
+          } else {
+            visibleOrders.unshift({ ...pendingOrder });
+          }
+        });
+        return visibleOrders;
       }
 
       const ADMIN_PAYMENT_STATE_OPTIONS = [
@@ -11557,6 +11619,133 @@
         return messages[notificationStatus] || "訂單已取消。";
       }
 
+      async function fetchAdminOrderByNoFromGas(orderNo) {
+        const normalizedOrderNo = String(orderNo || "").trim();
+        const adminSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+        if (!normalizedOrderNo || !adminSessionToken) {
+          throw new Error("ADMIN_SESSION_REQUIRED");
+        }
+
+        const response = await fetchWithTimeout(
+          GAS_ORDERS_API_URL,
+          {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({
+              action: "adminReadOrders",
+              adminSessionToken,
+              query: normalizedOrderNo,
+              requestId: createAdminDiagnosticRequestId(
+                "adminCancelOrderReadback",
+              ),
+            }),
+          },
+          ADMIN_READ_ORDERS_TIMEOUT_MS,
+        );
+        const payload = await response.json();
+        if (payload?.error === "ADMIN_SESSION_REQUIRED") {
+          throw new Error("ADMIN_SESSION_REQUIRED");
+        }
+        if (
+          !response.ok ||
+          payload?.ok !== true ||
+          payload?.action !== "adminReadOrders" ||
+          !Array.isArray(payload.orders)
+        ) {
+          throw new Error("ADMIN_CANCEL_READBACK_FAILED");
+        }
+
+        const exactMatches = payload.orders.filter(
+          (order) =>
+            String(order?.orderNo || "").trim() === normalizedOrderNo,
+        );
+        if (exactMatches.length > 1) {
+          throw new Error("ORDER_NO_NOT_UNIQUE");
+        }
+        return exactMatches[0] || null;
+      }
+
+      function finishConfirmedAdminCancellation(
+        orderNo,
+        sourceOrder,
+        notificationStatus,
+        notificationWarning,
+        feedback,
+      ) {
+        const orderNotificationStatus = String(
+          notificationStatus || sourceOrder?.notificationStatus || "",
+        ).trim();
+        const resolvedNotificationStatus =
+          CANCELLATION_NOTIFICATION_STATUSES.has(orderNotificationStatus)
+            ? orderNotificationStatus
+            : "review_required";
+        const cancelledOrder = {
+          ...getLatestAdminOrder(orderNo),
+          ...(sourceOrder || {}),
+          orderNo,
+          orderStatus: "已取消",
+          changedFields: "",
+          notificationStatus: resolvedNotificationStatus,
+          lastNotificationType:
+            String(sourceOrder?.lastNotificationType || "").trim() ||
+            "cancellation_notice",
+        };
+
+        if (
+          !applySingleOrderResponse(cancelledOrder, null, {
+            preserveUntilSnapshot: true,
+          })
+        ) {
+          adminCancelOrderSetSaving(false);
+          if (feedback) {
+            feedback.classList.add("is-error");
+            feedback.innerText =
+              "訂單已取消，但畫面更新失敗，請重新整理確認最新資料。";
+          }
+          return false;
+        }
+
+        adminCancelOrderSetSaving(false);
+        closeAdminCancelOrderModal();
+        if (
+          notificationWarning ||
+          resolvedNotificationStatus !== "sent"
+        ) {
+          window.alert(
+            adminCancelOrderGetResultMessage(resolvedNotificationStatus),
+          );
+        }
+        return true;
+      }
+
+      async function recoverConfirmedAdminCancellation(orderNo, feedback) {
+        if (feedback) {
+          feedback.classList.remove("is-error");
+          feedback.innerText = "取消結果確認中，請勿再次送出…";
+        }
+        try {
+          const recoveredOrder = await fetchAdminOrderByNoFromGas(orderNo);
+          if (String(recoveredOrder?.orderStatus || "").trim() !== "已取消") {
+            return false;
+          }
+          return finishConfirmedAdminCancellation(
+            orderNo,
+            recoveredOrder,
+            recoveredOrder.notificationStatus,
+            "CANCELLATION_RESULT_RECOVERED",
+            feedback,
+          );
+        } catch (error) {
+          if (String(error?.message || "") === "ADMIN_SESSION_REQUIRED") {
+            sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+            showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+          }
+          return false;
+        }
+      }
+
       async function adminCancelOrderSubmit() {
         if (adminCancelOrderSubmitting || !adminCancelOrderContext) return;
 
@@ -11591,20 +11780,26 @@
         }
 
         try {
-          const response = await fetch(GAS_ORDERS_API_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "text/plain;charset=utf-8",
+          const response = await fetchWithTimeout(
+            GAS_ORDERS_API_URL,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "text/plain;charset=utf-8",
+              },
+              body: JSON.stringify({
+                action: "adminCancelOrder",
+                adminSessionToken,
+                orderNo,
+              }),
             },
-            body: JSON.stringify({
-              action: "adminCancelOrder",
-              adminSessionToken,
-              orderNo,
-            }),
-          });
+            ADMIN_READ_ORDERS_TIMEOUT_MS,
+          );
           const payload = await response.json();
           const notificationStatus = String(
-            payload?.notificationStatus || "",
+            payload?.notificationStatus ||
+              payload?.order?.notificationStatus ||
+              "",
           ).trim();
           const notificationWarning = String(
             payload?.notificationWarning || "",
@@ -11616,15 +11811,15 @@
             payload.ok !== true ||
             payload.action !== "adminCancelOrder" ||
             payload.orderNo !== orderNo ||
-            payload.orderStatus !== "已取消" ||
-            !CANCELLATION_NOTIFICATION_STATUSES.has(notificationStatus) ||
-            String(payload?.lastNotificationType || "").trim() !==
-              "cancellation_notice"
+            payload.orderStatus !== "已取消"
           ) {
             const errorCode = String(payload?.errorCode || "");
             if (errorCode === "ADMIN_SESSION_REQUIRED") {
               sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
               showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+            }
+            if (await recoverConfirmedAdminCancellation(orderNo, feedback)) {
+              return;
             }
             adminCancelOrderSetSaving(false);
             if (feedback) {
@@ -11634,35 +11829,22 @@
             return;
           }
 
-          const resultMessage =
-            adminCancelOrderGetResultMessage(notificationStatus);
-          const cancelledOrder = payload.order || {
-            ...getLatestAdminOrder(orderNo),
+          finishConfirmedAdminCancellation(
             orderNo,
-            orderStatus: "已取消",
-            changedFields: "",
+            payload.order,
             notificationStatus,
-            lastNotificationType: "cancellation_notice",
-          };
-          if (!applySingleOrderResponse(cancelledOrder)) {
-            adminCancelOrderSetSaving(false);
-            if (feedback) {
-              feedback.classList.add("is-error");
-              feedback.innerText =
-                "訂單已取消，但畫面更新失敗，請重新整理確認最新資料。";
-            }
+            notificationWarning,
+            feedback,
+          );
+        } catch (error) {
+          if (await recoverConfirmedAdminCancellation(orderNo, feedback)) {
             return;
           }
           adminCancelOrderSetSaving(false);
-          closeAdminCancelOrderModal();
-          if (notificationWarning || notificationStatus !== "sent") {
-            window.alert(resultMessage);
-          }
-        } catch (error) {
-          adminCancelOrderSetSaving(false);
           if (feedback) {
             feedback.classList.add("is-error");
-            feedback.innerText = "取消失敗，請重新讀取後再試。";
+            feedback.innerText =
+              "取消結果尚未確認，請先重新讀取訂單，不要再次送出取消。";
           }
         }
       }
@@ -17896,11 +18078,17 @@
             else adminGroupOrders.unshift(result.group);
           }
           renderAdminGroupOrders();
-          if (result.order) applySingleOrderResponse(result.order, null, { refreshInBackground: true });
+          if (result.order) {
+            applySingleOrderResponse(result.order, null, {
+              preserveUntilSnapshot: true,
+            });
+          }
           adminGroupOrderSubmitting = false;
           closeGroupChildModal();
           clearPendingAdminGroupCreateRequest();
-          setGroupOrderFeedback(`收件子單 ${result.orderNo} 已建立；庫存沒有重複扣除。`);
+          setGroupOrderFeedback(
+            `收件子單 ${result.orderNo} 已建立並加入訂單作業；庫存沒有重複扣除。`,
+          );
         } catch (error) {
           const preservePending = shouldPreservePendingAdminGroupCreateRequest(error);
           if (!preservePending) clearPendingAdminGroupCreateRequest();
