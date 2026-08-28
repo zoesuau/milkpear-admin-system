@@ -9050,6 +9050,7 @@
           productName: getAdminProductDisplayName(product),
           weight: "",
           count: product.count,
+          category: normalizeAdminProductCategory(product.category),
           unitPrice: product.price,
           qty,
         };
@@ -9062,20 +9063,37 @@
         );
       }
 
-      function calculateShippingFeeByAddress(totalBoxes, address) {
-        if (!totalBoxes || totalBoxes <= 0) return 0;
+      function calculateShippingFeeByAddress(shippingUnits, address) {
+        if (!shippingUnits || shippingUnits <= 0) return 0;
+
+        const fullGroups = Math.floor(shippingUnits / 3);
+        const remainder = shippingUnits - fullGroups * 3;
 
         if (isOffshoreShippingAddress(address)) {
-          const fullGroups = Math.floor(totalBoxes / 3);
-          const remainder = totalBoxes % 3;
-          const remainderFee = remainder === 1 ? 300 : remainder === 2 ? 350 : 0;
+          const remainderFee =
+            remainder === 0 ? 0 : remainder <= 1 ? 300 : 350;
           return fullGroups * 400 + remainderFee;
         }
 
-        const remainder = totalBoxes % 3;
-        if (remainder === 1) return 150;
-        if (remainder === 2) return 250;
-        return 0;
+        if (remainder === 0) return 0;
+        return remainder <= 1 ? 150 : 250;
+      }
+
+      function hasIncompleteAdminTwoPieceSelection(items) {
+        const twoPieceBoxes = (Array.isArray(items) ? items : []).reduce(
+          (sum, item) => {
+            const product = getProductByCode(item?.code || item?.productCode);
+            return (
+              sum +
+              (product &&
+              normalizeAdminProductCategory(product.category) === "兩粒禮盒"
+                ? Number(item?.qty || 0)
+                : 0)
+            );
+          },
+          0,
+        );
+        return twoPieceBoxes > 0 && twoPieceBoxes % 2 !== 0;
       }
 
       function calculateOrderAmount(
@@ -9125,7 +9143,18 @@
           return sum + item.qty;
         }, 0);
 
-        const shippingFee = calculateShippingFeeByAddress(totalBoxes, address);
+        const shippingUnits = normalizedItems.reduce((sum, item) => {
+          return (
+            sum +
+            (normalizeAdminProductCategory(item.category) === "兩粒禮盒"
+              ? item.qty / 2
+              : item.qty)
+          );
+        }, 0);
+        const shippingFee = calculateShippingFeeByAddress(
+          shippingUnits,
+          address,
+        );
         const codFee =
           paymentMethod === "貨到付款" ||
           paymentMethod === "銀行轉帳＋追加款貨到付款"
@@ -12221,6 +12250,15 @@
               feedback.className = "admin-content-feedback is-error";
               feedback.innerText =
                 "商品至少一列，SKU 不可重複，數量須為正整數。";
+              return;
+            }
+            if (
+              String(order.orderSource || "").trim() !== "管理端" &&
+              hasIncompleteAdminTwoPieceSelection(items)
+            ) {
+              feedback.className = "admin-content-feedback is-error";
+              feedback.innerText =
+                "LINE 客戶訂單的兩粒裝合計必須為偶數；只有管理端建立的訂單可使用奇數盒。";
               return;
             }
             const currentItems = parseAdminEditableItemsSummary(
@@ -15373,8 +15411,10 @@
         const storedPhysicalBoxes = Number(
           String(order?.totalBoxes || "").trim(),
         );
+        const isAdminCreatedOrder =
+          String(order?.orderSource || "").trim() === "管理端";
         if (
-          twoPieceBoxes % 2 !== 0 ||
+          (!isAdminCreatedOrder && twoPieceBoxes % 2 !== 0) ||
           (Number.isFinite(storedPhysicalBoxes) &&
             storedPhysicalBoxes > 0 &&
             storedPhysicalBoxes !== parsedPhysicalBoxes)
@@ -15383,7 +15423,9 @@
         }
 
         const packageSpecs = [];
-        let remainingShippingUnits = generalBoxes + twoPieceBoxes / 2;
+        let remainingShippingUnits = Math.ceil(
+          generalBoxes + twoPieceBoxes / 2,
+        );
         while (remainingShippingUnits > 0) {
           const unitsInPackage = Math.min(3, remainingShippingUnits);
           packageSpecs.push(unitsInPackage === 1 ? "2" : "3");

@@ -90,6 +90,36 @@ assert.equal(
   "出貨總表：兩粒裝奇數盒不得產生推測尺寸",
 );
 
+for (const [physicalBoxes, expectedSpecs] of [
+  [1, ["2"]],
+  [3, ["3"]],
+  [5, ["3"]],
+]) {
+  assert.deepEqual(
+    Array.from(
+      context.getPackageSpecs({
+        ...order(
+          `蔗香梨 30 A｜2顆（$600 × ${physicalBoxes}盒）`,
+          physicalBoxes,
+        ),
+        orderSource: "管理端",
+      }),
+    ),
+    expectedSpecs,
+    `管理端兩粒裝 ${physicalBoxes} 盒必須顯示正確包裹規格`,
+  );
+}
+
+const adminOddStats = context.buildStats([
+  {
+    ...order("蔗香梨 30 A｜2顆（$600 × 5盒）", 5),
+    orderSource: "管理端",
+  },
+]);
+assert.equal(adminOddStats.boxTotal, 5);
+assert.equal(adminOddStats.package120cmTotal, 1);
+assert.equal(adminOddStats.package90cmTotal, 0);
+
 const stats = context.buildStats([
   order("蔗香梨 30 A｜2顆（$600 × 6盒）", 6),
 ]);
