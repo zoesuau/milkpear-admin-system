@@ -6048,9 +6048,9 @@
             <div class="form-group"><label>寄件人姓名</label><input id="group-edit-buyer-name" class="form-control" required></div>
             <div class="form-group"><label>寄件人電話</label><input id="group-edit-buyer-phone" type="tel" class="form-control" required></div>
             <div class="admin-content-section-title">未分配商品與數量</div>
-            <div class="group-order-meta">已分配給子單的品項與數量會鎖定，不能在母單直接更換。</div>
+            <div class="group-order-meta" id="group-edit-quantity-help">已分配給子單的品項與數量會鎖定，不能在母單直接更換。</div>
             <div id="group-edit-product-list" class="product-edit-list"></div>
-            <button type="button" class="btn-add-product" onclick="addGroupProductRow('edit')">＋ 新增未分配品項</button>
+            <button type="button" class="btn-add-product" id="group-edit-add-product" onclick="addGroupProductRow('edit')">＋ 新增未分配品項</button>
             <div id="group-edit-modal-feedback" class="admin-content-feedback"></div>
           </form>
         </div>
@@ -17856,7 +17856,7 @@
         }
       }
 
-      function addGroupProductRow(mode, code = "", qty = 1, allocatedQty = 0) {
+      function addGroupProductRow(mode, code = "", qty = 1, allocatedQty = 0, quantityLocked = false) {
         if (!adminProductsReady) return;
         const listId = mode === "parent"
           ? "group-parent-product-list"
@@ -17867,6 +17867,7 @@
         if (!list) return;
         const selectedCode = code || getDefaultAdminProduct()?.code || "";
         const isLocked = mode === "edit" && allocatedQty > 0;
+        const quantityLockedAttribute = quantityLocked ? "disabled" : "";
         const selectedProduct = getProductByCode(selectedCode);
         const fixedSummary = selectedProduct
           ? `${selectedProduct.variety || ""} ${selectedProduct.grade || selectedProduct.code || ""}｜${selectedProduct.category || ""}`
@@ -17880,11 +17881,11 @@
                 <span>${escapeHtml(fixedSummary)}</span>
               </div>
               <div class="product-edit-row group-edit-input-row">
-                <select class="edit-select group-product-code">${buildAdminProductOptionsHtml(selectedCode)}</select>
+                <select class="edit-select group-product-code" ${quantityLockedAttribute}>${buildAdminProductOptionsHtml(selectedCode)}</select>
                 <span>×</span>
-                <input type="number" class="edit-qty group-product-qty" min="0" value="${escapeHtml(editableQty)}">
-                <span class="group-order-meta">可修改未分配數量</span>
-                <button type="button" class="btn-modal-cancel" ${allocatedQty > 0 ? "disabled" : ""} onclick="this.closest('.group-edit-item').remove()">刪除</button>
+                <input type="number" class="edit-qty group-product-qty" min="0" value="${escapeHtml(editableQty)}" ${quantityLockedAttribute}>
+                <span class="group-order-meta">${quantityLocked ? "母單已付款，數量已鎖定" : "可修改未分配數量"}</span>
+                <button type="button" class="btn-modal-cancel" ${allocatedQty > 0 || quantityLocked ? "disabled" : ""} onclick="this.closest('.group-edit-item').remove()">刪除</button>
               </div>
             </div>`);
           return;
@@ -17954,10 +17955,18 @@
         document.getElementById("group-edit-version").value = group.version || "";
         document.getElementById("group-edit-buyer-name").value = group.buyerName || "";
         document.getElementById("group-edit-buyer-phone").value = group.buyerPhone || "";
+        const groupIsPaid = (group.children || []).some((child) => !child.cancelled) &&
+          (group.children || []).filter((child) => !child.cancelled).every((child) => child.paymentStatus === "已付款");
+        const quantityHelp = document.getElementById("group-edit-quantity-help");
+        if (quantityHelp) quantityHelp.innerText = groupIsPaid
+          ? "母單已付款，原訂商品與數量已鎖定；如需調整請先處理付款。"
+          : "已分配給子單的品項與數量會鎖定，不能在母單直接更換。";
+        const addProductButton = document.getElementById("group-edit-add-product");
+        if (addProductButton) addProductButton.disabled = groupIsPaid;
         const list = document.getElementById("group-edit-product-list");
         if (list) {
           list.innerHTML = "";
-          (group.items || []).forEach((item) => addGroupProductRow("edit", item.code, item.qty, item.allocatedQty));
+          (group.items || []).forEach((item) => addGroupProductRow("edit", item.code, item.qty, item.allocatedQty, groupIsPaid));
         }
         setGroupOrderFeedback("", false, "group-edit-modal-feedback");
         document.getElementById("groupOrderEditModal")?.classList.add("open");
@@ -17996,6 +18005,7 @@
         } catch (error) {
           const errorMessages = {
             GROUP_ALLOCATED_QUANTITY_LOCKED: "修改數量不可低於已分配給子單的數量。",
+            GROUP_PAID_QUANTITY_LOCKED: "母單已付款，不能變動原訂商品或數量；如需調整請先處理付款。",
             PRODUCT_STOCK_INSUFFICIENT: "增加數量時庫存不足，母單未修改。",
             GROUP_ORDER_VERSION_CONFLICT: "母單資料已更新，請重新整理後再修改。",
             GROUP_ORDER_CLOSED: "母單已結束，無法修改。",
