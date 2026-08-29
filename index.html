@@ -3974,9 +3974,9 @@
       }
 
       .group-order-panel {
-        max-width: 500px;
+        max-width: 920px;
         margin: 0 auto;
-        padding: 14px;
+        padding: 18px;
         background: white;
         border-radius: 16px;
         box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
@@ -3993,7 +3993,7 @@
 
       .group-order-card {
         margin-top: 12px;
-        padding: 14px;
+        padding: 18px 20px;
         border: 1px solid #dbe5dd;
         border-radius: 14px;
         background: #fffef0;
@@ -4001,12 +4001,35 @@
 
       .group-order-card h3 { margin: 0; color: #203047; }
       .group-order-card-title { min-width: 0; }
+      .group-order-card-title .state-badge { display: inline-block; margin-top: 7px; }
       .group-order-meta { margin-top: 6px; color: #64748b; font-size: 13px; }
-      .group-order-progress { margin: 10px 0; font-weight: 700; color: #2f6847; }
-      .group-order-items, .group-order-children { margin: 8px 0; font-size: 14px; line-height: 1.6; }
-      .group-order-actions { flex-wrap: wrap; justify-content: flex-start; }
-      .group-order-actions button { flex: 1 1 130px; }
+      .group-order-meta-line { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+      .group-order-progress { margin: 14px 0 10px; font-weight: 700; color: #2f6847; font-size: 18px; }
+      .group-order-summary-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin: 10px 0; }
+      .group-order-summary-box { padding: 10px 12px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; }
+      .group-order-summary-label { color: #64748b; font-size: 12px; margin-bottom: 4px; }
+      .group-order-items { margin: 0; font-size: 14px; line-height: 1.6; }
+      .group-order-item-line { display: flex; justify-content: space-between; gap: 12px; }
+      .group-order-children { margin: 12px 0 0; font-size: 14px; line-height: 1.6; }
+      .group-order-children details { border-top: 1px solid #e2e8f0; padding-top: 10px; }
+      .group-order-children summary { cursor: pointer; color: #334155; font-weight: 700; }
+      .group-order-child-list { display: grid; gap: 6px; margin-top: 8px; }
+      .group-order-child-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; background: #fff; border: 1px solid #edf1ee; border-radius: 8px; }
+      .group-order-child-info { min-width: 0; }
+      .group-order-child-name { font-weight: 700; color: #203047; }
+      .group-order-child-status { color: #64748b; font-size: 13px; }
+      .group-order-child-row button { flex: 0 0 auto; padding: 6px 10px; font-size: 13px; }
+      .group-order-actions { flex-wrap: wrap; justify-content: flex-start; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
+      .group-order-actions button { flex: 1 1 170px; }
       .group-order-empty { padding: 28px 10px; text-align: center; color: #64748b; }
+      @media (max-width: 640px) {
+        .group-order-panel { padding: 10px; }
+        .group-order-card { padding: 14px; }
+        .group-order-card-header { align-items: flex-start; }
+        .group-order-summary-grid { grid-template-columns: 1fr; }
+        .group-order-child-row { align-items: flex-start; flex-direction: column; }
+        .group-order-child-row button { width: 100%; }
+      }
       .group-edit-fixed-row {
         align-items: center;
         background: #f8fafc;
@@ -17781,8 +17804,18 @@
             const codButton = !child.cancelled && ["貨到付款", "銀行轉帳＋追加款貨到付款"].includes(child.paymentMethod)
               ? `<button type="button" class="btn-modal-cancel" onclick="setGroupCodAmount('${escapeHtml(group.groupOrderId)}','${escapeHtml(child.orderNo)}',${Number(child.groupCodAmount || 0)})">團體代收</button>`
               : "";
-            return `<div>${escapeHtml(child.recipientName || child.orderNo)}｜${escapeHtml(child.orderStatus)}｜${escapeHtml(child.paymentMethod)} ${escapeHtml(child.paymentStatus)}${codText} ${codButton}</div>`;
+            return `<div class="group-order-child-row">
+              <div class="group-order-child-info">
+                <div class="group-order-child-name">${escapeHtml(child.recipientName || child.orderNo)}</div>
+                <div class="group-order-child-status">${escapeHtml(child.orderStatus)} · ${escapeHtml(child.paymentMethod)} ${escapeHtml(child.paymentStatus)}${codText}</div>
+              </div>
+              ${codButton}
+            </div>`;
           }).join("");
+          const childCount = (group.children || []).length;
+          const childSummary = childCount
+            ? `<details><summary>收件子單 ${childCount} 筆</summary><div class="group-order-child-list">${childRows}</div></details>`
+            : `<div class="group-order-meta">尚未建立收件子單</div>`;
           return `
             <article class="group-order-card">
               <div class="group-order-card-header">
@@ -17792,11 +17825,14 @@
                 </div>
                 ${group.status === "open" ? `<button type="button" class="btn-modal-cancel group-order-edit-trigger" onclick="openGroupOrderEditModal('${escapeHtml(group.groupOrderId)}')">✏️ 修改訂單</button>` : ""}
               </div>
-              <div class="group-order-meta">${escapeHtml(group.groupOrderId)}｜寄件人 ${escapeHtml(group.buyerName)} ${escapeHtml(group.buyerPhone)}</div>
+              <div class="group-order-meta group-order-meta-line"><span>訂單編號：${escapeHtml(group.groupOrderId)}</span><span>寄件人：${escapeHtml(group.buyerName)} ${escapeHtml(group.buyerPhone)}</span></div>
               <div class="group-order-progress">已分配 ${allocated}／${escapeHtml(group.totalBoxes)} 盒，尚餘 ${remaining} 盒</div>
-              <div class="group-order-items">${items.map((item) => `${escapeHtml(item.code)}：${Number(item.allocatedQty || 0)}／${Number(item.qty || 0)} 盒`).join("<br>")}</div>
+              <div class="group-order-summary-grid">
+                <div class="group-order-summary-box"><div class="group-order-summary-label">商品分配</div><div class="group-order-items">${items.map((item) => `<div class="group-order-item-line"><span>${escapeHtml(item.code)}</span><strong>${Number(item.allocatedQty || 0)}／${Number(item.qty || 0)} 盒</strong></div>`).join("")}</div></div>
+                <div class="group-order-summary-box"><div class="group-order-summary-label">付款處理</div><strong>${unpaidCount ? `待處理 ${unpaidCount} 筆` : "目前無待付款"}</strong></div>
+              </div>
               ${group.adminNote ? `<div class="group-order-meta">備註：${escapeHtml(group.adminNote)}</div>` : ""}
-              <div class="group-order-children">${childRows || "尚未建立收件子單"}</div>
+              <div class="group-order-children">${childSummary}</div>
               <div class="group-order-actions">
                 ${group.status === "open" ? `<button type="button" class="btn-modal-submit" onclick="openGroupChildModal('${escapeHtml(group.groupOrderId)}')">＋ 新增收件人</button>` : ""}
                 ${unpaidCount ? `<button type="button" class="btn-modal-submit" onclick="batchMarkGroupOrderPaid('${escapeHtml(group.groupOrderId)}', ${unpaidCount})">批次已付款（${unpaidCount}）</button>` : ""}
