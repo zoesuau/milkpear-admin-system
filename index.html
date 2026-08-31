@@ -20686,6 +20686,33 @@ ${adminNote}
         updateNewOrderAmountPreview();
       }
 
+      function formatAdminCreateDiagnostic(diagnostic) {
+        if (!diagnostic || !Number.isFinite(Number(diagnostic.elapsedMs))) {
+          return "";
+        }
+        const totalSeconds = (Number(diagnostic.elapsedMs) / 1000).toFixed(1);
+        const stageLabels = [
+          ["inventory", "庫存"],
+          ["ordersWriteVerify", "Orders"],
+          ["customerSyncAndIndex", "客戶／索引"],
+          ["notificationLog", "通知紀錄"],
+          ["adminGroupNotification", "群組通知"],
+          ["responseRead", "回讀"],
+          ["snapshotQueue", "快照"],
+        ];
+        const stages = stageLabels
+          .map(([key, label]) => {
+            const milliseconds = Number(diagnostic.stages?.[key]);
+            return Number.isFinite(milliseconds) && milliseconds > 0
+              ? `${label} ${(milliseconds / 1000).toFixed(1)}秒`
+              : "";
+          })
+          .filter(Boolean);
+        return `｜建單耗時 ${totalSeconds} 秒${
+          stages.length ? `（${stages.join("、")}）` : ""
+        }`;
+      }
+
       function finishAdminCreateOrder(result, feedback, submitButton) {
         const createdOrderNo = String(result?.created?.orderNo || "").trim();
         if (
@@ -20715,7 +20742,12 @@ ${adminNote}
         updateNotifyButton();
         applyReadOnlyModeToRealOrders();
         scrollAdminOrderCardIntoView(createdOrderNo);
-        setAdminRefreshState(false, `✅ 訂單 ${createdOrderNo} 已建立`);
+        setAdminRefreshState(
+          false,
+          `✅ 訂單 ${createdOrderNo} 已建立${formatAdminCreateDiagnostic(
+            result.diagnostic,
+          )}`,
+        );
         return true;
       }
 
