@@ -8248,6 +8248,34 @@
           }));
       }
 
+      function compareAdminProductsForOrderOptions(a, b) {
+        const varietyDiff =
+          getAdminProductVarietyRank(a) - getAdminProductVarietyRank(b);
+        if (varietyDiff !== 0) return varietyDiff;
+
+        const statusRanks = { 上架: 1, 僅後台販售: 2, 停售: 3 };
+        const statusDiff =
+          statusRanks[normalizeAdminProductStatus(a.status)] -
+          statusRanks[normalizeAdminProductStatus(b.status)];
+        if (statusDiff !== 0) return statusDiff;
+
+        const gradeDiff =
+          getAdminProductGradeNumber(a) - getAdminProductGradeNumber(b);
+        if (gradeDiff !== 0) return gradeDiff;
+
+        const categoryDiff =
+          getAdminProductCategoryRank(a) - getAdminProductCategoryRank(b);
+        if (categoryDiff !== 0) return categoryDiff;
+
+        return String(a.code || "").localeCompare(String(b.code || ""));
+      }
+
+      function getAdminProductOptionStockLabel(product) {
+        return Number.isInteger(product?.stock) && product.stock >= 0
+          ? `剩餘 ${product.stock} 盒`
+          : "庫存未控管";
+      }
+
       function getAdminProductDisplayName(product) {
         return (
           [product?.variety, product?.grade]
@@ -8947,7 +8975,7 @@
       function getActiveAdminProducts() {
         return adminProductCatalog
           .filter((product) => isAdminProductSellable(product))
-          .sort((a, b) => a.sortOrder - b.sortOrder);
+          .sort(compareAdminProductsForOrderOptions);
       }
 
       function getDefaultAdminProduct() {
@@ -8972,7 +9000,7 @@
         return products
           .map(
             (product) =>
-              `<option value="${escapeHtml(product.code)}" ${product.code === selectedProduct ? "selected" : ""}>${escapeHtml(getAdminProductDisplayName(product))}｜${escapeHtml(product.category || "")}｜${escapeHtml(product.count)}｜$${escapeHtml(formatAdminMoney(product.price))}${isAdminProductSellable(product) ? "" : "｜已停售（僅可保留或減量）"}</option>`,
+              `<option value="${escapeHtml(product.code)}" ${product.code === selectedProduct ? "selected" : ""}>${escapeHtml(getAdminProductDisplayName(product))}｜${escapeHtml(product.category || "")}｜${escapeHtml(product.count)}｜$${escapeHtml(formatAdminMoney(product.price))}｜${escapeHtml(getAdminProductOptionStockLabel(product))}${isAdminProductSellable(product) ? "" : "｜已停售（僅可保留或減量）"}</option>`,
           )
           .join("");
       }
