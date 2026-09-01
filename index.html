@@ -5522,7 +5522,7 @@
             <div class="shipping-batch-management-header">
               <div>
                 <h3 id="shippingBatchManagementTitle">希望寄出批次管理</h3>
-                <p>截止日預設為寄出結束日前一天，時間預設為台灣時間 18:00。</p>
+                <p>截止日固定為寄出結束日前一天，時間為台灣時間 17:00。</p>
               </div>
               <div class="shipping-batch-management-actions">
                 <button
@@ -5838,7 +5838,13 @@
             </div>
             <div class="product-field full">
               <label for="shippingBatchCutoffAt">收單截止日期與時間</label>
-              <input id="shippingBatchCutoffAt" type="datetime-local" />
+              <input
+                id="shippingBatchCutoffAt"
+                type="datetime-local"
+                readonly
+                aria-describedby="shippingBatchCutoffAtNote"
+              />
+              <small id="shippingBatchCutoffAtNote" style="color:#64748b;">固定為寄出結束日前一天晚上 5:00</small>
             </div>
             <label class="full" style="display:flex;gap:8px;align-items:center;color:#475569;font-weight:800;">
               <input id="shippingBatchIsActive" type="checkbox" checked />
@@ -7553,11 +7559,9 @@
           "shippingBatchDisplayLabel",
         );
         if (
-          cutoffInput &&
-          cutoffInput.dataset.manuallyEdited !== "true" &&
-          endInput?.value
+          cutoffInput && endInput?.value
         ) {
-          cutoffInput.value = `${shiftShippingBatchIsoDate(endInput.value, -1)}T18:00`;
+          cutoffInput.value = `${shiftShippingBatchIsoDate(endInput.value, -1)}T17:00`;
         }
         if (
           labelInput &&
@@ -7592,18 +7596,16 @@
         labelInput.value = batch?.displayLabel || "";
         startInput.value = batch?.shippingStartDate || "";
         endInput.value = batch?.shippingEndDate || "";
-        cutoffInput.value = batch?.cutoffAt || "";
+        cutoffInput.value = "";
         if (activeInput) activeInput.checked = batch ? batch.isActive === true : true;
         labelInput.dataset.manuallyEdited = batch ? "true" : "false";
-        cutoffInput.dataset.manuallyEdited = batch ? "true" : "false";
+        cutoffInput.dataset.manuallyEdited = "false";
         startInput.oninput = updateShippingBatchModalDefaults;
         endInput.oninput = updateShippingBatchModalDefaults;
         labelInput.oninput = () => {
           labelInput.dataset.manuallyEdited = "true";
         };
-        cutoffInput.oninput = () => {
-          cutoffInput.dataset.manuallyEdited = "true";
-        };
+        updateShippingBatchModalDefaults();
         if (feedback) {
           feedback.className = "product-management-feedback";
           feedback.innerText = batch?.cutoffAt
