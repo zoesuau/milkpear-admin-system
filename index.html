@@ -8276,6 +8276,18 @@
           : "庫存未控管";
       }
 
+      function isAdminProductAvailableForOrderOption(product) {
+        return (
+          isAdminProductSellable(product) &&
+          (!Number.isInteger(product?.stock) || product.stock > 0)
+        );
+      }
+
+      function getAdminProductOptionCategorySegment(product) {
+        const category = normalizeAdminProductCategory(product?.category);
+        return category === "一般禮盒" ? "" : `｜${category}`;
+      }
+
       function getAdminProductDisplayName(product) {
         return (
           [product?.variety, product?.grade]
@@ -8974,7 +8986,7 @@
 
       function getActiveAdminProducts() {
         return adminProductCatalog
-          .filter((product) => isAdminProductSellable(product))
+          .filter((product) => isAdminProductAvailableForOrderOption(product))
           .sort(compareAdminProductsForOrderOptions);
       }
 
@@ -9000,7 +9012,7 @@
         return products
           .map(
             (product) =>
-              `<option value="${escapeHtml(product.code)}" ${product.code === selectedProduct ? "selected" : ""}>${escapeHtml(getAdminProductDisplayName(product))}｜${escapeHtml(product.category || "")}｜${escapeHtml(product.count)}｜$${escapeHtml(formatAdminMoney(product.price))}｜${escapeHtml(getAdminProductOptionStockLabel(product))}${isAdminProductSellable(product) ? "" : "｜已停售（僅可保留或減量）"}</option>`,
+              `<option value="${escapeHtml(product.code)}" ${product.code === selectedProduct ? "selected" : ""}>${escapeHtml(getAdminProductDisplayName(product))}${escapeHtml(getAdminProductOptionCategorySegment(product))}｜${escapeHtml(product.count)}｜$${escapeHtml(formatAdminMoney(product.price))}｜${escapeHtml(getAdminProductOptionStockLabel(product))}${isAdminProductSellable(product) ? "" : "｜已停售（僅可保留或減量）"}</option>`,
           )
           .join("");
       }
