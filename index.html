@@ -8527,9 +8527,7 @@
           ready: false,
         };
         if (input) {
-          input.value = mode === "reconcile" && Number.isInteger(product.stock)
-            ? String(product.stock)
-            : "";
+          input.value = "";
           input.disabled = true;
           input.min = "0";
         }
@@ -8570,6 +8568,9 @@
           ) {
             return;
           }
+          if (result.inventoryPolicyVersion !== 2 || !Number.isSafeInteger(result.pendingOrderQuantity) || result.pendingOrderQuantity < 0) {
+            throw new Error("INVENTORY_CLIENT_REFRESH_REQUIRED");
+          }
           const serverStock = Number.isInteger(result.stock) ? result.stock : null;
           adminInventoryAdjustmentContext.stock = serverStock;
           adminInventoryAdjustmentContext.pendingOrderQuantity = Math.max(
@@ -8587,9 +8588,7 @@
           adminInventoryAdjustmentContext.ready = true;
           if (input) {
             input.disabled = false;
-            input.value = adminInventoryAdjustmentContext.mode === "reconcile"
-              ? String(serverStock)
-              : "";
+            input.value = "";
             input.focus();
           }
           if (submit) submit.disabled = false;
@@ -8598,7 +8597,9 @@
         } catch (error) {
           console.error("讀取商品庫存內容失敗", error);
           const details = error.details || {};
-          const message = error.message === "PRODUCT_CATALOG_STALE"
+          const message = ["INVENTORY_PENDING_CHANGED", "INVENTORY_CLIENT_REFRESH_REQUIRED"].includes(error.message)
+            ? "訂單占用量或系統版本已更新，請關閉視窗並重新整理後再試。"
+            : error.message === "PRODUCT_CATALOG_STALE"
             ? "庫存已更新，請關閉後重新整理商品。"
             : error.message === "PENDING_ORDER_ITEMS_UNREADABLE"
               ? `訂單 ${String(details.orderNo || "").trim() || "（未提供編號）"}（第 ${Number(details.orderRowNumber || 0) || "?"} 列）的商品格式無法辨識，為避免少扣庫存，本次未更新。`
@@ -8637,12 +8638,12 @@
         description.innerText = mode === "initialize"
           ? `${context.productName}｜輸入現場確認的總數，系統會扣除尚未出貨的既有訂單。`
           : mode === "reconcile"
-            ? `${context.productName}｜只有盤點數字不一致或發生損耗時才使用。`
-            : `${context.productName}｜輸入這一批新增加的盒數。`;
+            ? `${context.productName}｜輸入現場實際總數（含已訂未寄），系統會扣除未寄訂單與團購預留。`
+            : `${context.productName}｜只輸入這一批新到貨的盒數；既有訂單已占用庫存，不會再次扣除。`;
         label.innerText = mode === "initialize"
           ? "現場實際總數"
           : mode === "reconcile"
-            ? "盤點後總庫存"
+            ? "現場實際總數（含已訂未寄）"
             : "本次新增庫存";
         if (input) input.min = mode === "restock" ? "1" : "0";
         if (submit) {
@@ -8656,31 +8657,37 @@
         const quantityText = String(input?.value || "").trim();
         const quantity = /^\d+$/.test(quantityText) ? Number(quantityText) : null;
         if (!context.ready || quantity === null) {
+          if (submit) submit.disabled = true;
           summary.innerHTML = context.ready
-            ? '<div class="inventory-adjustment-summary-row"><span>請輸入數量</span><strong>—</strong></div>'
+            ? `<div class="inventory-adjustment-summary-row"><span>目前可售庫存</span><strong>${context.stock === null ? "未設定" : escapeHtml(context.stock) + " 盒"}</strong></div>
+               <div class="inventory-adjustment-summary-row"><span>已訂未寄占用（含團購預留）</span><strong>${escapeHtml(context.pendingOrderQuantity)} 盒</strong></div>
+               <div class="inventory-adjustment-summary-row"><span>請輸入${mode === "restock" ? "本次新到貨數量" : "現場實際總數"}</span><strong>—</strong></div>`
             : '<div class="inventory-adjustment-summary-row"><span>讀取中</span><strong>—</strong></div>';
           return;
         }
 
-        if (mode === "initialize") {
+        if (mode === "initialize" || mode === "reconcile") {
           const pending = context.pendingOrderQuantity;
           const shortage = Math.max(0, pending - quantity);
           const after = Math.max(0, quantity - pending);
+          if (submit) submit.disabled = shortage > 0;
           summary.innerHTML = `
             <div class="inventory-adjustment-summary-row"><span>現場實際總數</span><strong>${escapeHtml(quantity)} 盒</strong></div>
-            <div class="inventory-adjustment-summary-row"><span>既有待出貨訂單</span><strong>− ${escapeHtml(pending)} 盒</strong></div>
-            ${shortage ? `<div class="inventory-adjustment-summary-row shortage"><span>尚缺</span><strong>${escapeHtml(shortage)} 盒</strong></div>` : ""}
-            <div class="inventory-adjustment-summary-row total"><span>設定後可售庫存</span><strong>${escapeHtml(after)} 盒</strong></div>
+            <div class="inventory-adjustment-summary-row"><span>已訂未寄占用（含團購預留）</span><strong>− ${escapeHtml(pending)} 盒</strong></div>
+            ${shortage ? `<div class="inventory-adjustment-summary-row shortage"><span>尚缺（不足，無法儲存）</span><strong>${escapeHtml(shortage)} 盒</strong></div>` : ""}
+            <div class="inventory-adjustment-summary-row total"><span>${mode === "reconcile" ? "修正後可售庫存" : "設定後可售庫存"}</span><strong>${escapeHtml(after)} 盒</strong></div>
           `;
           return;
         }
 
+        if (submit) submit.disabled = !Number.isSafeInteger(quantity) || quantity < 1;
         const before = Number(context.stock || 0);
         const after = mode === "restock" ? before + quantity : quantity;
         summary.innerHTML = `
-          <div class="inventory-adjustment-summary-row"><span>目前庫存</span><strong>${escapeHtml(before)} 盒</strong></div>
+          <div class="inventory-adjustment-summary-row"><span>目前可售庫存</span><strong>${escapeHtml(before)} 盒</strong></div>
+          <div class="inventory-adjustment-summary-row"><span>已訂未寄占用（含團購預留，不重複扣除）</span><strong>${escapeHtml(context.pendingOrderQuantity)} 盒</strong></div>
           ${mode === "restock" ? `<div class="inventory-adjustment-summary-row"><span>本次新增</span><strong>＋ ${escapeHtml(quantity)} 盒</strong></div>` : ""}
-          <div class="inventory-adjustment-summary-row total"><span>${mode === "reconcile" ? "修正後庫存" : "補貨後庫存"}</span><strong>${escapeHtml(after)} 盒</strong></div>
+          <div class="inventory-adjustment-summary-row total"><span>${mode === "reconcile" ? "修正後庫存" : "補貨後可售庫存"}</span><strong>${escapeHtml(after)} 盒</strong></div>
         `;
       }
 
@@ -8708,11 +8715,11 @@
           return;
         }
         if (
-          context.mode === "initialize" &&
+          (context.mode === "initialize" || context.mode === "reconcile") &&
           quantity < context.pendingOrderQuantity
         ) {
           setProductInventoryAdjustmentFeedback(
-            `現場數量不足，既有待出貨訂單尚缺 ${context.pendingOrderQuantity - quantity} 盒。`,
+            `現場數量不足，已訂未寄占用（含團購預留）尚缺 ${context.pendingOrderQuantity - quantity} 盒。`,
             "error",
           );
           return;
@@ -8736,6 +8743,8 @@
               requestKey: context.requestKey,
               productId: context.productId,
               mode: context.mode,
+              inventoryPolicyVersion: 2,
+              expectedPendingQuantity: context.pendingOrderQuantity,
               quantity,
               note: "",
             }),
@@ -8765,16 +8774,18 @@
           const successText = adjustment.mode === "initialize"
             ? `✅ 首批庫存已設定，可售庫存 ${adjustment.afterStock} 盒`
             : adjustment.mode === "reconcile"
-              ? `✅ 盤點完成，庫存修正為 ${adjustment.afterStock} 盒`
-              : `✅ 已新增 ${adjustment.enteredQuantity} 盒，現在庫存 ${adjustment.afterStock} 盒`;
+              ? `✅ 盤點完成，可售庫存修正為 ${adjustment.afterStock} 盒`
+              : `✅ 已新增 ${adjustment.enteredQuantity} 盒，現在可售庫存 ${adjustment.afterStock} 盒`;
           setProductManagementFeedback(successText, "success");
         } catch (error) {
           console.error("商品庫存更新失敗", error);
           const details = error.details || {};
-          const message = error.message === "PRODUCT_CATALOG_STALE"
+          const message = ["INVENTORY_PENDING_CHANGED", "INVENTORY_CLIENT_REFRESH_REQUIRED"].includes(error.message)
+            ? "訂單占用量或系統版本已更新，請關閉視窗並重新整理後再試。"
+            : error.message === "PRODUCT_CATALOG_STALE"
             ? "庫存已被其他訂單更新，請重新整理後再試。"
             : error.message === "INITIAL_STOCK_INSUFFICIENT"
-              ? `現場數量不足，既有待出貨訂單尚缺 ${Number(details.shortage || 0)} 盒。`
+              ? `現場數量不足，已訂未寄占用（含團購預留）尚缺 ${Number(details.shortage || 0)} 盒。`
               : error.message === "INVENTORY_UPDATE_BUSY"
                 ? "目前有訂單或庫存正在更新，請稍後再試。"
                 : error.message === "PENDING_ORDER_ITEMS_UNREADABLE"
