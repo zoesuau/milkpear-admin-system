@@ -6577,12 +6577,18 @@
         );
       }
 
+      let adminAuthBlocksDataLoad = false;
+      let adminAuthNavigationPending = false;
+      let adminOverlayRefreshPending = false;
+
       function showAdminAuthOverlay(
         message,
         showRetry,
         showRefresh = false,
         showClose = false,
       ) {
+        if (adminAuthBlocksDataLoad && !showRetry) return;
+        if (showRetry) adminAuthBlocksDataLoad = true;
         const overlay = document.getElementById("adminAuthOverlay");
         const messageEl = document.getElementById("adminAuthMessage");
         const retryBtn = document.getElementById("adminAuthRetryBtn");
@@ -6604,6 +6610,7 @@
       }
 
       function hideAdminAuthOverlay() {
+        if (adminAuthBlocksDataLoad) return;
         const overlay = document.getElementById("adminAuthOverlay");
         if (overlay) overlay.classList.add("hidden");
       }
@@ -6653,7 +6660,7 @@
 
       function publishAdminAuthDiagnostic(diagnostic) {
         const safeDiagnostic = {
-          requestId: String(diagnostic?.requestId || "").slice(0, 150),
+          requestId: String(diagnostic?.requestId || "").replace(/[^A-Za-z0-9_.:-]/g, "-").slice(0, 150),
           event: String(diagnostic?.event || "ADMIN_AUTH_FAILURE").slice(0, 80),
           errorCode: String(diagnostic?.errorCode || "UNKNOWN").slice(0, 80),
           httpStatus: Number.isFinite(Number(diagnostic?.httpStatus))
@@ -7081,6 +7088,7 @@
       function setAdminAuthRetryButtonMode(retryCallback) {
         const retryBtn = document.getElementById("adminAuthRetryBtn");
         if (!retryBtn) return;
+        retryBtn.dataset.retrySession = "false";
         retryBtn.dataset.retryCallback = retryCallback ? "true" : "false";
         retryBtn.innerText = retryCallback
           ? "再次確認登入"
@@ -7118,12 +7126,17 @@
       }
 
       async function startAdminAuth(forceLogin = false) {
+        if (adminAuthNavigationPending) return;
+        adminAuthNavigationPending = true;
+        adminAuthBlocksDataLoad = true;
+        const retryButton = document.getElementById("adminAuthRetryBtn");
+        if (retryButton) retryButton.disabled = true;
+        try {
         setAdminAuthRetryButtonMode(false);
         if (!isLineLoginConfigured()) {
           clearAdminAuthSession();
           sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-          showAdminAuthOverlay("⚠️ 尚未完成管理員登入設定", false);
-          return;
+          throw new Error("LINE_AUTH_CONFIG_MISSING");
         }
 
         const state = createRandomBase64Url(32);
@@ -7151,6 +7164,12 @@
         }
 
         window.location.assign(authorizeUrl.toString());
+        } catch (error) {
+          adminAuthNavigationPending = false;
+          if (retryButton) retryButton.disabled = false;
+          publishAdminAuthDiagnostic({ requestId: createAdminDiagnosticRequestId("adminAuth"), errorCode: "AUTH_START_FAILED" });
+          showAdminAuthOverlay("⚠️ 無法開始 LINE 登入，請重新登入 LINE。", true);
+        }
       }
 
       async function completeAdminAuth(code) {
@@ -7161,6 +7180,7 @@
         const diagnosticRequestId = createAdminDiagnosticRequestId("adminAuth");
 
         if (!codeVerifier || !nonce) {
+          publishAdminAuthDiagnostic({ requestId: diagnosticRequestId, errorCode: "AUTH_CALLBACK_CONTEXT_MISSING" });
           clearAdminAuthSession();
           sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
           clearAdminAuthQuery();
@@ -7253,11 +7273,13 @@
             clearAdminAuthSession();
             clearAdminAuthQuery();
             setAdminAuthRetryButtonMode(false);
+            adminAuthBlocksDataLoad = false;
             showAdminAuthOverlay("正在讀取最新訂單資料...", false);
             return true;
           }
 
           const errorCode = String(payload?.error || "").trim();
+          publishAdminAuthDiagnostic({ requestId: diagnosticRequestId, errorCode: errorCode || "ADMIN_AUTH_REJECTED", httpStatus: response.status, responseFormat: "json" });
           clearAdminAuthSession();
           sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
           clearAdminAuthQuery();
@@ -7295,11 +7317,47 @@
         }
       }
 
+      async function validateExistingAdminSession(token) {
+        const requestId = createAdminDiagnosticRequestId("adminValidateSession");
+        try {
+          const response = await fetchWithTimeout(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ action: "adminValidateSession", adminSessionToken: token, requestId }),
+          }, ADMIN_AUTH_TIMEOUT_MS);
+          let payload;
+          try { payload = await response.json(); }
+          catch { throw new Error("GAS_NON_JSON_RESPONSE"); }
+          if (!response.ok) throw new Error("GAS_AUTH_REQUEST_FAILED");
+          if (payload?.action !== "adminValidateSession") throw new Error("GAS_AUTH_RESPONSE_INVALID");
+          if (payload.ok === true && payload.allowed === true) {
+            adminAuthBlocksDataLoad = false;
+            return true;
+          }
+          if (payload.ok === false && payload.error === "ADMIN_SESSION_REQUIRED") {
+            sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+            await startAdminAuth();
+            return false;
+          }
+          throw new Error("ADMIN_SESSION_VALIDATION_FAILED");
+        } catch (error) {
+          const knownErrors = ["GAS_NON_JSON_RESPONSE", "GAS_AUTH_REQUEST_FAILED", "GAS_AUTH_RESPONSE_INVALID", "ADMIN_SESSION_VALIDATION_FAILED"];
+          const errorCode = error?.name === "AbortError" ? "GAS_TIMEOUT" : knownErrors.includes(error?.message) ? error.message : "NETWORK_ERROR";
+          publishAdminAuthDiagnostic({ requestId, errorCode });
+          const button = document.getElementById("adminAuthRetryBtn");
+          if (button) { button.dataset.retrySession = "true"; button.innerText = "再次確認登入"; }
+          showAdminAuthOverlay("⚠️ 暫時無法確認登入，請按「再次確認登入」。", true);
+          return false;
+        }
+      }
+
       async function initAdminAuth() {
+        adminAuthBlocksDataLoad = false;
         showAdminAuthOverlay("管理員登入確認中...", false);
 
         const params = new URLSearchParams(window.location.search);
         if (params.has("error") || params.has("error_description")) {
+          publishAdminAuthDiagnostic({ requestId: createAdminDiagnosticRequestId("adminAuth"), errorCode: "AUTH_PROVIDER_CALLBACK_ERROR" });
           clearAdminAuthSession();
           sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
           clearAdminAuthQuery();
@@ -7321,6 +7379,7 @@
             !expectedState ||
             returnedState !== expectedState
           ) {
+            publishAdminAuthDiagnostic({ requestId: createAdminDiagnosticRequestId("adminAuth"), errorCode: !code || !returnedState ? "AUTH_CALLBACK_PARAMETER_MISSING" : !expectedState ? "AUTH_CALLBACK_CONTEXT_MISSING" : "AUTH_CALLBACK_STATE_MISMATCH" });
             clearAdminAuthSession();
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
             clearAdminAuthQuery();
@@ -7337,7 +7396,7 @@
 
         if (existingSessionToken) {
           showAdminAuthOverlay("正在驗證既有管理員登入狀態...", false);
-          return true;
+          return validateExistingAdminSession(existingSessionToken);
         }
 
         await startAdminAuth();
@@ -10395,11 +10454,18 @@
       }
 
       async function refreshAdminOrdersFromOverlay() {
+        if (adminAuthBlocksDataLoad || adminOverlayRefreshPending) return;
+        adminOverlayRefreshPending = true;
+        try {
         setAdminRefreshState(true, "正在重新讀取訂單...");
         showAdminAuthOverlay("正在重新讀取訂單...", false, true, true);
         const requestId = ++adminOrderQueryRequestId;
         const adminOrders = await fetchAdminOrdersFromGas();
         if (requestId !== adminOrderQueryRequestId) return;
+        if (adminAuthBlocksDataLoad) {
+          setAdminRefreshState(false, "請先完成登入。");
+          return;
+        }
         if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
           setAdminRefreshState(false, "重新讀取失敗，請稍後再試。");
           showAdminAuthOverlay(
@@ -10417,7 +10483,8 @@
         updateNotifyButton();
         applyReadOnlyModeToRealOrders();
         updateAdminRefreshMeta();
-        hideAdminAuthOverlay();
+        if (!adminAuthBlocksDataLoad) hideAdminAuthOverlay();
+        } finally { adminOverlayRefreshPending = false; }
       }
       window.refreshAdminOrdersFromOverlay = refreshAdminOrdersFromOverlay;
       window.hideAdminAuthOverlay = hideAdminAuthOverlay;
@@ -18250,6 +18317,12 @@
           document.querySelector(".admin-tab-bar")?.classList.add("group-orders-enabled");
         }
         initializeAdminCardViewMode();
+        window.addEventListener("pageshow", (event) => {
+          if (!event.persisted) return;
+          adminAuthNavigationPending = false;
+          const retry = document.getElementById("adminAuthRetryBtn");
+          if (retry) retry.disabled = false;
+        });
         window.addEventListener("offline", handleAdminCreateNetworkOffline);
         window.addEventListener("online", handleAdminCreateNetworkRestored);
         const retryBtn = document.getElementById("adminAuthRetryBtn");
@@ -18257,6 +18330,11 @@
         const closeBtn = document.getElementById("adminAuthCloseBtn");
         if (retryBtn) {
           retryBtn.addEventListener("click", () => {
+            if (retryBtn.dataset.retrySession === "true") {
+              retryBtn.disabled = true;
+              window.location.reload();
+              return;
+            }
             if (
               retryBtn.dataset.retryCallback === "true" &&
               hasRetryableAdminAuthCallback()
@@ -18376,7 +18454,7 @@
           handleBatchCheckChange();
           updateNotifyButton();
           applyReadOnlyModeToRealOrders();
-          hideAdminAuthOverlay();
+          if (!adminAuthBlocksDataLoad) hideAdminAuthOverlay();
           await recoverPendingAdminCreateOrderOnLoad();
         } finally {
           initialLoadFinished = true;
