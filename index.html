@@ -8134,7 +8134,7 @@
             <input data-product-field="price" type="number" min="1" step="1" value="${escapeHtml(product.price || "")}">
           </div>
           <div class="product-field">
-            <label>總庫存</label>
+            <label>可售庫存</label>
             <div class="product-inventory-control">
               <input data-product-field="stock" type="number" min="0" step="1" placeholder="尚未設定" value="${Number.isInteger(product.stock) ? escapeHtml(product.stock) : ""}" readonly aria-readonly="true">
               <button type="button" class="product-action-btn secondary" onclick="openProductInventoryAdjustmentFromCard(this)" ${product.isNew ? "disabled" : ""}>${product.isNew ? "儲存後設定" : Number.isInteger(product.stock) ? "＋補貨" : "設定首批庫存"}</button>
