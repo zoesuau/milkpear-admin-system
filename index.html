@@ -2,6 +2,7 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
+    <meta name="admin-release" content="20260912-batch-shipped-immediate-status" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
@@ -20023,8 +20024,16 @@ ${adminNote}
           syncBatchSelectionUi();
         });
 
-      async function refreshAdminOrdersAfterBatch() {
-        const adminOrders = await fetchAdminOrdersFromGas();
+      async function refreshAdminOrdersAfterBatch(updatedOrders = null) {
+        let adminOrders;
+        if (Array.isArray(updatedOrders) && updatedOrders.length) {
+          // Keep confirmed mutations visible until the snapshot catches up.
+          updatedOrders.forEach(preserveAdminOrderUntilSnapshot);
+          adminOrders = latestAdminOrders.slice();
+          adminOrders.adminReadMeta = adminOrderReadMeta;
+        } else {
+          adminOrders = await fetchAdminOrdersFromGas();
+        }
         if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
           return false;
         }
@@ -20095,7 +20104,29 @@ ${adminNote}
             );
           }
 
-          if (!(await refreshAdminOrdersAfterBatch())) {
+          const hasConfirmedShippedOrders = (orders) =>
+            Array.isArray(orders) &&
+            orders.length === orderNos.length &&
+            orderNos.every((orderNo) =>
+              orders.some(
+                (order) =>
+                  String(order?.orderNo || "").trim() === orderNo &&
+                  order.orderStatus === "已寄出",
+              ),
+            );
+          let updatedOrders = payload.orders;
+          if (!hasConfirmedShippedOrders(updatedOrders)) {
+            const freshOrders = await fetchAdminOrdersFromGas({ forceReload: true });
+            updatedOrders = Array.isArray(freshOrders)
+              ? freshOrders.filter((order) =>
+                  orderNos.includes(String(order?.orderNo || "").trim()),
+                )
+              : null;
+          }
+          if (
+            !hasConfirmedShippedOrders(updatedOrders) ||
+            !(await refreshAdminOrdersAfterBatch(updatedOrders))
+          ) {
             throw new Error("BATCH_REFRESH_FAILED");
           }
           selectedOrderNos.clear();
