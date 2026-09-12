@@ -19959,7 +19959,8 @@ ${adminNote}
         const expectedShippingDate = String(
           order?.expectedShippingDate || "",
         ).trim();
-        if (String(order?.paymentState || "").trim() === "bank_unpaid") {
+        if (String(order?.paymentState || "").trim() === "bank_unpaid" &&
+            String(order?.orderSource || "").trim() !== "管理端") {
           return "銀行轉帳尚未確認付款，請先改為已付款。";
         }
         if (order?.orderStatus !== "已安排出貨") {
@@ -19982,7 +19983,8 @@ ${adminNote}
           order?.expectedShippingDate || "",
         ).trim();
         return (
-          String(order?.paymentState || "").trim() !== "bank_unpaid" &&
+          (String(order?.paymentState || "").trim() !== "bank_unpaid" ||
+            String(order?.orderSource || "").trim() === "管理端") &&
           order?.orderStatus === "已安排出貨" &&
           expectedShippingDate !== "" &&
           adminWorkflowIsValidDate(expectedShippingDate) &&
@@ -20146,7 +20148,7 @@ ${adminNote}
         }
         if (
           !window.confirm(
-            `將 ${orderNos.length} 張訂單標為已寄出，並建立寄出通知？\n\n有 LINE 的訂單會嘗試自動發送；無 LINE／管理員新增的訂單仍保留通知事件紀錄。\n待處理通知事件不會阻擋本次狀態變更。\n\n通知結果請以各訂單卡片的通知狀態為準。`,
+            `將 ${orderNos.length} 張訂單標為已寄出，並建立寄出通知？${selectedOrders.some(order => String(order?.orderSource || "").trim() === "管理端" && String(order?.paymentState || "").trim() === "bank_unpaid") ? "\n\n⚠️ 包含管理員新增的未付款訂單，寄出後仍保留未付款，請記得追蹤收款。" : ""}\n\n有 LINE 的訂單會嘗試自動發送；無 LINE／管理員新增的訂單仍保留通知事件紀錄。\n待處理通知事件不會阻擋本次狀態變更。\n\n通知結果請以各訂單卡片的通知狀態為準。`,
           )
         ) {
           return;
@@ -20228,7 +20230,7 @@ ${adminNote}
             error.message === "BATCH_REFRESH_FAILED"
               ? "批次可能已完成，但列表重新讀取失敗。請重新整理確認，請勿重複送出。"
               : error.message === "ORDER_SHIPPED_BANK_UNPAID"
-                ? "選取的訂單中有銀行轉帳尚未付款，請先改為已付款。整批訂單均未變更。"
+                ? "選取的非管理員新增訂單中有銀行轉帳尚未付款，請先確認收款。整批訂單均未變更。"
                 : error.message === "BATCH_SHIPPED_WRITE_VERIFY_FAILED"
                   ? "批次結果無法完整驗證，請重新整理確認，請勿重複送出。"
                   : "批量已寄出並通知失敗，未套用前端變更。",
