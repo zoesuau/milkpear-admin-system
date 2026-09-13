@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="zh-Hant" data-release-version="20260913-auth-read-recovery">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260912-batch-shipped-immediate-status" />
+    <meta name="admin-release" content="20260913-auth-read-recovery" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -6642,6 +6642,99 @@
         }
       }
 
+      async function fetchAdminRecoverableResponse(url, options, timeoutMs) {
+        // This is deliberately separate from fetchWithTimeout: mutations must
+        // never inherit retries. adminAuth reuses the deployed nonce result.
+        const body = options?.body;
+        let action;
+        try { action = JSON.parse(body).action; } catch {}
+        if (
+          url !== GAS_ORDERS_API_URL || options?.method !== "POST" ||
+          !["adminAuth", "adminValidateSession", "adminReadOrders",
+            "adminReadOrderSnapshot", "adminReadProductCatalog"].includes(action)
+        ) throw new Error("ADMIN_RECOVERY_ACTION_NOT_ALLOWED");
+
+        const deadline = Date.now() + 90000;
+        let lastError;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const remaining = deadline - Date.now();
+          if (remaining <= 0) break;
+          const controller = typeof AbortController === "undefined"
+            ? null : new AbortController();
+          let timer;
+          try {
+            const result = await Promise.race([
+              (async () => {
+                const response = await fetch(url, {
+                  ...options, body,
+                  ...(controller ? { signal: controller.signal } : {}),
+                });
+                // Keep the timeout active through the complete response body.
+                const text = await response.text();
+                return { response, text };
+              })(),
+              new Promise((_, reject) => {
+                timer = window.setTimeout(() => {
+                  controller?.abort();
+                  reject(new Error("GAS_TIMEOUT"));
+                }, Math.min(timeoutMs || 60000, remaining));
+              }),
+            ]);
+            const { response, text } = result;
+            const cachedResponse = {
+              ok: response.ok, status: response.status, headers: response.headers,
+              text: async () => text, json: async () => JSON.parse(text),
+            };
+            // HTTP permission failures need operator attention, not retries.
+            if (response.status === 401 || response.status === 403) return cachedResponse;
+            if ([404, 408, 429].includes(response.status) || response.status >= 500) {
+              const error = new Error(`HTTP_${response.status}`);
+              error.httpStatus = response.status;
+              throw error;
+            }
+            if (!response.ok) return cachedResponse;
+            let payload;
+            try { payload = JSON.parse(text); }
+            catch {
+              const error = new Error("GAS_NON_JSON_RESPONSE");
+              error.httpStatus = response.status;
+              error.responseFormat = "non-json";
+              throw error;
+            }
+            if (
+              payload?.action !== action || typeof payload.ok !== "boolean" ||
+              (action === "adminAuth" && payload.ok === true &&
+                !(payload.allowed === false || (payload.allowed === true &&
+                  typeof payload.adminSessionToken === "string" &&
+                  payload.adminSessionToken.trim())))
+            ) {
+              const error = new Error("GAS_AUTH_RESPONSE_INVALID");
+              error.httpStatus = response.status;
+              error.responseFormat = "json";
+              throw error;
+            }
+            if (action === "adminAuth" && attempt > 0 &&
+                payload.error === "LINE_TOKEN_EXCHANGE_FAILED") {
+              // A timed-out first request may have consumed the one-time code
+              // before its nonce result was stored. Keep callback context intact.
+              throw new Error("GAS_AUTH_RESPONSE_INVALID");
+            }
+            return cachedResponse;
+          } catch (error) {
+            // Use fixed codes; transport errors must not expose auth URLs.
+            const known = /^(HTTP_\d{3}|GAS_TIMEOUT|GAS_NON_JSON_RESPONSE|GAS_AUTH_RESPONSE_INVALID)$/;
+            lastError = known.test(error?.message || "") ? error :
+              new Error(error?.name === "AbortError" ? "GAS_TIMEOUT" : "NETWORK_ERROR");
+          } finally {
+            window.clearTimeout(timer);
+          }
+          const delay = (attempt + 1) * 500;
+          if (attempt === 2 || Date.now() + delay >= deadline) break;
+          await new Promise(resolve => window.setTimeout(resolve, delay));
+        }
+        throw lastError || new Error("GAS_TIMEOUT");
+      }
+
       function createAdminRequestKey(action, parts = []) {
         return [action, ...parts]
           .map((part) => String(part ?? "").trim())
@@ -7189,7 +7282,7 @@
         }
 
         try {
-          const response = await fetchWithTimeout(
+          const response = await fetchAdminRecoverableResponse(
             GAS_ORDERS_API_URL,
             {
               method: "POST",
@@ -7320,7 +7413,7 @@
       async function validateExistingAdminSession(token) {
         const requestId = createAdminDiagnosticRequestId("adminValidateSession");
         try {
-          const response = await fetchWithTimeout(GAS_ORDERS_API_URL, {
+          const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({ action: "adminValidateSession", adminSessionToken: token, requestId }),
@@ -7341,9 +7434,12 @@
           }
           throw new Error("ADMIN_SESSION_VALIDATION_FAILED");
         } catch (error) {
-          const knownErrors = ["GAS_NON_JSON_RESPONSE", "GAS_AUTH_REQUEST_FAILED", "GAS_AUTH_RESPONSE_INVALID", "ADMIN_SESSION_VALIDATION_FAILED"];
-          const errorCode = error?.name === "AbortError" ? "GAS_TIMEOUT" : knownErrors.includes(error?.message) ? error.message : "NETWORK_ERROR";
-          publishAdminAuthDiagnostic({ requestId, errorCode });
+          const knownErrors = ["GAS_TIMEOUT", "GAS_NON_JSON_RESPONSE", "GAS_AUTH_REQUEST_FAILED", "GAS_AUTH_RESPONSE_INVALID", "ADMIN_SESSION_VALIDATION_FAILED"];
+          const errorCode = error?.name === "AbortError" ? "GAS_TIMEOUT" :
+            knownErrors.includes(error?.message) || /^HTTP_\d{3}$/.test(error?.message || "")
+              ? error.message : "NETWORK_ERROR";
+          publishAdminAuthDiagnostic({ requestId, errorCode,
+            httpStatus: error?.httpStatus, responseFormat: error?.responseFormat });
           const button = document.getElementById("adminAuthRetryBtn");
           if (button) { button.dataset.retrySession = "true"; button.innerText = "再次確認登入"; }
           showAdminAuthOverlay("⚠️ 暫時無法確認登入，請按「再次確認登入」。", true);
@@ -9882,7 +9978,7 @@
             throw new Error("ADMIN_SESSION_REQUIRED");
           }
 
-          const response = await fetchWithTimeout(
+          const response = await fetchAdminRecoverableResponse(
             baseUrl,
             {
               method: "POST",
@@ -10202,7 +10298,7 @@
             adminReadStatusEl.innerText = "讀取版本化訂單快照中...";
           }
 
-          const response = await fetchWithTimeout(
+          const response = await fetchAdminRecoverableResponse(
             baseUrl,
             {
               method: "POST",
@@ -10507,7 +10603,7 @@
             throw new Error("ADMIN_SESSION_REQUIRED");
           }
 
-          const response = await fetchWithTimeout(
+          const response = await fetchAdminRecoverableResponse(
             baseUrl,
             {
               method: "POST",
