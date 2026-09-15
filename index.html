@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260913-auth-read-recovery">
+<html lang="zh-Hant" data-release-version="20260915-admin-reliability">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260913-auth-read-recovery" />
+    <meta name="admin-release" content="20260915-admin-reliability" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -6643,6 +6643,7 @@
       }
 
       async function fetchAdminRecoverableResponse(url, options, timeoutMs) {
+        const requestStartedAt = Date.now();
         // This is deliberately separate from fetchWithTimeout: mutations must
         // never inherit retries. adminAuth reuses the deployed nonce result.
         const body = options?.body;
@@ -6651,10 +6652,10 @@
         if (
           url !== GAS_ORDERS_API_URL || options?.method !== "POST" ||
           !["adminAuth", "adminValidateSession", "adminReadOrders",
-            "adminReadOrderSnapshot", "adminReadProductCatalog"].includes(action)
+            "adminReadOrderSnapshot", "adminReadProductCatalog", "adminReadShipmentResults"].includes(action)
         ) throw new Error("ADMIN_RECOVERY_ACTION_NOT_ALLOWED");
 
-        const deadline = Date.now() + 90000;
+        const deadline = Date.now() + (action === "adminReadShipmentResults" ? 15000 : 90000);
         let lastError;
         for (let attempt = 0; attempt < 3; attempt++) {
           const remaining = deadline - Date.now();
@@ -6683,6 +6684,7 @@
             const { response, text } = result;
             const cachedResponse = {
               ok: response.ok, status: response.status, headers: response.headers,
+              transportTiming: { attempts: attempt + 1, elapsedMs: Date.now() - requestStartedAt },
               text: async () => text, json: async () => JSON.parse(text),
             };
             // HTTP permission failures need operator attention, not retries.
@@ -6869,6 +6871,14 @@
               ? normalizeAdminReadErrorCode(data.errorCode)
               : "",
           };
+          if (data.timing && typeof data.timing === "object") {
+            entry.timing = {};
+            for (const key of ["sessionMs", "cacheMs", "manifestMs", "chunksMs", "firestoreMs", "driveMs", "serverMs", "transportMs", "decodeMs", "renderMs", "attempts"]) {
+              const value = data.timing[key];
+              if (typeof value === "number" && Number.isFinite(value) && value >= 0) entry.timing[key] = value;
+            }
+            if (typeof data.timing.cacheHit === "boolean") entry.timing.cacheHit = data.timing.cacheHit;
+          }
           if (!entry.requestId) return;
 
           let breadcrumbs = [];
@@ -7218,6 +7228,54 @@
         return channelId && channelId !== "PASTE_LINE_LOGIN_CHANNEL_ID_HERE";
       }
 
+      let adminSessionVerifiedAt = 0;
+      let adminSessionCheckPromise = null;
+      let adminInitialOrdersReady = false;
+      let adminResumeNeedsCheck = false;
+
+      function markAdminSessionVerified() {
+        adminSessionVerifiedAt = Date.now();
+      }
+
+      async function ensureAdminSessionReady(force = false) {
+        if (adminSessionCheckPromise) return adminSessionCheckPromise;
+        const token = String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "").trim();
+        if (!token) {
+          setAdminAuthRetryButtonMode(false);
+          showAdminAuthOverlay("登入已過期，請重新登入後繼續。", true);
+          return false;
+        }
+        if (!force && !adminResumeNeedsCheck && !adminAuthBlocksDataLoad && Date.now() - adminSessionVerifiedAt < 60000) return true;
+        adminAuthBlocksDataLoad = true;
+        showAdminAuthOverlay("正在確認登入狀態...", true);
+        const check = (async () => {
+          const valid = await validateExistingAdminSession(token, { redirectOnExpired: false });
+          if (valid) {
+            adminResumeNeedsCheck = false;
+            if (adminInitialOrdersReady) hideAdminAuthOverlay();
+          }
+          return valid;
+        })();
+        adminSessionCheckPromise = check;
+        try { return await check; }
+        finally { if (adminSessionCheckPromise === check) adminSessionCheckPromise = null; }
+      }
+
+      function initializeAdminSessionRecovery() {
+        const recover = async () => {
+          if (document.visibilityState === "hidden" || !adminInitialOrdersReady) return;
+          if (!adminResumeNeedsCheck && Date.now() - adminSessionVerifiedAt < 60000) return;
+          if (await ensureAdminSessionReady(true)) await reconcilePendingAdminShipment();
+        };
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "hidden") adminResumeNeedsCheck = true;
+          else void recover();
+        });
+        window.addEventListener("pageshow", event => {
+          if (event.persisted) { adminResumeNeedsCheck = true; void recover(); }
+        });
+      }
+
       async function startAdminAuth(forceLogin = false) {
         if (adminAuthNavigationPending) return;
         adminAuthNavigationPending = true;
@@ -7410,7 +7468,7 @@
         }
       }
 
-      async function validateExistingAdminSession(token) {
+      async function validateExistingAdminSession(token, { redirectOnExpired = true } = {}) {
         const requestId = createAdminDiagnosticRequestId("adminValidateSession");
         try {
           const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
@@ -7425,11 +7483,14 @@
           if (payload?.action !== "adminValidateSession") throw new Error("GAS_AUTH_RESPONSE_INVALID");
           if (payload.ok === true && payload.allowed === true) {
             adminAuthBlocksDataLoad = false;
+            markAdminSessionVerified();
             return true;
           }
           if (payload.ok === false && payload.error === "ADMIN_SESSION_REQUIRED") {
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-            await startAdminAuth();
+            setAdminAuthRetryButtonMode(false);
+            if (redirectOnExpired) await startAdminAuth();
+            else showAdminAuthOverlay("登入已過期，請重新登入後繼續；尚未重新送出任何操作。", true);
             return false;
           }
           throw new Error("ADMIN_SESSION_VALIDATION_FAILED");
@@ -7447,7 +7508,7 @@
         }
       }
 
-      async function initAdminAuth() {
+      async function initAdminAuth({ validateWithOrders = false } = {}) {
         adminAuthBlocksDataLoad = false;
         showAdminAuthOverlay("管理員登入確認中...", false);
 
@@ -7491,6 +7552,10 @@
         ).trim();
 
         if (existingSessionToken) {
+          if (validateWithOrders) {
+            showAdminAuthOverlay("正在確認登入並讀取訂單...", false);
+            return true;
+          }
           showAdminAuthOverlay("正在驗證既有管理員登入狀態...", false);
           return validateExistingAdminSession(existingSessionToken);
         }
@@ -7540,15 +7605,18 @@
         });
 
         if (normalizedTabName === "products") {
+          void fetchAdminProductCatalogFromGas();
           renderProductManagement();
           if (!adminShippingBatchesLoaded) fetchAdminShippingBatchesFromGas();
         }
         if (normalizedTabName === "shippingPrint") {
+          if (!adminProductsReady) void fetchAdminProductCatalogFromGas({ includeOperations: false });
           renderShippingManifest();
           loadCompleteShippingManifestOrders();
         }
-        if (normalizedTabName === "groupOrders" && !adminGroupOrdersLoaded) {
-          fetchAdminGroupOrders();
+        if (normalizedTabName === "groupOrders") {
+          if (!adminProductsReady) void fetchAdminProductCatalogFromGas({ includeOperations: false });
+          if (!adminGroupOrdersLoaded) fetchAdminGroupOrders();
         }
       }
 
@@ -8923,7 +8991,7 @@
             ?.classList.remove("open");
           adminInventoryAdjustmentContext = null;
           renderProductManagement();
-          resetModalProductRows();
+          refreshNewOrderProductOptions();
           updateNewOrderAmountPreview();
           const adjustment = result.adjustment || {};
           const successText = adjustment.mode === "initialize"
@@ -9134,7 +9202,7 @@
           setAdminProductCatalogState(true, "✅ 管理員商品目錄讀取成功");
           setProductManagementFeedback("✅ 已儲存商品管理設定", "success");
           renderProductManagement();
-          resetModalProductRows();
+          refreshNewOrderProductOptions();
           updateNewOrderAmountPreview();
           return true;
         } catch (error) {
@@ -9192,14 +9260,9 @@
         const status = document.getElementById("adminProductCatalogStatus");
 
         if (trigger) {
-          trigger.disabled = !adminProductsReady;
-          trigger.setAttribute(
-            "aria-disabled",
-            adminProductsReady ? "false" : "true",
-          );
-          trigger.title = adminProductsReady
-            ? ""
-            : "商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。";
+          trigger.disabled = adminProductCatalogLoadPromise !== null;
+          trigger.setAttribute("aria-disabled", trigger.disabled ? "true" : "false");
+          trigger.title = adminProductsReady ? "" : "開啟新增訂單時會讀取最新商品。";
         }
 
         if (status) {
@@ -9207,6 +9270,27 @@
           status.innerText = isError ? message : "";
         }
         if (isError) setAdminStatusPanelVisible(true);
+      }
+
+      function refreshNewOrderProductOptions() {
+        const rows = [...document.querySelectorAll("#modal-product-list .product-edit-row")];
+        if (!rows.length) { resetModalProductRows(); return; }
+        for (const row of rows) {
+          const select = row.querySelector(".modal-spec-select");
+          if (!select) continue;
+          const code = select.value;
+          const previousLabel = select.selectedOptions?.[0]?.textContent || code;
+          select.innerHTML = buildAdminProductOptionsHtml(code);
+          if ([...select.options].some(option => option.value === code)) select.value = code;
+          else {
+            // Never silently switch a removed product in an unfinished order.
+            const option = document.createElement("option");
+            option.value = code;
+            option.textContent = `${previousLabel}（已無法訂購，請重新選擇）`;
+            option.selected = true;
+            select.prepend(option);
+          }
+        }
       }
 
       function resetModalProductRows() {
@@ -10274,7 +10358,19 @@
         return attachAdminOrderSnapshotReadMeta(orders, payload);
       }
 
+      let adminOrderSnapshotReadPromise = null;
       async function performAdminOrderSnapshotFetch(options = {}) {
+        if (adminOrderSnapshotReadPromise) {
+          if (!options.forceReload && !options.requiredVersion) return adminOrderSnapshotReadPromise;
+          await adminOrderSnapshotReadPromise;
+        }
+        const pending = performAdminOrderSnapshotFetchOnce(options);
+        adminOrderSnapshotReadPromise = pending;
+        try { return await pending; }
+        finally { if (adminOrderSnapshotReadPromise === pending) adminOrderSnapshotReadPromise = null; }
+      }
+
+      async function performAdminOrderSnapshotFetchOnce(options = {}) {
         const silent = options && options.silent === true;
         const forceReload = options && options.forceReload === true;
         const adminReadStatusEl = document.getElementById("adminReadStatus");
@@ -10350,6 +10446,8 @@
             currentAdminName = adminDisplayName;
             sessionStorage.setItem(ADMIN_DISPLAY_NAME_KEY, adminDisplayName);
           }
+          markAdminSessionVerified();
+          const decodeStartedAt = Date.now();
           const orders = payload.unchanged === true
             ? attachAdminOrderSnapshotReadMeta(latestAdminOrders.slice(), payload)
             : await mergeAdminOrderSnapshotPayload(payload);
@@ -10373,6 +10471,10 @@
             requestId,
             elapsedMs: Date.now() - startedAt,
             orderCount: orders.length,
+            timing: { ...payload.timing, serverMs: payload.elapsedMs,
+              transportMs: response.transportTiming?.elapsedMs,
+              attempts: response.transportTiming?.attempts,
+              decodeMs: Date.now() - decodeStartedAt },
           });
           return orders;
         } catch (error) {
@@ -10391,6 +10493,7 @@
           });
           if (String(error && error.message) === "ADMIN_SESSION_REQUIRED") {
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+            setAdminAuthRetryButtonMode(false);
             showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
             return null;
           }
@@ -10579,15 +10682,22 @@
         updateNotifyButton();
         applyReadOnlyModeToRealOrders();
         updateAdminRefreshMeta();
+        adminInitialOrdersReady = true;
+        const addTrigger = document.querySelector(".btn-add-order-trigger");
+        if (addTrigger) { addTrigger.disabled = false; addTrigger.setAttribute("aria-disabled", "false"); }
         if (!adminAuthBlocksDataLoad) hideAdminAuthOverlay();
+        await reconcilePendingAdminShipment();
         } finally { adminOverlayRefreshPending = false; }
       }
       window.refreshAdminOrdersFromOverlay = refreshAdminOrdersFromOverlay;
       window.hideAdminAuthOverlay = hideAdminAuthOverlay;
 
-      async function fetchAdminProductCatalogFromGas() {
+      async function fetchAdminProductCatalogFromGas({ includeOperations = true, fresh = false } = {}) {
         if (adminProductCatalogLoadPromise) {
-          return adminProductCatalogLoadPromise;
+          if (!fresh && (!includeOperations || adminProductCatalogLoadPromise.includesOperations !== false)) return adminProductCatalogLoadPromise;
+          await adminProductCatalogLoadPromise;
+          // A new opener must read after earlier in-flight data, not reuse an
+          // older response that started before a product change.
         }
 
         const loadPromise = (async () => {
@@ -10612,6 +10722,7 @@
               },
               body: JSON.stringify({
                 action: "adminReadProductCatalog",
+                includeOperations,
                 adminSessionToken,
               }),
             },
@@ -10641,7 +10752,7 @@
 
           adminProductCatalog = payload.products.slice();
           adminProductCatalogVersion = String(payload.catalogVersion || "");
-          adminProductOperations =
+          if (includeOperations) adminProductOperations =
             payload.productOperations &&
             typeof payload.productOperations === "object"
               ? payload.productOperations
@@ -10653,11 +10764,16 @@
           setAdminProductCatalogState(true, "✅ 管理員商品目錄讀取成功");
           renderProductManagement();
           renderShippingManifest();
-          resetModalProductRows();
+          refreshNewOrderProductOptions();
           updateNewOrderAmountPreview();
           return adminProductCatalog;
         } catch (error) {
           console.error("GAS 商品目錄讀取失敗", error);
+          if (String(error?.message) === "ADMIN_SESSION_REQUIRED") {
+            sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+            setAdminAuthRetryButtonMode(false);
+            showAdminAuthOverlay("登入已過期，請重新登入後繼續。", true);
+          }
           adminProductCatalog = [];
           adminProductCatalogVersion = "";
           adminProductOperations = {
@@ -10667,7 +10783,7 @@
           };
           setAdminProductCatalogState(
             false,
-            "商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。",
+            "商品目錄讀取失敗，請再按新增訂單重試。",
             true,
           );
           renderProductManagement();
@@ -10675,12 +10791,15 @@
         }
         })();
 
+        loadPromise.includesOperations = includeOperations;
         adminProductCatalogLoadPromise = loadPromise;
         try {
           return await loadPromise;
         } finally {
           if (adminProductCatalogLoadPromise === loadPromise) {
             adminProductCatalogLoadPromise = null;
+            const trigger = document.querySelector(".btn-add-order-trigger");
+            if (trigger) { trigger.disabled = false; trigger.setAttribute("aria-disabled", "false"); }
           }
         }
       }
@@ -18509,12 +18628,12 @@
         updateNotifyButton();
         renderProductManagement();
 
-        const isAdminAllowed = await initAdminAuth();
+        const isAdminAllowed = await initAdminAuth({ validateWithOrders: true });
 
         if (isAdminAllowed !== true) {
           return;
         }
-        restoreAdminTab();
+        initializeAdminSessionRecovery();
 
         let initialLoadFinished = false;
         const initialLoadTimer = window.setTimeout(() => {
@@ -18526,7 +18645,7 @@
           );
         }, ADMIN_INITIAL_LOAD_SLOW_MS);
 
-        const productCatalogPromise = fetchAdminProductCatalogFromGas();
+
         try {
           const adminOrders = await fetchAdminOrdersFromGas();
 
@@ -18534,6 +18653,7 @@
             return;
           }
 
+          const renderStartedAt = Date.now();
           const rendered = renderAdminOrders(adminOrders);
 
           if (!rendered) {
@@ -18546,17 +18666,23 @@
           }
 
           updateStatsCounters();
-          applyCurrentFilter();
           handleBatchCheckChange();
           updateNotifyButton();
           applyReadOnlyModeToRealOrders();
+          adminInitialOrdersReady = true;
+          const addTrigger = document.querySelector(".btn-add-order-trigger");
+          if (addTrigger) { addTrigger.disabled = false; addTrigger.setAttribute("aria-disabled", "false"); }
+          markAdminSessionVerified();
+          recordAdminReadBreadcrumb("FETCH_SUCCESS", { requestId: "initial-render", orderCount: adminOrders.length, timing: { renderMs: Date.now() - renderStartedAt } });
           if (!adminAuthBlocksDataLoad) hideAdminAuthOverlay();
+          restoreAdminTab();
+          await reconcilePendingAdminShipment();
           await recoverPendingAdminCreateOrderOnLoad();
         } finally {
           initialLoadFinished = true;
           window.clearTimeout(initialLoadTimer);
         }
-        await productCatalogPromise;
+
       });
       // ==========================================
       // ✨ 系統一：訂單狀態 badge/class 同步（由系統自動推導）
@@ -20145,7 +20271,9 @@ ${adminNote}
           batchShippedBtn.innerText = adminBatchProcessing
             ? "處理中…"
             : `標記已寄出並通知（${count}）`;
-          batchShippedBtn.disabled = adminBatchProcessing || !shippedEligible;
+          const pendingShipment = loadPendingAdminShipment();
+          if (pendingShipment && !adminBatchProcessing) batchShippedBtn.innerText = "確認寄出結果";
+          batchShippedBtn.disabled = adminBatchProcessing || (!pendingShipment && !shippedEligible);
           batchShippedBtn.classList.toggle(
             "enabled",
             !batchShippedBtn.disabled,
@@ -20156,7 +20284,7 @@ ${adminNote}
           adminLegacySendButton.disabled = true;
         }
 
-        if (!adminBatchProcessing && !preserveFeedback) {
+        if (!adminBatchProcessing && !preserveFeedback && !loadPendingAdminShipment()) {
           if (!count) {
             setBatchFeedback("");
           } else {
@@ -20211,6 +20339,121 @@ ${adminNote}
           syncBatchSelectionUi();
         });
 
+      const ADMIN_PENDING_SHIPMENT_KEY = `${ADMIN_STORAGE_NAMESPACE}:pending-shipment-v1`;
+      let adminShipmentReconcilePromise = null;
+      let adminPendingShipmentMemory = null;
+
+      function loadPendingAdminShipment() {
+        if (adminPendingShipmentMemory) return adminPendingShipmentMemory;
+        try {
+          const value = JSON.parse(sessionStorage.getItem(ADMIN_PENDING_SHIPMENT_KEY) || "null");
+          if (Array.isArray(value?.orderNos) && value.orderNos.length > 0 && value.orderNos.length <= 100 &&
+              value.orderNos.every(no => typeof no === "string" && no.trim())) return value;
+        } catch {}
+        return null;
+      }
+
+      function clearPendingAdminShipment() {
+        adminPendingShipmentMemory = null;
+        sessionStorage.removeItem(ADMIN_PENDING_SHIPMENT_KEY);
+      }
+
+      function summarizeAdminShipmentResult(orders) {
+        const sent = orders.filter(o => o.lastNotificationType === "shipment_notice" && o.notificationStatus === "sent").length;
+        const manual = orders.filter(o => o.lastNotificationType === "shipment_notice" && o.notificationStatus === "manual_required").length;
+        const failed = orders.filter(o => o.lastNotificationType === "shipment_notice" && o.notificationStatus === "failed").length;
+        const other = orders.length - sent - manual - failed;
+        return `已確認 ${orders.length} 張已寄出；${sent} 張通知成功、${manual} 張需人工通知` +
+          (failed ? `、${failed} 張通知失敗` : "") +
+          (other ? `，${other} 張通知尚待確認。系統不會自動重送通知。` : "。");
+      }
+
+      function areAdminShipmentNoticesResolved(orders) {
+        return orders.every(order => order.lastNotificationType === "shipment_notice" &&
+          ["sent", "manual_required", "failed", "review_required", "skipped"].includes(order.notificationStatus));
+      }
+
+      async function reconcilePendingAdminShipment() {
+        if (adminShipmentReconcilePromise) return adminShipmentReconcilePromise;
+        const pending = loadPendingAdminShipment();
+        if (!pending) return true;
+        const work = (async () => {
+          for (const delay of [0, 2000, 5000, 10000, 20000]) {
+            if (document.visibilityState === "hidden") break;
+            if (delay) await new Promise(resolve => window.setTimeout(resolve, delay));
+            const token = String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "").trim();
+            if (!token) break;
+            setBatchFeedback("正在查證上次寄出結果，請稍候…");
+            try {
+              // The recovery endpoint is strictly read-only. Never replay POST shipment.
+              const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
+                method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({ action: "adminReadShipmentResults", adminSessionToken: token, orderNos: pending.orderNos }),
+              }, 15000);
+              const result = await response.json();
+              const currentPending = loadPendingAdminShipment();
+              if (!currentPending || currentPending.startedAt !== pending.startedAt) return false;
+              if (result.error === "ADMIN_SESSION_REQUIRED") {
+                sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+                setAdminAuthRetryButtonMode(false);
+                showAdminAuthOverlay("登入已過期，重新登入後會繼續查證；不會重新寄出或推送。", true);
+                break;
+              }
+              if (!response.ok || result.ok !== true || result.action !== "adminReadShipmentResults" || !Array.isArray(result.orders)) throw new Error("SHIPMENT_READBACK_FAILED");
+              const seen = new Set();
+              const valid = result.orders.every(order => pending.orderNos.includes(order.orderNo) && !seen.has(order.orderNo) && seen.add(order.orderNo));
+              if (!valid) throw new Error("SHIPMENT_READBACK_INVALID");
+              markAdminSessionVerified();
+              const confirmed = result.orders.filter(order => order.orderStatus === "已寄出" && order.actualShippingDate);
+              let rendered = confirmed.length === 0;
+              if (confirmed.length) {
+                const merged = confirmed.filter(order => latestAdminOrders.some(o => o.orderNo === order.orderNo))
+                  .map(order => ({ ...latestAdminOrders.find(o => o.orderNo === order.orderNo), ...order }));
+                rendered = merged.length === confirmed.length && await refreshAdminOrdersAfterBatch(merged);
+                if (rendered) confirmed.forEach(order => selectedOrderNos.delete(order.orderNo));
+                setBatchFeedback(summarizeAdminShipmentResult(confirmed));
+              }
+              const allShipped = confirmed.length === pending.orderNos.length && !result.unresolved?.length;
+              const allNoticesResolved = areAdminShipmentNoticesResolved(confirmed);
+              if (allShipped && allNoticesResolved && rendered) {
+                clearPendingAdminShipment();
+                syncBatchSelectionUi(true);
+                return true;
+              }
+            } catch (error) {
+              // Preserve the pending IDs across reload/login. A failed read
+              // proves nothing about whether the original write committed.
+              break;
+            }
+          }
+          setBatchFeedback("上次寄出結果尚未全部確認，請按「確認寄出結果」。只會查詢，不會重送。", true);
+          syncBatchSelectionUi(true);
+          return false;
+        })();
+        adminShipmentReconcilePromise = work;
+        try { return await work; }
+        finally { if (adminShipmentReconcilePromise === work) adminShipmentReconcilePromise = null; }
+      }
+
+      async function sendAdminShipmentOnce(body) {
+        const controller = new AbortController();
+        let timer;
+        try {
+          return await Promise.race([
+            (async () => {
+              const response = await fetch(GAS_ORDERS_API_URL, { method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify(body), signal: controller.signal });
+              const payload = await response.json();
+              return { response, payload };
+            })(),
+            new Promise((_, reject) => { timer = window.setTimeout(() => {
+              controller.abort(); reject(new Error("SHIPMENT_RESPONSE_TIMEOUT"));
+            }, 60000); }),
+          ]);
+        } finally { window.clearTimeout(timer); }
+      }
+
       async function refreshAdminOrdersAfterBatch(updatedOrders = null) {
         let adminOrders;
         if (Array.isArray(updatedOrders) && updatedOrders.length) {
@@ -20225,14 +20468,18 @@ ${adminNote}
           return false;
         }
         updateStatsCounters();
-        applyCurrentFilter();
         updateNotifyButton();
         applyReadOnlyModeToRealOrders();
         return true;
       }
 
       async function batchUpdateStatusToShipped() {
-        if (adminBatchProcessing || !selectedOrderNos.size) return;
+        if (adminBatchProcessing) return;
+        if (loadPendingAdminShipment()) { await reconcilePendingAdminShipment(); return; }
+        if (!selectedOrderNos.size) return;
+        if (!(await ensureAdminSessionReady())) return;
+        // Another click may have resumed while the shared login check was pending.
+        if (adminBatchProcessing || loadPendingAdminShipment()) return;
         const orderNos = [...selectedOrderNos];
         const selectedOrders = getSelectedAdminOrders();
         if (
@@ -20262,16 +20509,26 @@ ${adminNote}
         setBatchFeedback("");
         syncBatchSelectionUi();
         try {
-          const response = await fetch(GAS_ORDERS_API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({
-              action: "adminBatchMarkOrdersShipped",
-              adminSessionToken,
-              orderNos,
-            }),
+          const pending = { orderNos, startedAt: new Date().toISOString() };
+          sessionStorage.setItem(ADMIN_PENDING_SHIPMENT_KEY, JSON.stringify(pending));
+          adminPendingShipmentMemory = pending;
+          const { response, payload } = await sendAdminShipmentOnce({
+            action: "adminBatchMarkOrdersShipped", adminSessionToken, orderNos,
           });
-          const payload = await response.json();
+          if (payload?.ok === false) {
+            const code = payload.errorCode || payload.error || "";
+            const preCommit = ["ADMIN_SESSION_REQUIRED", "ADMIN_BATCH_SHIPPED_BUSY", "BATCH_ORDER_NOT_ELIGIBLE", "INVALID_ADMIN_BATCH_REQUEST", "INVALID_ADMIN_BATCH_SIZE", "INVALID_ADMIN_BATCH_ORDER_NO"].includes(code);
+            if (preCommit || (code === "BATCH_SHIPPED_WRITE_VERIFY_FAILED" && payload.restoreConfirmed === true)) {
+              clearPendingAdminShipment();
+              if (code === "ADMIN_SESSION_REQUIRED") {
+                sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+                setAdminAuthRetryButtonMode(false);
+                showAdminAuthOverlay("登入已過期，本次尚未寄出，請重新登入。", true);
+              }
+              setBatchFeedback(code === "ADMIN_SESSION_REQUIRED" ? "登入已過期，本次未執行寄出。" : "本次寄出未完成，請確認訂單資格後再操作。", true);
+              return;
+            }
+          }
           const returnedOrderNos = payload?.updated?.orderNos;
           const sameOrderNos =
             Array.isArray(returnedOrderNos) &&
@@ -20301,37 +20558,19 @@ ${adminNote}
                   order.orderStatus === "已寄出",
               ),
             );
-          let updatedOrders = payload.orders;
-          if (!hasConfirmedShippedOrders(updatedOrders)) {
-            const freshOrders = await fetchAdminOrdersFromGas({ forceReload: true });
-            updatedOrders = Array.isArray(freshOrders)
-              ? freshOrders.filter((order) =>
-                  orderNos.includes(String(order?.orderNo || "").trim()),
-                )
-              : null;
-          }
-          if (
-            !hasConfirmedShippedOrders(updatedOrders) ||
-            !(await refreshAdminOrdersAfterBatch(updatedOrders))
-          ) {
-            throw new Error("BATCH_REFRESH_FAILED");
+          const updatedOrders = payload.orders;
+          if (!hasConfirmedShippedOrders(updatedOrders) || !(await refreshAdminOrdersAfterBatch(updatedOrders))) {
+            await reconcilePendingAdminShipment();
+            return;
           }
           selectedOrderNos.clear();
           unconfirmedNotificationOrderNos.clear();
-          setBatchFeedback(
-            `已將 ${orderNos.length} 張訂單標為已寄出，系統已建立寄出通知；無 LINE 訂單請依卡片提示完成電話通知。`,
-          );
+          setBatchFeedback(summarizeAdminShipmentResult(updatedOrders));
+          if (areAdminShipmentNoticesResolved(updatedOrders)) clearPendingAdminShipment();
+          else await reconcilePendingAdminShipment();
         } catch (error) {
-          setBatchFeedback(
-            error.message === "BATCH_REFRESH_FAILED"
-              ? "批次可能已完成，但列表重新讀取失敗。請重新整理確認，請勿重複送出。"
-              : error.message === "ORDER_SHIPPED_BANK_UNPAID"
-                ? "選取的非管理員新增訂單中有銀行轉帳尚未付款，請先確認收款。整批訂單均未變更。"
-                : error.message === "BATCH_SHIPPED_WRITE_VERIFY_FAILED"
-                  ? "批次結果無法完整驗證，請重新整理確認，請勿重複送出。"
-                  : "批量已寄出並通知失敗，未套用前端變更。",
-            true,
-          );
+          if (loadPendingAdminShipment()) await reconcilePendingAdminShipment();
+          else setBatchFeedback("無法保存本次操作確認資料，尚未送出寄出，請稍後再試。", true);
         } finally {
           adminBatchProcessing = false;
           syncBatchSelectionUi(true);
@@ -20820,9 +21059,14 @@ ${adminNote}
         );
       }
 
+      let adminAddOrderOpening = false;
       async function openAddOrderModal() {
-        if (!adminProductsReady) {
-          alert("商品目錄讀取失敗，新增訂單暫時無法使用；請重新整理後再試。");
+        if (adminAddOrderOpening) return;
+        adminAddOrderOpening = true;
+        try {
+        if (!(await ensureAdminSessionReady())) return;
+        if (!(await fetchAdminProductCatalogFromGas({ includeOperations: false, fresh: true }))) {
+          alert("暫時無法取得最新商品，請稍後再開啟新增訂單。");
           return;
         }
         resetAdminCustomerLookup();
@@ -20843,6 +21087,7 @@ ${adminNote}
         });
         updateNewOrderAmountPreview();
         window.setTimeout(scrollModalToTop, 80);
+        } finally { adminAddOrderOpening = false; }
       }
 
       function closeAddOrderModal() {
@@ -21300,6 +21545,8 @@ ${adminNote}
           return;
         }
         if (!adminProductsReady || adminCreateOrderSubmitting) return;
+        if (!(await ensureAdminSessionReady())) return;
+        if (!adminProductsReady || adminCreateOrderSubmitting || adminCreateOrderChecking || loadPendingAdminCreateRequest()) return;
 
         const feedback = document.getElementById("new-order-feedback");
         const submitButton = document.getElementById("new-order-submit");

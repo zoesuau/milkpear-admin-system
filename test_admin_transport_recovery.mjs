@@ -98,7 +98,8 @@ for (const action of ['adminReadOrderSnapshot', 'adminReadProductCatalog']) {
   let status = '';
   Object.assign(f.ctx, {
     sessionStorage: { getItem: () => 'fixture-session', setItem() {} },
-    document: { getElementById: () => null },
+    document: { getElementById: () => null, querySelector: () => null },
+    markAdminSessionVerified() {}, refreshNewOrderProductOptions() {},
     ADMIN_LINE_SESSION_TOKEN_KEY: 'session', ADMIN_DISPLAY_NAME_KEY: 'name',
     ADMIN_READ_ORDERS_TIMEOUT_MS: 60000, ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS: 60000,
     adminOrderSnapshotVersion: 'fixture-v1', adminSiteSettings: {},
@@ -111,7 +112,7 @@ for (const action of ['adminReadOrderSnapshot', 'adminReadProductCatalog']) {
     updateNewOrderAmountPreview() {}, console,
   });
   if (action === 'adminReadOrderSnapshot') {
-    vm.runInContext(block('      async function performAdminOrderSnapshotFetch(', '      async function fetchAdminOrdersFromGas('), f.ctx);
+    vm.runInContext(block('      let adminOrderSnapshotReadPromise', '      async function fetchAdminOrdersFromGas('), f.ctx);
     const orders = await f.ctx.performAdminOrderSnapshotFetch();
     assert.equal(orders[0].orderNo, 'fixture-order');
   } else {
@@ -122,5 +123,5 @@ for (const action of ['adminReadOrderSnapshot', 'adminReadProductCatalog']) {
   }
   assert.equal(f.requests.length, 2);
 }
-assert.equal([...html.matchAll(/await fetchAdminRecoverableResponse\(/g)].length, 5, 'only the five reviewed callers use recovery');
+assert.equal([...html.matchAll(/await fetchAdminRecoverableResponse\(/g)].length, 6, 'only the six reviewed read/auth callers use recovery');
 console.log('snapshot and catalog recovery integration: PASS');
