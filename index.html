@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260915-session-retry">
+<html lang="zh-Hant" data-release-version="20260915-shipment-diagnostics">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260915-session-retry" />
+    <meta name="admin-release" content="20260915-shipment-diagnostics" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -4909,6 +4909,11 @@
         </div>
         <div id="adminSearchStatus" class="admin-workflow-feedback"></div>
         <div id="batchActionFeedback" class="admin-workflow-feedback"></div>
+        <details id="adminShipmentDiagnostics" class="hidden">
+          <summary>查看處理紀錄</summary>
+          <p>僅保存本機最近 40 筆處理紀錄，不含客戶資料或登入憑證。</p>
+          <pre id="adminShipmentDiagnosticsText" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></pre>
+        </details>
       </div>
 
       <div class="admin-pagination" id="adminPagination" hidden>
@@ -6656,9 +6661,11 @@
             "adminReadOrderSnapshot", "adminReadProductCatalog", "adminReadShipmentResults"].includes(action)
         ) throw new Error("ADMIN_RECOVERY_ACTION_NOT_ALLOWED");
 
-        const deadline = Date.now() + (action === "adminReadShipmentResults" ? 15000 : 90000);
+        const deadline = Date.now() + (action === "adminReadShipmentResults" ? Math.min(timeoutMs || 15000, 15000) : 90000);
+        // Reconciliation owns the readback retry budget and records each attempt.
+        const maxAttempts = action === "adminReadShipmentResults" ? 1 : 3;
         let lastError;
-        for (let attempt = 0; attempt < 3; attempt++) {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
           const remaining = deadline - Date.now();
           if (remaining <= 0) break;
           const controller = typeof AbortController === "undefined"
@@ -6732,7 +6739,7 @@
             window.clearTimeout(timer);
           }
           const delay = (attempt + 1) * 500;
-          if (attempt === 2 || Date.now() + delay >= deadline) break;
+          if (attempt === maxAttempts - 1 || Date.now() + delay >= deadline) break;
           await new Promise(resolve => window.setTimeout(resolve, delay));
         }
         throw lastError || new Error("GAS_TIMEOUT");
@@ -20360,6 +20367,59 @@ ${adminNote}
       const ADMIN_PENDING_SHIPMENT_KEY = `${ADMIN_STORAGE_NAMESPACE}:pending-shipment-v1`;
       let adminShipmentReconcilePromise = null;
       let adminPendingShipmentMemory = null;
+      const ADMIN_SHIPMENT_DIAGNOSTICS_KEY = `${ADMIN_STORAGE_NAMESPACE}:shipment-diagnostics-v1`;
+      let adminShipmentDiagnosticsMemory = [];
+
+      function normalizeAdminShipmentDiagnostic(value) {
+        const code = String(value?.code || "");
+        const allowedCodes = ["OK", "NETWORK_ERROR", "GAS_TIMEOUT", "SHIPMENT_RESPONSE_TIMEOUT",
+          "GAS_NON_JSON_RESPONSE", "GAS_AUTH_RESPONSE_INVALID", "ADMIN_SESSION_REQUIRED",
+          "SHIPMENT_READBACK_FAILED", "SHIPMENT_READBACK_INVALID", "SHIPMENT_RESPONSE_INVALID",
+          "SHIPMENT_RENDER_FAILED", "SHIPMENT_STATE_PENDING", "SHIPMENT_PAUSED",
+          "SHIPMENT_BUDGET_EXHAUSTED", "SHIPMENT_STORAGE_FAILED", "SHIPMENT_NOT_COMMITTED", "UNKNOWN_ERROR"];
+        allowedCodes.push("ADMIN_BATCH_SHIPPED_BUSY", "BATCH_ORDER_NOT_ELIGIBLE", "INVALID_ADMIN_BATCH_REQUEST",
+          "INVALID_ADMIN_BATCH_SIZE", "INVALID_ADMIN_BATCH_ORDER_NO", "BATCH_SHIPPED_WRITE_VERIFY_FAILED",
+          "ADMIN_SESSION_VALIDATION_FAILED");
+        return {
+          at: /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(value?.at || "") ? value.at : new Date().toISOString(),
+          // This is a frontend-only correlation ID, never a credential or order number.
+          operationId: /^ship_\d{10,16}_[a-z0-9]{1,10}$/.test(value?.operationId || "") ? value.operationId : "legacy",
+          stage: ["WRITE_REQUEST", "WRITE_RESPONSE", "READBACK_REQUEST", "READBACK_RESPONSE", "RENDER", "RECONCILE"].includes(value?.stage) ? value.stage : "RECONCILE",
+          code: allowedCodes.includes(code) || /^HTTP_[45]\d{2}$/.test(code) ? code : "UNKNOWN_ERROR",
+          attempt: Math.min(3, Math.max(0, Number(value?.attempt) || 0)),
+          elapsedMs: Math.min(600000, Math.max(0, Number(value?.elapsedMs) || 0)),
+          httpStatus: Number(value?.httpStatus) >= 100 && Number(value?.httpStatus) <= 599 ? Number(value.httpStatus) : null,
+          responseFormat: ["json", "non-json"].includes(value?.responseFormat) ? value.responseFormat : "unknown",
+        };
+      }
+
+      function readAdminShipmentDiagnostics() {
+        try {
+          const stored = JSON.parse(localStorage.getItem(ADMIN_SHIPMENT_DIAGNOSTICS_KEY) || "[]");
+          if (!adminShipmentDiagnosticsMemory.length && Array.isArray(stored)) adminShipmentDiagnosticsMemory = stored.slice(-40).map(normalizeAdminShipmentDiagnostic);
+        } catch {}
+        return adminShipmentDiagnosticsMemory.slice();
+      }
+
+      function recordAdminShipmentDiagnostic(pending, stage, code, details = {}) {
+        // Diagnostics must never break the business operation, even with storage disabled.
+        try {
+          const record = normalizeAdminShipmentDiagnostic({ ...details,
+            operationId: pending?.operationId, stage, code, at: new Date().toISOString() });
+          adminShipmentDiagnosticsMemory = [...readAdminShipmentDiagnostics(), record].slice(-40);
+          try { localStorage.setItem(ADMIN_SHIPMENT_DIAGNOSTICS_KEY, JSON.stringify(adminShipmentDiagnosticsMemory)); } catch {}
+          const panel = document.getElementById("adminShipmentDiagnostics");
+          const text = document.getElementById("adminShipmentDiagnosticsText");
+          if (text) text.textContent = JSON.stringify(adminShipmentDiagnosticsMemory, null, 2);
+          if (panel?.classList && code !== "OK") panel.classList.remove("hidden");
+          if (panel?.classList && stage === "RECONCILE" && code === "OK") panel.classList.add("hidden");
+          return record;
+        } catch { return null; }
+      }
+
+      function isRetryableAdminShipmentReadError(code) {
+        return ["NETWORK_ERROR", "GAS_TIMEOUT", "GAS_NON_JSON_RESPONSE", "HTTP_404", "HTTP_408", "HTTP_429"].includes(code) || /^HTTP_5\d{2}$/.test(code);
+      }
 
       function loadPendingAdminShipment() {
         if (adminPendingShipmentMemory) return adminPendingShipmentMemory;
@@ -20396,55 +20456,91 @@ ${adminNote}
         const pending = loadPendingAdminShipment();
         if (!pending) return true;
         const work = (async () => {
-          for (const delay of [0, 2000, 5000, 10000, 20000]) {
-            if (document.visibilityState === "hidden") break;
+          const startedAt = Date.now(), deadline = startedAt + 45000;
+          let lastCode = "SHIPMENT_STATE_PENDING";
+          for (const [index, delay] of [0, 2000, 5000].entries()) {
             if (delay) await new Promise(resolve => window.setTimeout(resolve, delay));
+            const current = loadPendingAdminShipment();
+            if (!current || current.startedAt !== pending.startedAt) return false;
+            if (document.visibilityState === "hidden") {
+              lastCode = "SHIPMENT_PAUSED";
+              recordAdminShipmentDiagnostic(pending, "RECONCILE", lastCode);
+              break;
+            }
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) {
+              lastCode = "SHIPMENT_BUDGET_EXHAUSTED";
+              recordAdminShipmentDiagnostic(pending, "RECONCILE", lastCode, {elapsedMs: Date.now() - startedAt});
+              break;
+            }
             const token = String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "").trim();
-            if (!token) break;
-            setBatchFeedback("正在查證上次寄出結果，請稍候…");
+            let stage = "READBACK_REQUEST", httpStatus = null, responseFormat = "unknown";
+            const attemptStartedAt = Date.now();
+            setBatchFeedback(`正在查證上次寄出結果（${index + 1}/3），不會重送…`);
             try {
-              // The recovery endpoint is strictly read-only. Never replay POST shipment.
+              if (!token) throw new Error("ADMIN_SESSION_REQUIRED");
               const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
                 method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify({ action: "adminReadShipmentResults", adminSessionToken: token, orderNos: pending.orderNos }),
-              }, 15000);
-              const result = await response.json();
+              }, Math.min(15000, remaining));
+              stage = "READBACK_RESPONSE";
+              httpStatus = response.status || null;
+              if (!response.ok) throw new Error(`HTTP_${response.status}`);
+              let result;
+              try { result = await response.json(); responseFormat = "json"; }
+              catch { responseFormat = "non-json"; throw new Error("GAS_NON_JSON_RESPONSE"); }
               const currentPending = loadPendingAdminShipment();
               if (!currentPending || currentPending.startedAt !== pending.startedAt) return false;
-              if (result.error === "ADMIN_SESSION_REQUIRED") {
-                sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-                setAdminAuthRetryButtonMode(false);
-                showAdminAuthOverlay("登入已過期，重新登入後會繼續查證；不會重新寄出或推送。", true);
-                break;
+              if (result?.error === "ADMIN_SESSION_REQUIRED") throw new Error("ADMIN_SESSION_REQUIRED");
+              if (result?.ok !== true || result.action !== "adminReadShipmentResults" || !Array.isArray(result.orders)) {
+                const backendCode = normalizeAdminShipmentDiagnostic({code: result?.error || result?.errorCode}).code;
+                throw new Error(backendCode === "UNKNOWN_ERROR" || backendCode === "OK" ? "SHIPMENT_READBACK_FAILED" : backendCode);
               }
-              if (!response.ok || result.ok !== true || result.action !== "adminReadShipmentResults" || !Array.isArray(result.orders)) throw new Error("SHIPMENT_READBACK_FAILED");
               const seen = new Set();
-              const valid = result.orders.every(order => pending.orderNos.includes(order.orderNo) && !seen.has(order.orderNo) && seen.add(order.orderNo));
+              const valid = result.orders.every(order => order && pending.orderNos.includes(order.orderNo) && !seen.has(order.orderNo) && seen.add(order.orderNo));
               if (!valid) throw new Error("SHIPMENT_READBACK_INVALID");
+              recordAdminShipmentDiagnostic(pending, stage, "OK", {attempt: index + 1, elapsedMs: Date.now() - attemptStartedAt, httpStatus, responseFormat});
               markAdminSessionVerified();
               const confirmed = result.orders.filter(order => order.orderStatus === "已寄出" && order.actualShippingDate);
-              let rendered = confirmed.length === 0;
+              stage = "RENDER";
               if (confirmed.length) {
                 const merged = confirmed.filter(order => latestAdminOrders.some(o => o.orderNo === order.orderNo))
                   .map(order => ({ ...latestAdminOrders.find(o => o.orderNo === order.orderNo), ...order }));
-                rendered = merged.length === confirmed.length && await refreshAdminOrdersAfterBatch(merged);
-                if (rendered) confirmed.forEach(order => selectedOrderNos.delete(order.orderNo));
+                if (merged.length !== confirmed.length || !(await refreshAdminOrdersAfterBatch(merged))) throw new Error("SHIPMENT_RENDER_FAILED");
+                confirmed.forEach(order => selectedOrderNos.delete(order.orderNo));
                 setBatchFeedback(summarizeAdminShipmentResult(confirmed));
               }
               const allShipped = confirmed.length === pending.orderNos.length && !result.unresolved?.length;
-              const allNoticesResolved = areAdminShipmentNoticesResolved(confirmed);
-              if (allShipped && allNoticesResolved && rendered) {
+              if (allShipped && areAdminShipmentNoticesResolved(confirmed)) {
                 clearPendingAdminShipment();
+                recordAdminShipmentDiagnostic(pending, "RECONCILE", "OK", {attempt: index + 1, elapsedMs: Date.now() - startedAt});
                 syncBatchSelectionUi(true);
                 return true;
               }
+              lastCode = "SHIPMENT_STATE_PENDING";
+              recordAdminShipmentDiagnostic(pending, "RECONCILE", lastCode, {attempt: index + 1, elapsedMs: Date.now() - startedAt});
             } catch (error) {
-              // Preserve the pending IDs across reload/login. A failed read
-              // proves nothing about whether the original write committed.
-              break;
+              const currentPending = loadPendingAdminShipment();
+              if (!currentPending || currentPending.startedAt !== pending.startedAt) return false;
+              lastCode = stage === "RENDER" ? "SHIPMENT_RENDER_FAILED" :
+                normalizeAdminShipmentDiagnostic({code: error?.name === "AbortError" ? "GAS_TIMEOUT" : error?.message}).code;
+              if (stage === "READBACK_REQUEST" && (error?.httpStatus || ["GAS_NON_JSON_RESPONSE", "GAS_AUTH_RESPONSE_INVALID"].includes(lastCode))) stage = "READBACK_RESPONSE";
+              recordAdminShipmentDiagnostic(pending, stage, lastCode, {attempt: index + 1,
+                elapsedMs: Date.now() - attemptStartedAt, httpStatus: error?.httpStatus || httpStatus,
+                responseFormat: error?.responseFormat || responseFormat});
+              if (lastCode === "ADMIN_SESSION_REQUIRED") {
+                sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+                setAdminAuthRetryButtonMode(false);
+                showAdminAuthOverlay("登入已過期，重新登入後會繼續查證；不會重新寄出或推送。", true);
+              }
+              if (!isRetryableAdminShipmentReadError(lastCode)) break;
             }
           }
-          setBatchFeedback("上次寄出結果尚未全部確認，請按「確認寄出結果」。只會查詢，不會重送。", true);
+          const reason = lastCode === "SHIPMENT_RENDER_FAILED" ? "已取得寄出資料，但畫面更新失敗。" :
+            lastCode === "ADMIN_SESSION_REQUIRED" ? "登入已過期，重新登入後會繼續查證。" :
+            ["HTTP_401", "HTTP_403"].includes(lastCode) ? "讀取權限被拒絕，已停止查詢。" :
+            lastCode === "SHIPMENT_PAUSED" ? "返回後台後會繼續查證。" : "上次寄出結果尚未全部確認。";
+          setBatchFeedback(`${reason}可按「確認寄出結果」查詢，不會重送；原因已保存在「查看處理紀錄」。`, true);
           syncBatchSelectionUi(true);
           return false;
         })();
@@ -20455,6 +20551,8 @@ ${adminNote}
 
       async function sendAdminShipmentOnce(body) {
         const controller = new AbortController();
+        const pending = loadPendingAdminShipment(), startedAt = Date.now();
+        let stage = "WRITE_REQUEST", httpStatus = null, responseFormat = "unknown";
         let timer;
         try {
           return await Promise.race([
@@ -20462,13 +20560,24 @@ ${adminNote}
               const response = await fetch(GAS_ORDERS_API_URL, { method: "POST",
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify(body), signal: controller.signal });
-              const payload = await response.json();
+              stage = "WRITE_RESPONSE";
+              httpStatus = response.status || null;
+              if (!response.ok) throw new Error(`HTTP_${response.status}`);
+              let payload;
+              try { payload = await response.json(); responseFormat = "json"; }
+              catch { responseFormat = "non-json"; throw new Error("GAS_NON_JSON_RESPONSE"); }
               return { response, payload };
             })(),
             new Promise((_, reject) => { timer = window.setTimeout(() => {
               controller.abort(); reject(new Error("SHIPMENT_RESPONSE_TIMEOUT"));
             }, 60000); }),
           ]);
+        } catch (error) {
+          const code = error?.name === "AbortError" ? "SHIPMENT_RESPONSE_TIMEOUT" :
+            normalizeAdminShipmentDiagnostic({code: error?.message}).code;
+          recordAdminShipmentDiagnostic(pending, stage, code === "UNKNOWN_ERROR" && stage === "WRITE_REQUEST" ? "NETWORK_ERROR" : code,
+            {attempt: 1, elapsedMs: Date.now() - startedAt, httpStatus, responseFormat});
+          throw error;
         } finally { window.clearTimeout(timer); }
       }
 
@@ -20526,17 +20635,23 @@ ${adminNote}
         adminBatchProcessing = true;
         setBatchFeedback("");
         syncBatchSelectionUi();
+        let batchStage = "WRITE_REQUEST", batchStartedAt = Date.now(), batchHttpStatus = null;
         try {
-          const pending = { orderNos, startedAt: new Date().toISOString() };
+          const pending = { orderNos, startedAt: new Date().toISOString(),
+            operationId: `ship_${Date.now()}_${Math.random().toString(36).slice(2, 10)}` };
           sessionStorage.setItem(ADMIN_PENDING_SHIPMENT_KEY, JSON.stringify(pending));
           adminPendingShipmentMemory = pending;
           const { response, payload } = await sendAdminShipmentOnce({
             action: "adminBatchMarkOrdersShipped", adminSessionToken, orderNos,
           });
+          batchStage = "WRITE_RESPONSE";
+          batchHttpStatus = response.status || null;
           if (payload?.ok === false) {
             const code = payload.errorCode || payload.error || "";
             const preCommit = ["ADMIN_SESSION_REQUIRED", "ADMIN_BATCH_SHIPPED_BUSY", "BATCH_ORDER_NOT_ELIGIBLE", "INVALID_ADMIN_BATCH_REQUEST", "INVALID_ADMIN_BATCH_SIZE", "INVALID_ADMIN_BATCH_ORDER_NO"].includes(code);
             if (preCommit || (code === "BATCH_SHIPPED_WRITE_VERIFY_FAILED" && payload.restoreConfirmed === true)) {
+              recordAdminShipmentDiagnostic(pending, batchStage, code,
+                {elapsedMs: Date.now() - batchStartedAt, httpStatus: batchHttpStatus, responseFormat: "json"});
               clearPendingAdminShipment();
               if (code === "ADMIN_SESSION_REQUIRED") {
                 sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
@@ -20577,16 +20692,33 @@ ${adminNote}
               ),
             );
           const updatedOrders = payload.orders;
-          if (!hasConfirmedShippedOrders(updatedOrders) || !(await refreshAdminOrdersAfterBatch(updatedOrders))) {
+          if (!hasConfirmedShippedOrders(updatedOrders)) {
+            recordAdminShipmentDiagnostic(pending, batchStage, "SHIPMENT_RESPONSE_INVALID", {elapsedMs: Date.now() - batchStartedAt, httpStatus: batchHttpStatus, responseFormat: "json"});
+            await reconcilePendingAdminShipment();
+            return;
+          }
+          recordAdminShipmentDiagnostic(pending, batchStage, "OK", {elapsedMs: Date.now() - batchStartedAt, httpStatus: batchHttpStatus, responseFormat: "json"});
+          batchStage = "RENDER";
+          if (!(await refreshAdminOrdersAfterBatch(updatedOrders))) {
+            recordAdminShipmentDiagnostic(pending, batchStage, "SHIPMENT_RENDER_FAILED", {elapsedMs: Date.now() - batchStartedAt});
             await reconcilePendingAdminShipment();
             return;
           }
           selectedOrderNos.clear();
           unconfirmedNotificationOrderNos.clear();
           setBatchFeedback(summarizeAdminShipmentResult(updatedOrders));
-          if (areAdminShipmentNoticesResolved(updatedOrders)) clearPendingAdminShipment();
+          if (areAdminShipmentNoticesResolved(updatedOrders)) {
+            clearPendingAdminShipment();
+            recordAdminShipmentDiagnostic(pending, "RECONCILE", "OK", {elapsedMs: Date.now() - batchStartedAt});
+          }
           else await reconcilePendingAdminShipment();
         } catch (error) {
+          // Request/parse exceptions are already recorded by sendAdminShipmentOnce.
+          if (batchStage !== "WRITE_REQUEST" || !loadPendingAdminShipment()) {
+            recordAdminShipmentDiagnostic(loadPendingAdminShipment(), batchStage,
+              batchStage === "RENDER" ? "SHIPMENT_RENDER_FAILED" : batchStage === "WRITE_REQUEST" ? "SHIPMENT_STORAGE_FAILED" : "SHIPMENT_RESPONSE_INVALID",
+              {elapsedMs: Date.now() - batchStartedAt, httpStatus: batchHttpStatus});
+          }
           if (loadPendingAdminShipment()) await reconcilePendingAdminShipment();
           else setBatchFeedback("無法保存本次操作確認資料，尚未送出寄出，請稍後再試。", true);
         } finally {

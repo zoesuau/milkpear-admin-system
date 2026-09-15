@@ -125,3 +125,8 @@ for (const action of ['adminReadOrderSnapshot', 'adminReadProductCatalog']) {
 }
 assert.equal([...html.matchAll(/await fetchAdminRecoverableResponse\(/g)].length, 6, 'only the six reviewed read/auth callers use recovery');
 console.log('snapshot and catalog recovery integration: PASS');
+{
+  const f=fixture([new Response('busy',{status:503})]);
+  await assert.rejects(f.call('adminReadShipmentResults'),/HTTP_503/);
+  assert.equal(f.requests.length,1,'shipment readback retries are owned by the outer bounded reconciler, not multiplied here');
+}
