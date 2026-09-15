@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260915-shipment-diagnostics">
+<html lang="zh-Hant" data-release-version="20260915-create-continuity">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260915-shipment-diagnostics" />
+    <meta name="admin-release" content="20260915-create-continuity" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -154,7 +154,11 @@
         align-items: center;
         margin-bottom: 12px;
         gap: 10px;
+        flex-wrap: wrap;
       }
+
+      .panel-header-row h2 { flex-shrink: 0; }
+      #adminSessionStatus:empty { display: none; }
 
       .top-filter-panel h2 {
         font-size: 20px;
@@ -4813,9 +4817,14 @@
             >
               ➕ 新增訂單
             </button>
-            <div class="admin-refresh-meta" id="adminRefreshMeta">尚未更新</div>
           </div>
         </div>
+        <div class="admin-refresh-meta" id="adminRefreshMeta">尚未更新</div>
+        <div id="adminSessionStatus" role="status" class="admin-workflow-feedback"></div>
+        <details id="adminCreateTiming" class="hidden">
+          <summary>查看建單耗時</summary>
+          <div id="adminCreateTimingText" style="overflow-wrap:anywhere"></div>
+        </details>
 
         <div class="scroll-filter-row" id="statusFilterRow">
           <button class="active" onclick="filterByStatus('全部', this)">
@@ -6648,7 +6657,7 @@
         }
       }
 
-      async function fetchAdminRecoverableResponse(url, options, timeoutMs) {
+      async function fetchAdminRecoverableResponse(url, options, timeoutMs, recoveryOptions = {}) {
         const requestStartedAt = Date.now();
         // This is deliberately separate from fetchWithTimeout: mutations must
         // never inherit retries. adminAuth reuses the deployed nonce result.
@@ -6661,9 +6670,10 @@
             "adminReadOrderSnapshot", "adminReadProductCatalog", "adminReadShipmentResults"].includes(action)
         ) throw new Error("ADMIN_RECOVERY_ACTION_NOT_ALLOWED");
 
-        const deadline = Date.now() + (action === "adminReadShipmentResults" ? Math.min(timeoutMs || 15000, 15000) : 90000);
+        const backgroundValidation = action === "adminValidateSession" && recoveryOptions.singleAttempt === true;
+        const deadline = Date.now() + (backgroundValidation ? Math.min(timeoutMs || 10000, 10000) : action === "adminReadShipmentResults" ? Math.min(timeoutMs || 15000, 15000) : 90000);
         // Reconciliation owns the readback retry budget and records each attempt.
-        const maxAttempts = action === "adminReadShipmentResults" ? 1 : 3;
+        const maxAttempts = action === "adminReadShipmentResults" || backgroundValidation ? 1 : 3;
         let lastError;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           const remaining = deadline - Date.now();
@@ -7240,9 +7250,17 @@
       let adminSessionCheckPromise = null;
       let adminInitialOrdersReady = false;
       let adminResumeNeedsCheck = false;
+      let adminSessionVerificationRevision = 0;
+      let adminBackgroundSessionPromise = null;
+      let adminBackgroundSessionAttemptAt = 0;
 
-      function markAdminSessionVerified() {
+      function markAdminSessionVerified(token) {
+        if (token && sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) !== token) return;
         adminSessionVerifiedAt = Date.now();
+        adminSessionVerificationRevision++;
+        adminResumeNeedsCheck = false;
+        const status = document.getElementById("adminSessionStatus");
+        if (status) status.textContent = "";
       }
 
       async function ensureAdminSessionReady(force = false) {
@@ -7290,11 +7308,27 @@
       function initializeAdminSessionRecovery() {
         const recover = async () => {
           if (document.visibilityState === "hidden" || !adminInitialOrdersReady) return;
-          if (!adminResumeNeedsCheck && Date.now() - adminSessionVerifiedAt < 60000) return;
-          if (await ensureAdminSessionReady(true)) await reconcilePendingAdminShipment();
+          // Catalog/create requests already validate this session on the server.
+          if (adminCreateOrderSubmitting || adminCreateProductsRefreshing || adminAddOrderOpening) return;
+          if (Date.now() - adminSessionVerifiedAt < 60000) {
+            adminResumeNeedsCheck = false;
+            await reconcilePendingAdminShipment();
+            return;
+          }
+          if (adminBackgroundSessionPromise || adminSessionCheckPromise || Date.now() - adminBackgroundSessionAttemptAt < 60000) return;
+          const token = sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+          if (!token) return;
+          adminBackgroundSessionAttemptAt = Date.now();
+          const check = validateExistingAdminSession(token, { redirectOnExpired: false, background: true });
+          adminBackgroundSessionPromise = check;
+          try { if (await check) await reconcilePendingAdminShipment(); }
+          finally { if (adminBackgroundSessionPromise === check) adminBackgroundSessionPromise = null; }
         };
         document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "hidden") adminResumeNeedsCheck = true;
+          if (document.visibilityState === "hidden") {
+            adminResumeNeedsCheck = true;
+            if (typeof persistAdminCreateDraft === "function") persistAdminCreateDraft();
+          }
           else void recover();
         });
         window.addEventListener("pageshow", event => {
@@ -7304,6 +7338,7 @@
 
       async function startAdminAuth(forceLogin = false) {
         if (adminAuthNavigationPending) return;
+        if (typeof persistAdminCreateDraft === "function") persistAdminCreateDraft();
         adminAuthNavigationPending = true;
         adminAuthBlocksDataLoad = true;
         const retryButton = document.getElementById("adminAuthRetryBtn");
@@ -7494,39 +7529,53 @@
         }
       }
 
-      async function validateExistingAdminSession(token, { redirectOnExpired = true } = {}) {
+      async function validateExistingAdminSession(token, { redirectOnExpired = true, background = false } = {}) {
         const requestId = createAdminDiagnosticRequestId("adminValidateSession");
+        const revision = adminSessionVerificationRevision;
+        const isStale = () => sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) !== token ||
+          (background && adminSessionVerificationRevision !== revision);
+        const reportBackgroundStatus = message => {
+          const status = document.getElementById("adminSessionStatus");
+          if (status) status.textContent = message;
+        };
         try {
           const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({ action: "adminValidateSession", adminSessionToken: token, requestId }),
-          }, ADMIN_AUTH_TIMEOUT_MS);
+          }, background ? 10000 : ADMIN_AUTH_TIMEOUT_MS, { singleAttempt: background });
           let payload;
           try { payload = await response.json(); }
           catch { throw new Error("GAS_NON_JSON_RESPONSE"); }
+          if (isStale()) return false;
           if (!response.ok) throw new Error("GAS_AUTH_REQUEST_FAILED");
           if (payload?.action !== "adminValidateSession") throw new Error("GAS_AUTH_RESPONSE_INVALID");
           if (payload.ok === true && payload.allowed === true) {
-            adminAuthBlocksDataLoad = false;
-            markAdminSessionVerified();
+            if (!background) adminAuthBlocksDataLoad = false;
+            markAdminSessionVerified(token);
             return true;
           }
           if (payload.ok === false && payload.error === "ADMIN_SESSION_REQUIRED") {
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
             setAdminAuthRetryButtonMode(false);
-            if (redirectOnExpired) await startAdminAuth();
+            if (background) reportBackgroundStatus("登入已過期，填寫內容會保留；送出前需重新登入。");
+            else if (redirectOnExpired) await startAdminAuth();
             else showAdminAuthOverlay("登入已過期，請重新登入後繼續；尚未重新送出任何操作。", true);
             return false;
           }
           throw new Error("ADMIN_SESSION_VALIDATION_FAILED");
         } catch (error) {
+          if (isStale()) return false;
           const knownErrors = ["GAS_TIMEOUT", "GAS_NON_JSON_RESPONSE", "GAS_AUTH_REQUEST_FAILED", "GAS_AUTH_RESPONSE_INVALID", "ADMIN_SESSION_VALIDATION_FAILED"];
           const errorCode = error?.name === "AbortError" ? "GAS_TIMEOUT" :
             knownErrors.includes(error?.message) || /^HTTP_\d{3}$/.test(error?.message || "")
               ? error.message : "NETWORK_ERROR";
           publishAdminAuthDiagnostic({ requestId, errorCode,
             httpStatus: error?.httpStatus, responseFormat: error?.responseFormat });
+          if (background) {
+            reportBackgroundStatus("暫時無法確認登入，可繼續填寫；送出時由系統再次驗證。");
+            return false;
+          }
           const button = document.getElementById("adminAuthRetryBtn");
           if (button) { button.dataset.retrySession = "true"; button.innerText = "再次確認登入"; }
           showAdminAuthOverlay("⚠️ 暫時無法確認登入，請按「再次確認登入」。", true);
@@ -10718,7 +10767,7 @@
       window.refreshAdminOrdersFromOverlay = refreshAdminOrdersFromOverlay;
       window.hideAdminAuthOverlay = hideAdminAuthOverlay;
 
-      async function fetchAdminProductCatalogFromGas({ includeOperations = true, fresh = false } = {}) {
+      async function fetchAdminProductCatalogFromGas({ includeOperations = true, fresh = false, preserveDraft = false } = {}) {
         if (adminProductCatalogLoadPromise) {
           if (!fresh && (!includeOperations || adminProductCatalogLoadPromise.includesOperations !== false)) return adminProductCatalogLoadPromise;
           await adminProductCatalogLoadPromise;
@@ -10776,6 +10825,7 @@
             );
           }
 
+          markAdminSessionVerified(adminSessionToken);
           adminProductCatalog = payload.products.slice();
           adminProductCatalogVersion = String(payload.catalogVersion || "");
           if (includeOperations) adminProductOperations =
@@ -10798,7 +10848,7 @@
           if (String(error?.message) === "ADMIN_SESSION_REQUIRED") {
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
             setAdminAuthRetryButtonMode(false);
-            showAdminAuthOverlay("登入已過期，請重新登入後繼續。", true);
+            if (!preserveDraft) showAdminAuthOverlay("登入已過期，請重新登入後繼續。", true);
           }
           adminProductCatalog = [];
           adminProductCatalogVersion = "";
@@ -18703,6 +18753,7 @@
           restoreAdminTab();
           await reconcilePendingAdminShipment();
           await recoverPendingAdminCreateOrderOnLoad();
+          if (!loadPendingAdminCreateRequest() && readAdminCreateDraft()) void openAddOrderModal();
         } finally {
           initialLoadFinished = true;
           window.clearTimeout(initialLoadTimer);
@@ -21209,39 +21260,116 @@ ${adminNote}
         );
       }
 
+      const ADMIN_CREATE_DRAFT_KEY = `${ADMIN_STORAGE_NAMESPACE}:create-draft-v1`;
+      function persistAdminCreateDraft() {
+        const modal = document.getElementById("addOrderModal");
+        if (!modal?.classList.contains("open")) return;
+        try {
+          const fields = {};
+          document.querySelectorAll("#newOrderForm input[id], #newOrderForm select[id], #newOrderForm textarea[id]").forEach(input => {
+            if (/^new-/.test(input.id) || input.id === "admin-sync-customer-profile") {
+              fields[input.id] = input.type === "checkbox" ? input.checked : String(input.value || "").slice(0,5000);
+            }
+          });
+          const items = [...document.querySelectorAll("#modal-product-list .product-edit-row")].map(row => ({
+            code: row.querySelector(".modal-spec-select")?.value || "",
+            qty: row.querySelector(".modal-qty-input")?.value || "1",
+          })).slice(0,100);
+          sessionStorage.setItem(ADMIN_CREATE_DRAFT_KEY, JSON.stringify({fields, items, customerId: adminSelectedCustomer?.customerId || ""}));
+        } catch { /* A browser storage restriction must not interrupt editing. */ }
+      }
+
+      function readAdminCreateDraft() {
+        try {
+          const draft = JSON.parse(sessionStorage.getItem(ADMIN_CREATE_DRAFT_KEY) || "null");
+          return draft && draft.fields && typeof draft.fields === "object" && Array.isArray(draft.items) ? draft : null;
+        } catch { return null; }
+      }
+
+      function restoreAdminCreateDraftFields(draft) {
+        if (!draft) return;
+        for (const [id, value] of Object.entries(draft.fields)) {
+          if (!/^new-/.test(id) && id !== "admin-sync-customer-profile") continue;
+          const input = document.getElementById(id);
+          if (!input) continue;
+          if (input.type === "checkbox") input.checked = value === true;
+          else input.value = String(value || "").slice(0,5000);
+        }
+        adminSelectedCustomer = draft.customerId ? {customerId: String(draft.customerId)} : null;
+      }
+
+      function restoreAdminCreateDraftItems(draft) {
+        if (!draft?.items?.length) return;
+        const list = document.getElementById("modal-product-list");
+        if (!list) return;
+        list.innerHTML = "";
+        for (const item of draft.items.slice(0,100)) {
+          addModalProductRow(true);
+          const row = list.lastElementChild;
+          const select = row?.querySelector(".modal-spec-select");
+          if (!select) continue;
+          const code = String(item.code || "");
+          if (![...select.options].some(option => option.value === code)) {
+            const option = document.createElement("option");
+            option.value = code; option.textContent = "原商品已無法訂購，請重新選擇"; select.append(option);
+          }
+          select.value = code;
+          row.querySelector(".modal-qty-input").value = String(item.qty || "1");
+        }
+        updateNewOrderAmountPreview();
+      }
+
       let adminAddOrderOpening = false;
       async function openAddOrderModal() {
-        if (adminAddOrderOpening) return;
-        adminAddOrderOpening = true;
-        try {
-        if (!(await ensureAdminSessionReady())) return;
-        if (!(await fetchAdminProductCatalogFromGas({ includeOperations: false, fresh: true }))) {
-          alert("暫時無法取得最新商品，請稍後再開啟新增訂單。");
-          return;
-        }
-        resetAdminCustomerLookup();
-        if (!document.querySelector("#modal-product-list .product-edit-row")) {
-          resetModalProductRows();
-        }
         const modal = document.getElementById("addOrderModal");
-        const scrollModalToTop = () => {
+        if (adminAddOrderOpening || modal.classList.contains("open")) return;
+        adminAddOrderOpening = true;
+        const draft = readAdminCreateDraft();
+        try {
+          resetAdminCustomerLookup();
+          if (!document.querySelector("#modal-product-list .product-edit-row")) resetModalProductRows();
+          restoreAdminCreateDraftFields(draft);
+          restoreAdminCreateDraftItems(draft);
+          modal.classList.add("open");
+          document.body.style.overflow = "hidden";
           const modalBody = modal.querySelector(".modal-body");
           if (modalBody) modalBody.scrollTop = 0;
-        };
-        modal.classList.add("open");
-        document.body.style.overflow = "hidden";
-        scrollModalToTop();
-        requestAnimationFrame(() => {
-          scrollModalToTop();
-          requestAnimationFrame(scrollModalToTop);
-        });
-        updateNewOrderAmountPreview();
-        window.setTimeout(scrollModalToTop, 80);
+          await refreshAdminCreateProducts();
         } finally { adminAddOrderOpening = false; }
+      }
+
+      let adminCreateProductsRefreshing = false;
+      async function refreshAdminCreateProducts() {
+        if (adminCreateProductsRefreshing) return;
+        adminCreateProductsRefreshing = true;
+        const modal = document.getElementById("addOrderModal");
+        const feedback = document.getElementById("new-order-feedback");
+        const button = document.getElementById("new-order-submit");
+        button.disabled = true;
+        button.innerText = "更新商品中…";
+        feedback.className = "admin-content-feedback";
+        feedback.innerText = "可先填寫客戶資料，正在更新商品…";
+        try {
+          const products = await fetchAdminProductCatalogFromGas({ includeOperations: false, fresh: true, preserveDraft: true });
+          if (!modal.classList.contains("open")) return;
+          if (products && !document.querySelector("#modal-product-list .product-edit-row")) resetModalProductRows();
+          feedback.className = products ? "admin-content-feedback" : "admin-content-feedback is-error";
+          const hasSession = !!sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+          feedback.innerText = products ? "" : hasSession
+            ? "商品更新失敗，填寫內容已保留。請按「重新讀取商品」。"
+            : "登入已過期，填寫內容已保留。請重新登入後繼續。";
+          button.formNoValidate = !products;
+          button.innerText = products ? "建立訂單" : hasSession ? "重新讀取商品" : "重新登入並保留草稿";
+          updateNewOrderAmountPreview();
+        } finally {
+          adminCreateProductsRefreshing = false;
+          if (modal.classList.contains("open")) button.disabled = false;
+        }
       }
 
       function closeAddOrderModal() {
         if (adminCreateOrderSubmitting) return;
+        try { sessionStorage.removeItem(ADMIN_CREATE_DRAFT_KEY); } catch {}
         document.getElementById("addOrderModal").classList.remove("open");
         document.body.style.overflow = "";
         document.getElementById("newOrderForm").reset();
@@ -21323,8 +21451,8 @@ ${adminNote}
       }
 
       // 新增訂單彈窗專用的新增品項功能
-      function addModalProductRow() {
-        if (!adminProductsReady) return;
+      function addModalProductRow(restoreDraft = false) {
+        if (!adminProductsReady && !restoreDraft) return;
         const container = document.getElementById("modal-product-list");
         const row = document.createElement("div");
         row.className = "product-edit-row";
@@ -21368,7 +21496,7 @@ ${adminNote}
         }`;
       }
 
-      function finishAdminCreateOrder(result, feedback, submitButton) {
+      function finishAdminCreateOrder(result, feedback, submitButton, verifiedToken) {
         const createdOrderNo = String(result?.created?.orderNo || "").trim();
         if (
           !createdOrderNo ||
@@ -21388,6 +21516,7 @@ ${adminNote}
           throw new Error("ORDER_CREATE_LOCAL_UPDATE_FAILED");
         }
         clearPendingAdminCreateRequest();
+        if (verifiedToken) markAdminSessionVerified(verifiedToken);
 
         adminCreateOrderSubmitting = false;
         closeAddOrderModal();
@@ -21399,10 +21528,13 @@ ${adminNote}
         scrollAdminOrderCardIntoView(createdOrderNo);
         setAdminRefreshState(
           false,
-          `✅ 訂單 ${createdOrderNo} 已建立${formatAdminCreateDiagnostic(
-            result.diagnostic,
-          )}`,
+          `✅ 訂單 ${createdOrderNo} 已建立`,
         );
+        const timing = formatAdminCreateDiagnostic(result.diagnostic).replace(/^｜/, "");
+        const timingPanel = document.getElementById("adminCreateTiming");
+        const timingText = document.getElementById("adminCreateTimingText");
+        if (timingText) timingText.textContent = timing;
+        if (timingPanel) { timingPanel.classList.toggle("hidden", !timing); timingPanel.open = false; }
         return true;
       }
 
@@ -21495,6 +21627,7 @@ ${adminNote}
             return true;
           }
           try {
+            const recoverySessionToken = String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "").trim();
             const response = await fetchWithTimeout(
               GAS_ORDERS_API_URL,
               {
@@ -21504,9 +21637,7 @@ ${adminNote}
                 },
                 body: JSON.stringify({
                   action: "adminCheckCreateOrderResult",
-                  adminSessionToken: String(
-                    sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
-                  ).trim(),
+                  adminSessionToken: recoverySessionToken,
                   requestKey,
                 }),
               },
@@ -21532,7 +21663,7 @@ ${adminNote}
             }
             lastStatus = String(result.status || "");
             if (lastStatus === "completed") {
-              return finishAdminCreateOrder(result, feedback, submitButton);
+              return finishAdminCreateOrder(result, feedback, submitButton, recoverySessionToken);
             }
             if (lastStatus === "indeterminate") break;
             if (lastStatus !== "not_found") {
@@ -21592,6 +21723,7 @@ ${adminNote}
                   resendResult,
                   feedback,
                   submitButton,
+                  pendingPayload.adminSessionToken,
                 );
               }
 
@@ -21690,13 +21822,19 @@ ${adminNote}
 
       async function handleNewOrderSubmit(event) {
         event.preventDefault();
+        if (adminCreateOrderSubmitting) return;
         if (adminCreateOrderChecking || loadPendingAdminCreateRequest()) {
           await checkPendingAdminCreateOrder();
           return;
         }
-        if (!adminProductsReady || adminCreateOrderSubmitting) return;
-        if (!(await ensureAdminSessionReady())) return;
-        if (!adminProductsReady || adminCreateOrderSubmitting || adminCreateOrderChecking || loadPendingAdminCreateRequest()) return;
+        if (adminCreateProductsRefreshing || adminAddOrderOpening) return;
+        if (!sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY)) {
+          persistAdminCreateDraft();
+          setAdminAuthRetryButtonMode(false);
+          showAdminAuthOverlay("登入已過期，填寫內容已保留，請重新登入後繼續。", true);
+          return;
+        }
+        if (!adminProductsReady) { await refreshAdminCreateProducts(); return; }
 
         const feedback = document.getElementById("new-order-feedback");
         const submitButton = document.getElementById("new-order-submit");
@@ -21787,6 +21925,7 @@ ${adminNote}
 
         adminCreateOrderSubmitting = true;
         adminCreateOrderChecking = false;
+        persistAdminCreateDraft();
         storePendingAdminCreateRequest(payload);
         submitButton.disabled = true;
         submitButton.innerText = "建立中…";
@@ -21816,7 +21955,9 @@ ${adminNote}
           ) {
             if (result?.errorCode === "ADMIN_SESSION_REQUIRED") {
               sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-              showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
+              persistAdminCreateDraft();
+              setAdminAuthRetryButtonMode(false);
+              showAdminAuthOverlay("登入已過期，填寫內容已保留，請重新登入後繼續。", true);
             }
             const createError = new Error(
               result?.errorCode || "ORDER_CREATE_FAILED",
@@ -21828,7 +21969,7 @@ ${adminNote}
             throw createError;
           }
 
-          finishAdminCreateOrder(result, feedback, submitButton);
+          finishAdminCreateOrder(result, feedback, submitButton, payload.adminSessionToken);
         } catch (error) {
           feedback.className = "admin-content-feedback is-error";
           if (error.message === "ORDER_CREATE_LOCAL_UPDATE_FAILED") {

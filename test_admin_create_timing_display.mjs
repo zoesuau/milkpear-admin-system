@@ -12,9 +12,8 @@ assert.match(source, /diagnostic\.stages\?\./);
 for (const label of ["庫存", "Orders", "客戶／索引", "通知紀錄", "群組通知"]) {
   assert.match(source, new RegExp(label));
 }
-assert.match(
-  html,
-  /訂單 \$\{createdOrderNo\} 已建立\$\{formatAdminCreateDiagnostic\(/,
-);
+assert.match(html, /id="adminCreateTiming" class="hidden"/);
+assert.match(html, /timingText.textContent = timing/);
+assert.doesNotMatch(html, /已建立\$\{formatAdminCreateDiagnostic/);
 
 console.log("admin create timing display regression checks passed");

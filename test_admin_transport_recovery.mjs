@@ -130,3 +130,15 @@ console.log('snapshot and catalog recovery integration: PASS');
   await assert.rejects(f.call('adminReadShipmentResults'),/HTTP_503/);
   assert.equal(f.requests.length,1,'shipment readback retries are owned by the outer bounded reconciler, not multiplied here');
 }
+
+for (const mode of ['http','body']) {
+ const f=fixture([mode==='http'?new Response('unavailable',{status:503}):()=>({ok:true,status:200,text:()=>new Promise(()=>{})})]);
+ const request=f.ctx.fetchAdminRecoverableResponse(endpoint,{method:'POST',body:JSON.stringify({action:'adminValidateSession',adminSessionToken:'fake-session'})},60000,{singleAttempt:true});
+ if(mode==='body') {
+  await new Promise(setImmediate);
+  const timer=[...f.timers.values()][0];assert.equal(timer.ms,10000,'background budget includes full body');timer.fn();
+ }
+ await assert.rejects(request,mode==='http'?/HTTP_503/:/GAS_TIMEOUT/);
+ assert.equal(f.requests.length,1);assert.equal(f.timers.size,0);
+}
+console.log('background transport: PASS one attempt and ten-second full-body budget');
