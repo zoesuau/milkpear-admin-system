@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260915-admin-reliability">
+<html lang="zh-Hant" data-release-version="20260915-session-retry">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260915-admin-reliability" />
+    <meta name="admin-release" content="20260915-session-retry" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -6586,8 +6586,9 @@
         showRetry,
         showRefresh = false,
         showClose = false,
+        replaceBlockedMessage = false,
       ) {
-        if (adminAuthBlocksDataLoad && !showRetry) return;
+        if (adminAuthBlocksDataLoad && !showRetry && !replaceBlockedMessage) return;
         if (showRetry) adminAuthBlocksDataLoad = true;
         const overlay = document.getElementById("adminAuthOverlay");
         const messageEl = document.getElementById("adminAuthMessage");
@@ -7247,7 +7248,7 @@
         }
         if (!force && !adminResumeNeedsCheck && !adminAuthBlocksDataLoad && Date.now() - adminSessionVerifiedAt < 60000) return true;
         adminAuthBlocksDataLoad = true;
-        showAdminAuthOverlay("正在確認登入狀態...", true);
+        showAdminAuthOverlay("正在確認登入狀態...", false, false, false, true);
         const check = (async () => {
           const valid = await validateExistingAdminSession(token, { redirectOnExpired: false });
           if (valid) {
@@ -7259,6 +7260,24 @@
         adminSessionCheckPromise = check;
         try { return await check; }
         finally { if (adminSessionCheckPromise === check) adminSessionCheckPromise = null; }
+      }
+
+      async function retryAdminSessionFromOverlay() {
+        // A resumed page already has orders and may contain an unsaved draft.
+        // Retrying session validation must not discard it or reload every order.
+        if (!adminInitialOrdersReady) {
+          window.location.reload();
+          return;
+        }
+        const retryButton = document.getElementById("adminAuthRetryBtn");
+        if (retryButton) retryButton.disabled = true;
+        try {
+          if (await ensureAdminSessionReady(true)) {
+            await reconcilePendingAdminShipment();
+          }
+        } finally {
+          if (retryButton) retryButton.disabled = false;
+        }
       }
 
       function initializeAdminSessionRecovery() {
@@ -18546,8 +18565,7 @@
         if (retryBtn) {
           retryBtn.addEventListener("click", () => {
             if (retryBtn.dataset.retrySession === "true") {
-              retryBtn.disabled = true;
-              window.location.reload();
+              void retryAdminSessionFromOverlay();
               return;
             }
             if (
