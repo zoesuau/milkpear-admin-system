@@ -1,14 +1,15 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260916-admin-auth-60s-v6">
+<html lang="zh-Hant" data-release-version="20260916-diagnostics-v2">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260916-admin-auth-60s-v6" />
+    <meta name="admin-release" content="20260916-diagnostics-v2" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
     <script src="./customer-config.js?v=20260816-group-orders-1"></script>
+    <script src="./admin-diagnostics.js?v=20260916-diagnostics-v2"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -4918,8 +4919,16 @@
         </div>
         <div id="adminSearchStatus" class="admin-workflow-feedback"></div>
         <div id="batchActionFeedback" class="admin-workflow-feedback"></div>
-        <details id="adminShipmentDiagnostics" class="hidden">
+        <details id="adminDiagnostics">
           <summary>查看處理紀錄</summary>
+          <p>自動保存並背景上傳診斷紀錄，不含客戶資料或登入憑證。本機最近 100 筆，待上傳最多 500 筆／7 天；集中保存 30 天。</p>
+          <p id="adminDiagnosticsStatus" aria-live="polite">正在讀取本機紀錄…</p>
+          <button type="button" onclick="showCentralAdminDiagnostics(this)">查看各裝置最近 100 筆紀錄</button>
+          <pre id="adminDiagnosticsCentral" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></pre>
+          <pre id="adminDiagnosticsText" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></pre>
+        </details>
+        <details id="adminShipmentDiagnostics" hidden>
+          <summary>舊版寄出處理紀錄</summary>
           <p>僅保存本機最近 40 筆處理紀錄，不含客戶資料或登入憑證。</p>
           <pre id="adminShipmentDiagnosticsText" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></pre>
         </details>
@@ -6675,6 +6684,7 @@
         ) throw new Error("ADMIN_RECOVERY_ACTION_NOT_ALLOWED");
 
         if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          window.AdminDiagnostics?.record({action, stage:"RESULT", outcome:"failure", code:"ADMIN_NETWORK_OFFLINE"});
           const offlineError = new Error("ADMIN_NETWORK_OFFLINE");
           offlineError.attempts = 0;
           offlineError.elapsedMs = 0;
@@ -6898,6 +6908,7 @@
       }
 
       function publishAdminAuthDiagnostic(diagnostic) {
+        window.AdminDiagnostics?.record({action:"adminAuth", stage:"AUTH", outcome:"failure", code:diagnostic?.errorCode});
         const safeDiagnostic = {
           requestId: String(diagnostic?.requestId || "").replace(/[^A-Za-z0-9_.:-]/g, "-").slice(0, 150),
           event: String(diagnostic?.event || "ADMIN_AUTH_FAILURE").slice(0, 80),
@@ -6982,6 +6993,7 @@
 
       function recordAdminReadBreadcrumb(event, data = {}) {
         try {
+          if (event === "FETCH_SUCCESS" && Number.isFinite(data.timing?.renderMs)) window.AdminDiagnostics?.record({action:"adminReadOrders",stage:"RENDER",outcome:"success",code:"OK",elapsedMs:data.timing.renderMs});
           const normalizedEvent = String(event || "").trim().toUpperCase();
           const allowedEvents = new Set([
             "FETCH_START",
@@ -19075,6 +19087,13 @@
 
       // 頁面初始化
       window.addEventListener("DOMContentLoaded", async () => {
+        try {
+          const oldRecords = readAdminShipmentDiagnostics();
+          document.getElementById("adminShipmentDiagnosticsText").textContent = oldRecords.length ? JSON.stringify(oldRecords, null, 2) : "目前沒有舊版寄出紀錄。";
+          document.getElementById("adminShipmentDiagnostics").hidden = !oldRecords.length;
+          if (!window.AdminDiagnostics) document.getElementById("adminDiagnosticsStatus").textContent = "診斷功能尚未載入，請確認網路後重新整理；不影響正常訂單操作。";
+        } catch { /* Diagnostic display must not block login. */ }
+
         initializeAdminManualRefreshControl();
         const groupTabButton = document.getElementById("groupOrdersTabButton");
         if (GROUP_ORDERS_ENABLED && groupTabButton) {
@@ -20956,6 +20975,17 @@ ${adminNote}
           syncBatchSelectionUi();
         });
 
+      async function showCentralAdminDiagnostics(button) {
+        const output = document.getElementById("adminDiagnosticsCentral");
+        button.disabled = true;
+        output.textContent = "正在讀取集中紀錄…";
+        try {
+          if (!window.AdminDiagnostics) throw new Error("診斷功能尚未載入，請重新整理。");
+          output.textContent = await window.AdminDiagnostics.query(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY));
+        } catch { output.textContent = "集中紀錄暫時無法讀取；請確認管理員登入與網路。本機紀錄仍保留。"; }
+        finally { button.disabled = false; }
+      }
+
       const ADMIN_PENDING_SHIPMENT_KEY = `${ADMIN_STORAGE_NAMESPACE}:pending-shipment-v1`;
       let adminShipmentReconcilePromise = null;
       let adminPendingShipmentMemory = null;
@@ -20998,6 +21028,7 @@ ${adminNote}
         try {
           const record = normalizeAdminShipmentDiagnostic({ ...details,
             operationId: pending?.operationId, stage, code, at: new Date().toISOString() });
+          window.AdminDiagnostics?.shipment(record);
           adminShipmentDiagnosticsMemory = [...readAdminShipmentDiagnostics(), record].slice(-40);
           try { localStorage.setItem(ADMIN_SHIPMENT_DIAGNOSTICS_KEY, JSON.stringify(adminShipmentDiagnosticsMemory)); } catch {}
           const panel = document.getElementById("adminShipmentDiagnostics");
