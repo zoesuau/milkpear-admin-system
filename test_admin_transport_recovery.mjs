@@ -88,7 +88,7 @@ for (const status of [401, 403]) {
   const authStall = (ctx, timers) => {
     queueMicrotask(() => {
       const timeout = [...timers.values()].find(t => t.ms > 1000);
-      assert.equal(timeout.ms, 30000, 'admin auth must receive the full existing 30-second budget');
+      assert.equal(timeout.ms, 60000, 'one-time admin auth must receive the configured 60-second budget');
       timeout.fn();
     });
     return { ok: true, status: 200, text: () => new Promise(() => {}) };

@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260916-admin-auth-single-attempt-v5">
+<html lang="zh-Hant" data-release-version="20260916-admin-auth-60s-v6">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260916-admin-auth-single-attempt-v5" />
+    <meta name="admin-release" content="20260916-admin-auth-60s-v6" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -6688,9 +6688,11 @@
         const oneTimeAdminAuth = action === "adminAuth";
         const defaultRecoveryBudgetMs = backgroundValidation
           ? Math.min(timeoutMs || 10000, 10000)
-          : action === "adminReadShipmentResults"
-            ? Math.min(timeoutMs || 15000, 15000)
-            : Math.min(timeoutMs || 30000, 30000);
+          : oneTimeAdminAuth
+            ? Math.min(timeoutMs || 60000, 60000)
+            : action === "adminReadShipmentResults"
+              ? Math.min(timeoutMs || 15000, 15000)
+              : Math.min(timeoutMs || 30000, 30000);
         const requestedRecoveryBudgetMs = Math.max(
           0,
           Number(recoveryOptions.totalBudgetMs) || 0,
