@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260916-weak-network-recovery">
+<html lang="zh-Hant" data-release-version="20260916-network-reconnect-v2">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260916-weak-network-recovery" />
+    <meta name="admin-release" content="20260916-network-reconnect-v2" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -6679,17 +6679,31 @@
         }
 
         const backgroundValidation = action === "adminValidateSession" && recoveryOptions.singleAttempt === true;
-        const recoveryBudgetMs = backgroundValidation
+        const defaultRecoveryBudgetMs = backgroundValidation
           ? Math.min(timeoutMs || 10000, 10000)
           : action === "adminReadShipmentResults"
             ? Math.min(timeoutMs || 15000, 15000)
             : Math.min(timeoutMs || 30000, 30000);
+        const requestedRecoveryBudgetMs = Math.max(
+          0,
+          Number(recoveryOptions.totalBudgetMs) || 0,
+        );
+        const recoveryBudgetMs = requestedRecoveryBudgetMs
+          ? Math.min(defaultRecoveryBudgetMs, requestedRecoveryBudgetMs)
+          : defaultRecoveryBudgetMs;
         const perAttemptBudgetMs = backgroundValidation
           ? recoveryBudgetMs
           : Math.min(recoveryBudgetMs, 12000);
         const deadline = Date.now() + recoveryBudgetMs;
         // Reconciliation owns the readback retry budget and records each attempt.
-        const maxAttempts = action === "adminReadShipmentResults" || backgroundValidation ? 1 : 3;
+        const defaultMaxAttempts = action === "adminReadShipmentResults" || backgroundValidation ? 1 : 3;
+        const requestedMaxAttempts = Math.max(
+          0,
+          Math.floor(Number(recoveryOptions.maxAttempts) || 0),
+        );
+        const maxAttempts = requestedMaxAttempts
+          ? Math.min(defaultMaxAttempts, requestedMaxAttempts)
+          : defaultMaxAttempts;
         let lastError;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           const remaining = deadline - Date.now();
@@ -7381,6 +7395,8 @@
       let adminNetworkRecoveryPending = "";
       let adminNetworkRecoveryInFlight = false;
       let adminPendingAuthForceLogin = false;
+      const ADMIN_NETWORK_SETTLE_MS = 1500;
+      const ADMIN_NETWORK_RETRY_DELAYS_MS = Object.freeze([0, 3000]);
 
       function adminBrowserIsOffline() {
         return typeof navigator !== "undefined" && navigator.onLine === false;
@@ -10329,6 +10345,9 @@
               }),
             },
             ADMIN_READ_ORDERS_TIMEOUT_MS,
+            options.networkRecovery === true
+              ? { totalBudgetMs: 10000, maxAttempts: 1 }
+              : {},
           );
 
           if (!response.ok) {
@@ -10673,6 +10692,9 @@
               }),
             },
             ADMIN_READ_ORDERS_TIMEOUT_MS,
+            options.networkRecovery === true
+              ? { totalBudgetMs: 10000, maxAttempts: 1 }
+              : {},
           );
 
           if (!response.ok) {
@@ -10922,18 +10944,20 @@
         window.location.reload();
       }
 
-      async function refreshAdminOrdersFromOverlay() {
-        if (adminAuthBlocksDataLoad || adminOverlayRefreshPending) return;
+      async function refreshAdminOrdersFromOverlay(options = {}) {
+        if (adminAuthBlocksDataLoad || adminOverlayRefreshPending) return false;
         adminOverlayRefreshPending = true;
         try {
         setAdminRefreshState(true, "正在重新讀取訂單...");
         showAdminAuthOverlay("正在重新讀取訂單...", false, true, true);
         const requestId = ++adminOrderQueryRequestId;
-        const adminOrders = await fetchAdminOrdersFromGas();
-        if (requestId !== adminOrderQueryRequestId) return;
+        const adminOrders = await fetchAdminOrdersFromGas({
+          networkRecovery: options?.networkRecovery === true,
+        });
+        if (requestId !== adminOrderQueryRequestId) return false;
         if (adminAuthBlocksDataLoad) {
           setAdminRefreshState(false, "請先完成登入。");
-          return;
+          return false;
         }
         if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
           setAdminRefreshState(false, "重新讀取失敗，請稍後再試。");
@@ -10944,7 +10968,7 @@
             false,
             true,
           );
-          return;
+          return false;
         }
 
         updateStatsCounters();
@@ -10960,6 +10984,7 @@
         if (addTrigger) { addTrigger.disabled = false; addTrigger.setAttribute("aria-disabled", "false"); }
         if (!adminAuthBlocksDataLoad) hideAdminAuthOverlay();
         await reconcilePendingAdminShipment();
+        return true;
         } finally { adminOverlayRefreshPending = false; }
       }
       window.refreshAdminOrdersFromOverlay = refreshAdminOrdersFromOverlay;
@@ -22065,6 +22090,19 @@ ${adminNote}
         if (!recovery) return;
         adminNetworkRecoveryInFlight = true;
         try {
+          if (ADMIN_NETWORK_SETTLE_MS > 0) {
+            showAdminAuthOverlay(
+              "網路已恢復，正在等待連線穩定...",
+              false,
+              false,
+              false,
+              true,
+            );
+            await new Promise(resolve =>
+              window.setTimeout(resolve, ADMIN_NETWORK_SETTLE_MS),
+            );
+          }
+          if (adminBrowserIsOffline()) return;
           if (recovery === "startAuth") {
             clearAdminNetworkRecoveryPending("startAuth");
             await startAdminAuth(adminPendingAuthForceLogin);
@@ -22086,8 +22124,34 @@ ${adminNote}
             recovery === "orders" &&
             sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY)
           ) {
-            clearAdminNetworkRecoveryPending("orders");
-            await refreshAdminOrdersFromOverlay();
+            for (
+              let attempt = 0;
+              attempt < ADMIN_NETWORK_RETRY_DELAYS_MS.length;
+              attempt += 1
+            ) {
+              const delayMs = ADMIN_NETWORK_RETRY_DELAYS_MS[attempt];
+              if (delayMs > 0) {
+                showAdminAuthOverlay(
+                  "連線仍在恢復，系統會再讀取一次訂單...",
+                  false,
+                  false,
+                  false,
+                  true,
+                );
+                await new Promise(resolve => window.setTimeout(resolve, delayMs));
+              }
+              if (adminBrowserIsOffline()) return;
+              const recovered = await refreshAdminOrdersFromOverlay({
+                networkRecovery: true,
+              });
+              if (recovered === true) return;
+              if (adminNetworkRecoveryPending !== "orders") return;
+            }
+            showAdminAuthOverlay(
+              "⚠️ 網路已恢復，但訂單仍無法讀取；登入資料已保留，請稍後按「重新讀取訂單」。",
+              false,
+              true,
+            );
           }
         } finally {
           adminNetworkRecoveryInFlight = false;

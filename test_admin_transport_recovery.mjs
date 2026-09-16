@@ -154,3 +154,12 @@ for (const mode of ['http','body']) {
  assert.equal(f.requests.length,1);assert.equal(f.timers.size,0);
 }
 console.log('background transport: PASS one attempt and ten-second full-body budget');
+{
+ const f=fixture([new Response('unavailable',{status:503}),json(success('adminReadOrderSnapshot'))]);
+ await assert.rejects(
+  f.ctx.fetchAdminRecoverableResponse(endpoint,{method:'POST',body:JSON.stringify({action:'adminReadOrderSnapshot',adminSessionToken:'fake-session'})},60000,{totalBudgetMs:10000,maxAttempts:1}),
+  /HTTP_503/,
+ );
+ assert.equal(f.requests.length,1,'automatic reconnect owns its outer second attempt and must keep each read to one request');
+}
+console.log('reconnect transport: PASS one safe read per automatic recovery attempt');
