@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260916-snapshot-bootstrap-v4">
+<html lang="zh-Hant" data-release-version="20260916-admin-auth-single-attempt-v5">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260916-snapshot-bootstrap-v4" />
+    <meta name="admin-release" content="20260916-admin-auth-single-attempt-v5" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -6682,6 +6682,10 @@
         }
 
         const backgroundValidation = action === "adminValidateSession" && recoveryOptions.singleAttempt === true;
+        // LINE authorization codes are one-time values. Give the original
+        // exchange the complete recovery budget instead of aborting at 12s
+        // and automatically replaying the same code.
+        const oneTimeAdminAuth = action === "adminAuth";
         const defaultRecoveryBudgetMs = backgroundValidation
           ? Math.min(timeoutMs || 10000, 10000)
           : action === "adminReadShipmentResults"
@@ -6694,12 +6698,13 @@
         const recoveryBudgetMs = requestedRecoveryBudgetMs
           ? Math.min(defaultRecoveryBudgetMs, requestedRecoveryBudgetMs)
           : defaultRecoveryBudgetMs;
-        const perAttemptBudgetMs = backgroundValidation
+        const perAttemptBudgetMs = backgroundValidation || oneTimeAdminAuth
           ? recoveryBudgetMs
           : Math.min(recoveryBudgetMs, 12000);
         const deadline = Date.now() + recoveryBudgetMs;
         // Reconciliation owns the readback retry budget and records each attempt.
-        const defaultMaxAttempts = action === "adminReadShipmentResults" || backgroundValidation ? 1 : 3;
+        const defaultMaxAttempts = action === "adminReadShipmentResults" ||
+          backgroundValidation || oneTimeAdminAuth ? 1 : 3;
         const requestedMaxAttempts = Math.max(
           0,
           Math.floor(Number(recoveryOptions.maxAttempts) || 0),

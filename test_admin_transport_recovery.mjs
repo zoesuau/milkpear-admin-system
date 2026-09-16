@@ -37,10 +37,15 @@ for (const bad of [new Response('<html>missing</html>', { status: 404 }), new Re
   assert.equal(f.requests[0].body, f.requests[1].body);
   assert.equal(f.timers.size, 0);
 }
-for (const action of ['adminAuth', 'adminValidateSession', 'adminReadOrders', 'adminReadOrderSnapshot', 'adminReadProductCatalog']) {
+for (const action of ['adminValidateSession', 'adminReadOrders', 'adminReadOrderSnapshot', 'adminReadProductCatalog']) {
   const f = fixture([new Response('missing', { status: 404 }), json(success(action))]);
   await f.call(action);
   assert.equal(f.requests[0].body, f.requests[1].body, 'all recovery must retain the original payload, including auth nonce/PKCE');
+}
+{
+  const f = fixture([new Response('missing', { status: 404 })]);
+  await assert.rejects(f.call('adminAuth'), /HTTP_404/);
+  assert.equal(f.requests.length, 1, 'one-time LINE code must not be replayed automatically');
 }
 for (const action of ['adminCreateOrder', 'adminBatchMarkOrdersShipped', 'adminMarkOrderShipped', 'adminUpdatePaymentStatus', 'adminSyncOrderSnapshot']) {
   const f = fixture([]);
@@ -62,16 +67,9 @@ for (const status of [401, 403]) {
   assert.equal(f.requests.length, 1);
 }
 {
-  const f = fixture([new Response('missing', { status: 404 }),
-    json({ ok: false, action: 'adminAuth', error: 'LINE_TOKEN_EXCHANGE_FAILED' }),
-    json(success('adminAuth'))]);
-  assert.equal((await (await f.call('adminAuth')).json()).adminSessionToken, 'fake-session');
-  assert.equal(new Set(f.requests.map(r => r.body)).size, 1);
-}
-{
-  const f = fixture([json({ ok: true, action: 'adminAuth', allowed: true }), json(success('adminAuth'))]);
-  assert.equal((await (await f.call('adminAuth')).json()).adminSessionToken, 'fake-session');
-  assert.equal(f.requests.length, 2, 'malformed auth success must not discard callback context');
+  const f = fixture([json({ ok: true, action: 'adminAuth', allowed: true })]);
+  await assert.rejects(f.call('adminAuth'), /GAS_AUTH_RESPONSE_INVALID/);
+  assert.equal(f.requests.length, 1, 'malformed auth response must leave retry to the user without replaying the code');
 }
 {
   const f = fixture(Array.from({ length: 3 }, () => new Response('missing', { status: 404 })));
@@ -85,6 +83,19 @@ for (const status of [401, 403]) {
   const f = fixture([stall, json(success('adminValidateSession'))]);
   assert.equal((await (await f.call()).json()).allowed, true);
   assert.equal(f.requests[0].signal.aborted, true);
+}
+{
+  const authStall = (ctx, timers) => {
+    queueMicrotask(() => {
+      const timeout = [...timers.values()].find(t => t.ms > 1000);
+      assert.equal(timeout.ms, 30000, 'admin auth must receive the full existing 30-second budget');
+      timeout.fn();
+    });
+    return { ok: true, status: 200, text: () => new Promise(() => {}) };
+  };
+  const f = fixture([authStall]);
+  await assert.rejects(f.call('adminAuth'), /GAS_TIMEOUT/);
+  assert.equal(f.requests.length, 1, 'timed-out LINE code must not be replayed automatically');
 }
 {
   const f = fixture([() => new Promise(() => {})]);
