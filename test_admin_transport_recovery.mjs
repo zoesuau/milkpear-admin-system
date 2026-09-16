@@ -118,6 +118,7 @@ for (const action of ['adminReadOrderSnapshot', 'adminReadProductCatalog']) {
     isAdminNetworkRecoveryError: () => false, getAdminOrderReadFailureMessage: () => 'fixture failure',
     setAdminNetworkRecoveryPending() {}, clearAdminNetworkRecoveryPending() {},
     getAdminOrderSnapshotKnownChunks: () => [], attachAdminOrderSnapshotReadMeta: orders => orders,
+    adminOrderSnapshotManifest: [], flattenAdminOrderSnapshotChunks: () => [{ orderNo: 'fixture-order' }],
     setAdminStatusPanelVisible() {}, updateAdminRefreshMeta() {},
     setAdminProductCatalogState: (ready) => { status = ready; },
     renderProductManagement() {}, renderShippingManifest() {}, resetModalProductRows() {},
@@ -135,7 +136,7 @@ for (const action of ['adminReadOrderSnapshot', 'adminReadProductCatalog']) {
   }
   assert.equal(f.requests.length, 2);
 }
-assert.equal([...html.matchAll(/await fetchAdminRecoverableResponse\(/g)].length, 6, 'only the six reviewed read/auth callers use recovery');
+assert.equal([...html.matchAll(/await fetchAdminRecoverableResponse\(/g)].length, 7, 'only the seven reviewed read/auth callers use recovery, including the lightweight bootstrap');
 console.log('snapshot and catalog recovery integration: PASS');
 {
   const f=fixture([new Response('busy',{status:503})]);
