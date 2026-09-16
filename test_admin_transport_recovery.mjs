@@ -15,12 +15,20 @@ const success = action => ({ ok: true, action, allowed: true, adminSessionToken:
 function fixture(sequence) {
   const requests = [], timers = new Map();
   let tick = 0, nextTimer = 0;
-  const ctx = { Response, AbortController, Date: { now: () => tick }, GAS_ORDERS_API_URL: endpoint,
+  const ctx = { Response, AbortController, Date: { now: () => tick }, navigator: { onLine: true }, GAS_ORDERS_API_URL: endpoint,
     window: { setTimeout(fn, ms) { const id = ++nextTimer; timers.set(id, { fn, ms }); if (ms <= 1000) queueMicrotask(() => { if (timers.delete(id)) { tick += ms; fn(); } }); return id; }, clearTimeout(id) { timers.delete(id); } },
     fetch: async (url, options) => { requests.push({ url, body: options.body, signal: options.signal }); const step = sequence.shift(); if (typeof step === 'function') return step(ctx, timers); if (step instanceof Error) throw step; assert.ok(step, 'unexpected extra request'); return step; },
   };
   vm.createContext(ctx); vm.runInContext(source, ctx);
   return { ctx, requests, timers, call(action = 'adminValidateSession', url = endpoint) { return ctx.fetchAdminRecoverableResponse(url, { method: 'POST', body: JSON.stringify({ action, adminSessionToken: 'fake-session', code: 'fake-code', nonce: 'fake-nonce', codeVerifier: 'fake-pkce' }) }, 60000); } };
+}
+{
+  const f = fixture([]);
+  f.ctx.navigator.onLine = false;
+  const error = await f.call().then(() => null, value => value);
+  assert.equal(error?.message, 'ADMIN_NETWORK_OFFLINE');
+  assert.equal(error?.attempts, 0, 'known offline state must not spend a remote retry');
+  assert.equal(f.requests.length, 0);
 }
 for (const bad of [new Response('<html>missing</html>', { status: 404 }), new Response('<html>error</html>'), json({ ok: false, error: '不支援的 action' }), new TypeError('network'), new Response('unavailable', { status: 503 })]) {
   const f = fixture([bad, json(success('adminValidateSession'))]);
@@ -73,7 +81,7 @@ for (const status of [401, 403]) {
 }
 {
   // A stalled body must time out too, not only the initial response headers.
-  const stall = (ctx, timers) => { queueMicrotask(() => { const timeout = [...timers.values()].find(t => t.ms > 1000); timeout.fn(); }); return { ok: true, status: 200, text: () => new Promise(() => {}) }; };
+  const stall = (ctx, timers) => { queueMicrotask(() => { const timeout = [...timers.values()].find(t => t.ms > 1000); assert.ok(timeout.ms <= 12000, 'foreground auth/read attempt must not block longer than 12 seconds on weak networks'); timeout.fn(); }); return { ok: true, status: 200, text: () => new Promise(() => {}) }; };
   const f = fixture([stall, json(success('adminValidateSession'))]);
   assert.equal((await (await f.call()).json()).allowed, true);
   assert.equal(f.requests[0].signal.aborted, true);
@@ -105,6 +113,10 @@ for (const action of ['adminReadOrderSnapshot', 'adminReadProductCatalog']) {
     adminOrderSnapshotVersion: 'fixture-v1', adminSiteSettings: {},
     latestAdminOrders: [{ orderNo: 'fixture-order' }], adminProductCatalogLoadPromise: null,
     createAdminDiagnosticRequestId: () => 'fixture-request', recordAdminReadBreadcrumb() {},
+    classifyAdminReadFrontendError: () => ({ event: 'NETWORK_ERROR', stage: 'FRONTEND_FETCH' }),
+    normalizeAdminReadErrorCode: value => String(value || 'REQUEST_FAILED'),
+    isAdminNetworkRecoveryError: () => false, getAdminOrderReadFailureMessage: () => 'fixture failure',
+    setAdminNetworkRecoveryPending() {}, clearAdminNetworkRecoveryPending() {},
     getAdminOrderSnapshotKnownChunks: () => [], attachAdminOrderSnapshotReadMeta: orders => orders,
     setAdminStatusPanelVisible() {}, updateAdminRefreshMeta() {},
     setAdminProductCatalogState: (ready) => { status = ready; },

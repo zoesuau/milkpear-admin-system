@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260915-create-continuity">
+<html lang="zh-Hant" data-release-version="20260916-weak-network-recovery">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260915-create-continuity" />
+    <meta name="admin-release" content="20260916-weak-network-recovery" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -6395,6 +6395,7 @@
       const ADMIN_LINE_CODE_VERIFIER_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-line-code-verifier`;
       const ADMIN_LINE_SESSION_TOKEN_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-session-token`;
       const ADMIN_DISPLAY_NAME_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-display-name`;
+      const ADMIN_AUTH_DIAGNOSTIC_QUEUE_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-auth-diagnostic-queue-v1`;
       const ADMIN_READ_BREADCRUMB_STORAGE_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-read-breadcrumbs-v1`;
       const ADMIN_READ_BREADCRUMB_REQUEST_LIMIT = 20;
       const ADMIN_READ_OBSERVABILITY_LEVEL = (() => {
@@ -6670,8 +6671,23 @@
             "adminReadOrderSnapshot", "adminReadProductCatalog", "adminReadShipmentResults"].includes(action)
         ) throw new Error("ADMIN_RECOVERY_ACTION_NOT_ALLOWED");
 
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          const offlineError = new Error("ADMIN_NETWORK_OFFLINE");
+          offlineError.attempts = 0;
+          offlineError.elapsedMs = 0;
+          throw offlineError;
+        }
+
         const backgroundValidation = action === "adminValidateSession" && recoveryOptions.singleAttempt === true;
-        const deadline = Date.now() + (backgroundValidation ? Math.min(timeoutMs || 10000, 10000) : action === "adminReadShipmentResults" ? Math.min(timeoutMs || 15000, 15000) : 90000);
+        const recoveryBudgetMs = backgroundValidation
+          ? Math.min(timeoutMs || 10000, 10000)
+          : action === "adminReadShipmentResults"
+            ? Math.min(timeoutMs || 15000, 15000)
+            : Math.min(timeoutMs || 30000, 30000);
+        const perAttemptBudgetMs = backgroundValidation
+          ? recoveryBudgetMs
+          : Math.min(recoveryBudgetMs, 12000);
+        const deadline = Date.now() + recoveryBudgetMs;
         // Reconciliation owns the readback retry budget and records each attempt.
         const maxAttempts = action === "adminReadShipmentResults" || backgroundValidation ? 1 : 3;
         let lastError;
@@ -6696,7 +6712,7 @@
                 timer = window.setTimeout(() => {
                   controller?.abort();
                   reject(new Error("GAS_TIMEOUT"));
-                }, Math.min(timeoutMs || 60000, remaining));
+                }, Math.min(perAttemptBudgetMs, remaining));
               }),
             ]);
             const { response, text } = result;
@@ -6745,14 +6761,30 @@
             const known = /^(HTTP_\d{3}|GAS_TIMEOUT|GAS_NON_JSON_RESPONSE|GAS_AUTH_RESPONSE_INVALID)$/;
             lastError = known.test(error?.message || "") ? error :
               new Error(error?.name === "AbortError" ? "GAS_TIMEOUT" : "NETWORK_ERROR");
+            if (typeof navigator !== "undefined" && navigator.onLine === false) {
+              lastError = new Error("ADMIN_NETWORK_OFFLINE");
+            }
+            lastError.attempts = attempt + 1;
+            lastError.elapsedMs = Date.now() - requestStartedAt;
           } finally {
             window.clearTimeout(timer);
           }
           const delay = (attempt + 1) * 500;
-          if (attempt === maxAttempts - 1 || Date.now() + delay >= deadline) break;
+          if (
+            attempt === maxAttempts - 1 ||
+            Date.now() + delay >= deadline ||
+            (typeof navigator !== "undefined" && navigator.onLine === false)
+          ) break;
           await new Promise(resolve => window.setTimeout(resolve, delay));
         }
-        throw lastError || new Error("GAS_TIMEOUT");
+        const finalError = lastError || new Error("GAS_TIMEOUT");
+        if (!Number.isFinite(Number(finalError.attempts))) {
+          finalError.attempts = 0;
+        }
+        if (!Number.isFinite(Number(finalError.elapsedMs))) {
+          finalError.elapsedMs = Date.now() - requestStartedAt;
+        }
+        throw finalError;
       }
 
       function createAdminRequestKey(action, parts = []) {
@@ -6769,6 +6801,76 @@
             ? crypto.randomUUID().replace(/-/g, "")
             : `${Date.now()}${Math.random().toString(36).slice(2)}`;
         return createAdminRequestKey(action, [nonce]);
+      }
+
+      let adminAuthDiagnosticFlushPromise = null;
+
+      function readPendingAdminAuthDiagnostics() {
+        try {
+          const parsed = JSON.parse(
+            localStorage.getItem(ADMIN_AUTH_DIAGNOSTIC_QUEUE_KEY) || "[]",
+          );
+          return Array.isArray(parsed) ? parsed.slice(-20) : [];
+        } catch (error) {
+          return [];
+        }
+      }
+
+      function writePendingAdminAuthDiagnostics(entries) {
+        try {
+          localStorage.setItem(
+            ADMIN_AUTH_DIAGNOSTIC_QUEUE_KEY,
+            JSON.stringify(Array.isArray(entries) ? entries.slice(-20) : []),
+          );
+        } catch (error) {
+          // 診斷儲存失敗不得影響登入。
+        }
+      }
+
+      async function flushPendingAdminAuthDiagnostics() {
+        if (adminAuthDiagnosticFlushPromise) return adminAuthDiagnosticFlushPromise;
+        const diagnosticsUrl = String(
+          ORDER_SYSTEM_CONFIG.adminAuthDiagnosticsUrl || "",
+        ).trim();
+        if (
+          !diagnosticsUrl ||
+          (typeof navigator !== "undefined" && navigator.onLine === false)
+        ) return false;
+        const pending = readPendingAdminAuthDiagnostics();
+        if (!pending.length) return true;
+        const flush = (async () => {
+          for (let index = 0; index < pending.length; index += 1) {
+            const entry = pending[index];
+            try {
+              const response = await fetch(diagnosticsUrl, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(entry),
+                keepalive: true,
+              });
+              if (!response.ok) throw new Error("DIAGNOSTIC_HTTP_ERROR");
+              const current = readPendingAdminAuthDiagnostics();
+              const sentIndex = current.findIndex(candidate =>
+                candidate?.requestId === entry?.requestId &&
+                candidate?.timestamp === entry?.timestamp,
+              );
+              if (sentIndex >= 0) {
+                current.splice(sentIndex, 1);
+                writePendingAdminAuthDiagnostics(current);
+              }
+            } catch (error) {
+              break;
+            }
+          }
+          return readPendingAdminAuthDiagnostics().length === 0;
+        })();
+        adminAuthDiagnosticFlushPromise = flush;
+        try { return await flush; }
+        finally {
+          if (adminAuthDiagnosticFlushPromise === flush) {
+            adminAuthDiagnosticFlushPromise = null;
+          }
+        }
       }
 
       function publishAdminAuthDiagnostic(diagnostic) {
@@ -6791,19 +6893,10 @@
             JSON.stringify(safeDiagnostic);
         }
         console.error("管理員登入診斷", safeDiagnostic);
-        const diagnosticsUrl = String(
-          ORDER_SYSTEM_CONFIG.adminAuthDiagnosticsUrl || "",
-        ).trim();
-        if (diagnosticsUrl) {
-          fetch(diagnosticsUrl, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(safeDiagnostic),
-            keepalive: true,
-          }).catch(() => {
-            // 獨立診斷服務不可用時，不得阻塞登入復原流程。
-          });
-        }
+        const pending = readPendingAdminAuthDiagnostics();
+        pending.push(safeDiagnostic);
+        writePendingAdminAuthDiagnostics(pending);
+        void flushPendingAdminAuthDiagnostics();
         return safeDiagnostic;
       }
 
@@ -6826,6 +6919,10 @@
             "⚠️ 系統回傳格式異常，請按「再次確認」；不需要重新進入 LINE。",
           GAS_SERVER_ERROR:
             "⚠️ 系統服務暫時異常，請稍後按「再次確認」。",
+          ADMIN_NETWORK_OFFLINE:
+            "⚠️ 網路已斷線，登入資料已保留；連線恢復後會自動再次確認。",
+          NETWORK_ERROR:
+            "⚠️ 網路連線不穩，登入資料已保留；請確認訊號後再次確認。",
         };
         return messages[errorCode] ||
           "⚠️ 登入確認暫時沒有回應，請按下方再次確認；不需要重新進入 LINE。";
@@ -6888,6 +6985,8 @@
             errorCode: data.errorCode
               ? normalizeAdminReadErrorCode(data.errorCode)
               : "",
+            online:
+              typeof navigator === "undefined" || navigator.onLine !== false,
           };
           if (data.timing && typeof data.timing === "object") {
             entry.timing = {};
@@ -6956,6 +7055,32 @@
           return { event: "BACKEND_ERROR", stage: "FRONTEND_FETCH" };
         }
         return { event: "NETWORK_ERROR", stage: "FRONTEND_FETCH" };
+      }
+
+      function isAdminNetworkRecoveryError(error) {
+        const code = String(error?.message || "").trim().toUpperCase();
+        return code === "ADMIN_NETWORK_OFFLINE" ||
+          code === "NETWORK_ERROR" ||
+          code === "GAS_TIMEOUT" ||
+          code === "REQUEST_TIMEOUT" ||
+          /^HTTP_(408|429|5\d\d)$/.test(code);
+      }
+
+      function getAdminOrderReadFailureMessage(error) {
+        const code = String(error?.message || "").trim().toUpperCase();
+        if (code === "ADMIN_NETWORK_OFFLINE") {
+          return "⚠️ 網路已斷線，登入仍保留；連線恢復後會自動重新讀取訂單。";
+        }
+        if (isAdminNetworkRecoveryError(error)) {
+          return "⚠️ 網路連線不穩或系統回應逾時，登入仍保留；連線恢復後可重新讀取訂單。";
+        }
+        if (code === "HTTP_401" || code === "HTTP_403") {
+          return "⚠️ Google 服務目前拒絕訂單讀取，請聯絡系統管理員確認授權。";
+        }
+        if (/JSON|PARSE|RESPONSE_INVALID|GATEWAY_HTML/.test(code)) {
+          return "⚠️ 訂單服務回傳格式異常，登入仍保留；請稍後重新讀取。";
+        }
+        return "⚠️ 管理員完整訂單讀取失敗，請稍後再試。";
       }
 
       function getAdminCreatePayloadFingerprint(payload) {
@@ -7253,6 +7378,25 @@
       let adminSessionVerificationRevision = 0;
       let adminBackgroundSessionPromise = null;
       let adminBackgroundSessionAttemptAt = 0;
+      let adminNetworkRecoveryPending = "";
+      let adminNetworkRecoveryInFlight = false;
+      let adminPendingAuthForceLogin = false;
+
+      function adminBrowserIsOffline() {
+        return typeof navigator !== "undefined" && navigator.onLine === false;
+      }
+
+      function setAdminNetworkRecoveryPending(kind) {
+        if (["startAuth", "authCallback", "orders"].includes(kind)) {
+          adminNetworkRecoveryPending = kind;
+        }
+      }
+
+      function clearAdminNetworkRecoveryPending(kind = "") {
+        if (!kind || adminNetworkRecoveryPending === kind) {
+          adminNetworkRecoveryPending = "";
+        }
+      }
 
       function markAdminSessionVerified(token) {
         if (token && sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) !== token) return;
@@ -7339,6 +7483,21 @@
       async function startAdminAuth(forceLogin = false) {
         if (adminAuthNavigationPending) return;
         if (typeof persistAdminCreateDraft === "function") persistAdminCreateDraft();
+        if (adminBrowserIsOffline()) {
+          adminPendingAuthForceLogin = forceLogin;
+          setAdminNetworkRecoveryPending("startAuth");
+          adminAuthBlocksDataLoad = true;
+          setAdminAuthRetryButtonMode(false);
+          showAdminAuthOverlay(
+            "⚠️ 網路已斷線，尚未離開後台；連線恢復後會自動開啟 LINE 登入。",
+            true,
+            false,
+            true,
+            true,
+          );
+          return false;
+        }
+        clearAdminNetworkRecoveryPending("startAuth");
         adminAuthNavigationPending = true;
         adminAuthBlocksDataLoad = true;
         const retryButton = document.getElementById("adminAuthRetryBtn");
@@ -7397,6 +7556,19 @@
           sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
           clearAdminAuthQuery();
           showAdminAuthOverlay("⚠️ LINE 登入驗證失敗，請重新登入 LINE", true);
+          return false;
+        }
+
+        if (adminBrowserIsOffline()) {
+          setAdminNetworkRecoveryPending("authCallback");
+          setAdminAuthRetryButtonMode(true);
+          showAdminAuthOverlay(
+            getAdminAuthErrorMessage("ADMIN_NETWORK_OFFLINE"),
+            true,
+            false,
+            true,
+            true,
+          );
           return false;
         }
 
@@ -7485,6 +7657,7 @@
             clearAdminAuthSession();
             clearAdminAuthQuery();
             setAdminAuthRetryButtonMode(false);
+            clearAdminNetworkRecoveryPending("authCallback");
             adminAuthBlocksDataLoad = false;
             showAdminAuthOverlay("正在讀取最新訂單資料...", false);
             return true;
@@ -7518,7 +7691,11 @@
             httpStatus: error?.httpStatus,
             responseFormat: error?.responseFormat,
           });
-          setAdminAuthRetryButtonMode(hasRetryableAdminAuthCallback());
+          const retryableCallback = hasRetryableAdminAuthCallback();
+          if (retryableCallback && isAdminNetworkRecoveryError(error)) {
+            setAdminNetworkRecoveryPending("authCallback");
+          }
+          setAdminAuthRetryButtonMode(retryableCallback);
           showAdminAuthOverlay(
             getAdminAuthErrorMessage(errorCode),
             true,
@@ -10202,6 +10379,7 @@
           }
 
           const orders = payload.orders;
+          clearAdminNetworkRecoveryPending("orders");
           Object.defineProperty(orders, "adminReadMeta", {
             value: {
               searchMode: payload.searchMode === true,
@@ -10254,6 +10432,10 @@
               error && error.message,
               classification.event,
             ),
+            timing: {
+              transportMs: Math.max(0, Number(error?.elapsedMs) || 0),
+              attempts: Math.max(0, Number(error?.attempts) || 0),
+            },
           });
           if (String(error && error.message) === "ADMIN_SESSION_REQUIRED") {
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
@@ -10261,16 +10443,21 @@
             return null;
           }
 
+          if (isAdminNetworkRecoveryError(error)) {
+            setAdminNetworkRecoveryPending("orders");
+          }
+
+          const failureMessage = getAdminOrderReadFailureMessage(error);
+
           if (adminReadStatusEl && !silent) {
             setAdminStatusPanelVisible(true);
             adminReadStatusEl.className = "gas-test-status error";
-            adminReadStatusEl.innerText =
-              "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。";
+            adminReadStatusEl.innerText = failureMessage;
           }
 
           if (!silent) {
             showAdminAuthOverlay(
-              "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。",
+              failureMessage,
               false,
               true,
             );
@@ -10526,6 +10713,7 @@
           const orders = payload.unchanged === true
             ? attachAdminOrderSnapshotReadMeta(latestAdminOrders.slice(), payload)
             : await mergeAdminOrderSnapshotPayload(payload);
+          clearAdminNetworkRecoveryPending("orders");
           if (
             payload.unchanged === true &&
             orders.length !== Math.max(0, Number(payload.orderCount) || 0)
@@ -10565,6 +10753,10 @@
               error && error.message,
               classification.event,
             ),
+            timing: {
+              transportMs: Math.max(0, Number(error?.elapsedMs) || 0),
+              attempts: Math.max(0, Number(error?.attempts) || 0),
+            },
           });
           if (String(error && error.message) === "ADMIN_SESSION_REQUIRED") {
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
@@ -10572,15 +10764,18 @@
             showAdminAuthOverlay("⚠️ 登入已過期，請重新登入 LINE", true);
             return null;
           }
+          if (isAdminNetworkRecoveryError(error)) {
+            setAdminNetworkRecoveryPending("orders");
+          }
+          const failureMessage = getAdminOrderReadFailureMessage(error);
           if (adminReadStatusEl && !silent) {
             setAdminStatusPanelVisible(true);
             adminReadStatusEl.className = "gas-test-status error";
-            adminReadStatusEl.innerText =
-              "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。";
+            adminReadStatusEl.innerText = failureMessage;
           }
           if (!silent) {
             showAdminAuthOverlay(
-              "⚠️ 管理員完整訂單讀取失敗，請重新整理後再試。",
+              failureMessage,
               false,
               true,
             );
@@ -10743,7 +10938,9 @@
         if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
           setAdminRefreshState(false, "重新讀取失敗，請稍後再試。");
           showAdminAuthOverlay(
-            "⚠️ 管理員完整訂單讀取失敗，請稍後再試。",
+            adminNetworkRecoveryPending === "orders"
+              ? "⚠️ 網路連線不穩，登入仍保留；連線恢復後會自動重新讀取訂單。"
+              : "⚠️ 管理員完整訂單讀取失敗，請稍後再試。",
             false,
             true,
           );
@@ -10757,6 +10954,7 @@
         updateNotifyButton();
         applyReadOnlyModeToRealOrders();
         updateAdminRefreshMeta();
+        clearAdminNetworkRecoveryPending("orders");
         adminInitialOrdersReady = true;
         const addTrigger = document.querySelector(".btn-add-order-trigger");
         if (addTrigger) { addTrigger.disabled = false; addTrigger.setAttribute("aria-disabled", "false"); }
@@ -18614,8 +18812,9 @@
           const retry = document.getElementById("adminAuthRetryBtn");
           if (retry) retry.disabled = false;
         });
-        window.addEventListener("offline", handleAdminCreateNetworkOffline);
-        window.addEventListener("online", handleAdminCreateNetworkRestored);
+        window.addEventListener("offline", handleAdminNetworkOffline);
+        window.addEventListener("online", handleAdminNetworkRestored);
+        void flushPendingAdminAuthDiagnostics();
         const retryBtn = document.getElementById("adminAuthRetryBtn");
         const refreshBtn = document.getElementById("adminAuthRefreshBtn");
         const closeBtn = document.getElementById("adminAuthCloseBtn");
@@ -18629,6 +18828,17 @@
               retryBtn.dataset.retryCallback === "true" &&
               hasRetryableAdminAuthCallback()
             ) {
+              if (adminBrowserIsOffline()) {
+                setAdminNetworkRecoveryPending("authCallback");
+                showAdminAuthOverlay(
+                  getAdminAuthErrorMessage("ADMIN_NETWORK_OFFLINE"),
+                  true,
+                  false,
+                  true,
+                  true,
+                );
+                return;
+              }
               window.location.reload();
               return;
             }
@@ -21813,6 +22023,75 @@ ${adminNote}
         checkPendingAdminCreateOrder({ networkRestored: true }).catch(() => {
           // 回復由內部狀態處理，避免 online 事件產生未處理的 Promise。
         });
+      }
+
+      function handleAdminNetworkOffline() {
+        if (typeof persistAdminCreateDraft === "function") {
+          persistAdminCreateDraft();
+        }
+        handleAdminCreateNetworkOffline();
+        if (hasRetryableAdminAuthCallback()) {
+          setAdminNetworkRecoveryPending("authCallback");
+          setAdminAuthRetryButtonMode(true);
+          showAdminAuthOverlay(
+            getAdminAuthErrorMessage("ADMIN_NETWORK_OFFLINE"),
+            true,
+            false,
+            true,
+            true,
+          );
+          return;
+        }
+        if (
+          !adminInitialOrdersReady &&
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY)
+        ) {
+          setAdminNetworkRecoveryPending("orders");
+          showAdminAuthOverlay(
+            "⚠️ 網路已斷線，登入仍保留；連線恢復後會自動重新讀取訂單。",
+            false,
+            true,
+            true,
+            true,
+          );
+        }
+      }
+
+      async function handleAdminNetworkRestored() {
+        void flushPendingAdminAuthDiagnostics();
+        handleAdminCreateNetworkRestored();
+        if (adminNetworkRecoveryInFlight) return;
+        const recovery = adminNetworkRecoveryPending;
+        if (!recovery) return;
+        adminNetworkRecoveryInFlight = true;
+        try {
+          if (recovery === "startAuth") {
+            clearAdminNetworkRecoveryPending("startAuth");
+            await startAdminAuth(adminPendingAuthForceLogin);
+            return;
+          }
+          if (recovery === "authCallback" && hasRetryableAdminAuthCallback()) {
+            clearAdminNetworkRecoveryPending("authCallback");
+            showAdminAuthOverlay(
+              "網路已恢復，正在再次確認登入...",
+              false,
+              false,
+              false,
+              true,
+            );
+            window.location.reload();
+            return;
+          }
+          if (
+            recovery === "orders" &&
+            sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY)
+          ) {
+            clearAdminNetworkRecoveryPending("orders");
+            await refreshAdminOrdersFromOverlay();
+          }
+        } finally {
+          adminNetworkRecoveryInFlight = false;
+        }
       }
 
       async function recoverPendingAdminCreateOrderOnLoad() {
