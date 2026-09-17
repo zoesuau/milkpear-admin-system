@@ -19,6 +19,20 @@
   let deviceId = read('device', ''); if (!isId(deviceId)) { deviceId = uuid(); write('device', deviceId); }
   const pageId = uuid();
   const version = document.documentElement.dataset.releaseVersion || 'unknown';
+  function sanitizeSnapshotTiming(value) {
+    if (!value || typeof value !== 'object') return null;
+    const readReasons = new Set(['NOT_ATTEMPTED','DISABLED','DIRTY','VERSION_MISSING','INDEX_MISSING','VERSION_MISMATCH','INDEX_INVALID','SEGMENT_MISSING','SEGMENT_INVALID','LENGTH_MISMATCH','CHECKSUM_MISMATCH','MANIFEST_INVALID','PUBLICATION_CHANGED','HIT','READ_EXCEPTION','REQUIRED_VERSION_MISMATCH']);
+    const writeReasons = new Set(['NOT_ATTEMPTED','DIRTY','VERSION_MISSING','VERSION_MISMATCH','MANIFEST_INVALID','TOO_LARGE','PUBLICATION_CHANGED','STORED','WRITE_EXCEPTION']);
+    const result = {};
+    for (const key of ['serverElapsedMs','sessionMs','cacheMs','manifestMs','chunksMs','firestoreMs','driveMs']) {
+      result[key] = Number.isFinite(value[key]) && value[key] >= 0 ? Math.min(600000, value[key]) : null;
+    }
+    result.cacheHit = typeof value.cacheHit === 'boolean' ? value.cacheHit : null;
+    result.cacheReadReason = readReasons.has(value.cacheReadReason) ? value.cacheReadReason : 'UNKNOWN';
+    result.cacheWriteReason = writeReasons.has(value.cacheWriteReason) ? value.cacheWriteReason : 'UNKNOWN';
+    return result;
+  }
+
   function clean(value) {
     if (!value || !isId(value.id) || !isId(value.operationId) || !isId(value.deviceId) || !isId(value.pageId)) return null;
     if (!Number.isFinite(value.at) || value.at < Date.now() - MAX_AGE || value.at > Date.now() + 300000) return null;
@@ -28,6 +42,7 @@
       code:codes.has(value.code) || /^HTTP_[45]\d\d$/.test(value.code) ? value.code : 'UNKNOWN_ERROR',
       elapsedMs:Math.min(600000, Math.max(0, Number(value.elapsedMs) || 0)),
       headersMs:Number.isFinite(value.headersMs) ? Math.min(600000,Math.max(0,value.headersMs)) : null,
+      snapshotTiming:value.action==='adminReadOrderSnapshot' && value.stage==='RESULT' ? sanitizeSnapshotTiming(value.snapshotTiming) : null,
       bodyMs:Number.isFinite(value.bodyMs) ? Math.min(600000,Math.max(0,value.bodyMs)) : null,
       responseHost:['google-script','google-content','other','unknown'].includes(value.responseHost) ? value.responseHost : 'unknown',
       redirected:typeof value.redirected === 'boolean' ? value.redirected : null,
@@ -81,7 +96,7 @@
     } catch {}
     return {responseHost,redirected:typeof response.redirected==='boolean'?response.redirected:null};
   }
-  function format(e){return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}${e.headersMs!==null&&e.headersMs!==undefined?'｜回應標頭 '+(e.headersMs/1000).toFixed(2)+' 秒':''}${e.bodyMs!==null&&e.bodyMs!==undefined?'｜資料讀取 '+(e.bodyMs/1000).toFixed(2)+' 秒':''}${e.responseHost&&e.responseHost!=='unknown'?'｜'+e.responseHost:''}${e.redirected===true?'｜已轉址':''}\n操作 ${e.operationId}｜${e.deviceType}｜${e.version}`;}
+  function format(e){return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}${e.headersMs!==null&&e.headersMs!==undefined?'｜回應標頭 '+(e.headersMs/1000).toFixed(2)+' 秒':''}${e.bodyMs!==null&&e.bodyMs!==undefined?'｜資料讀取 '+(e.bodyMs/1000).toFixed(2)+' 秒':''}${e.responseHost&&e.responseHost!=='unknown'?'｜'+e.responseHost:''}${e.redirected===true?'｜已轉址':''}${e.snapshotTiming?'｜快取讀取 '+e.snapshotTiming.cacheReadReason+'｜快取存入 '+e.snapshotTiming.cacheWriteReason+(e.snapshotTiming.serverElapsedMs!==null?'｜後端 '+(e.snapshotTiming.serverElapsedMs/1000).toFixed(2)+' 秒':''):''}\n操作 ${e.operationId}｜${e.deviceType}｜${e.version}`;}
   function render(){try{
     const el=document.getElementById('adminDiagnosticsText'); if(el)el.textContent=history.length?history.slice().reverse().map(format).join('\n\n'):'目前這個瀏覽器沒有診斷紀錄。';
     const status=document.getElementById('adminDiagnosticsStatus');if(status)status.textContent=`本機 ${history.length} 筆｜待上傳 ${pending.size} 筆${dropped?'｜超過保存上限／期限 '+dropped+' 筆':''}。${!storageOK?'瀏覽器無法持久保存，關閉後尚未上傳的紀錄可能遺失。':''}${navigator.onLine===false?'目前離線，恢復連線後自動補傳。':uploadState}${lastUpload?' 最近上傳：'+lastUpload:''}`;
@@ -103,7 +118,7 @@
       // Observe a copy asynchronously; never await telemetry or alter a business response.
       try {void response.clone().json().then(body=>{
         const ok=response.ok && body?.ok===true;
-        record({...metadata,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start});
+        record({...metadata,snapshotTiming:action==='adminReadOrderSnapshot' && body?.action===action ? sanitizeSnapshotTiming({...body.timing,...(body.timing ? {} : body.diagnostic),serverElapsedMs:body.elapsedMs}) : null,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start});
       },error=>record({...metadata,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':error?.name==='SyntaxError'?'GAS_NON_JSON_RESPONSE':'NETWORK_ERROR',httpStatus:response.status,elapsedMs:Date.now()-start}));}catch{}
       return response;
     } catch(error) {record({operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':'NETWORK_ERROR',elapsedMs:Date.now()-start});throw error;}
