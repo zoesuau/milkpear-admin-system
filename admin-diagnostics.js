@@ -27,6 +27,10 @@
       outcome:outcomes.has(value.outcome) ? value.outcome : 'failure',
       code:codes.has(value.code) || /^HTTP_[45]\d\d$/.test(value.code) ? value.code : 'UNKNOWN_ERROR',
       elapsedMs:Math.min(600000, Math.max(0, Number(value.elapsedMs) || 0)),
+      headersMs:Number.isFinite(value.headersMs) ? Math.min(600000,Math.max(0,value.headersMs)) : null,
+      bodyMs:Number.isFinite(value.bodyMs) ? Math.min(600000,Math.max(0,value.bodyMs)) : null,
+      responseHost:['google-script','google-content','other','unknown'].includes(value.responseHost) ? value.responseHost : 'unknown',
+      redirected:typeof value.redirected === 'boolean' ? value.redirected : null,
       httpStatus:Number.isInteger(value.httpStatus) && value.httpStatus >= 100 && value.httpStatus <= 599 ? value.httpStatus : null,
       version:/^[a-zA-Z0-9._-]{1,80}$/.test(value.version) ? value.version : 'unknown',
       deviceType:['mobile','desktop','unknown'].includes(value.deviceType) ? value.deviceType : 'unknown',
@@ -70,7 +74,14 @@
     finally {clearTimeout(timeout);uploading=false;render();if(pending.size)schedule(Math.min(60000,3000 * 2 ** Math.min(retry,5)));}
   }
   const labels={REQUEST:'請求開始',RESPONSE:'伺服器回覆',RESULT:'處理結果',RENDER:'畫面更新',RECONCILE:'查回結果',PAGE:'頁面狀態',NETWORK:'網路狀態',AUTH:'登入流程'};
-  function format(e){return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}\n操作 ${e.operationId}｜${e.deviceType}｜${e.version}`;}
+  function responseMetadata(response) {
+    let responseHost='unknown';
+    try {const host=new URL(response.url).hostname;
+      responseHost=host==='script.google.com'?'google-script':host==='script.googleusercontent.com'?'google-content':'other';
+    } catch {}
+    return {responseHost,redirected:typeof response.redirected==='boolean'?response.redirected:null};
+  }
+  function format(e){return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}${e.headersMs!==null&&e.headersMs!==undefined?'｜回應標頭 '+(e.headersMs/1000).toFixed(2)+' 秒':''}${e.bodyMs!==null&&e.bodyMs!==undefined?'｜資料讀取 '+(e.bodyMs/1000).toFixed(2)+' 秒':''}${e.responseHost&&e.responseHost!=='unknown'?'｜'+e.responseHost:''}${e.redirected===true?'｜已轉址':''}\n操作 ${e.operationId}｜${e.deviceType}｜${e.version}`;}
   function render(){try{
     const el=document.getElementById('adminDiagnosticsText'); if(el)el.textContent=history.length?history.slice().reverse().map(format).join('\n\n'):'目前這個瀏覽器沒有診斷紀錄。';
     const status=document.getElementById('adminDiagnosticsStatus');if(status)status.textContent=`本機 ${history.length} 筆｜待上傳 ${pending.size} 筆${dropped?'｜超過保存上限／期限 '+dropped+' 筆':''}。${!storageOK?'瀏覽器無法持久保存，關閉後尚未上傳的紀錄可能遺失。':''}${navigator.onLine===false?'目前離線，恢復連線後自動補傳。':uploadState}${lastUpload?' 最近上傳：'+lastUpload:''}`;
@@ -87,12 +98,13 @@
     const start=Date.now();record({operationId,action,stage:'REQUEST',outcome:'started',code:'OK'});
     try {
       const response=await rawFetch(input,options);
-      record({operationId,action,stage:'RESPONSE',outcome:response.ok?'success':'failure',code:response.ok?'OK':'HTTP_'+response.status,httpStatus:response.status,elapsedMs:Date.now()-start});
+      const headersAt=Date.now(), metadata={...responseMetadata(response),headersMs:headersAt-start};
+      record({...metadata,operationId,action,stage:'RESPONSE',outcome:response.ok?'success':'failure',code:response.ok?'OK':'HTTP_'+response.status,httpStatus:response.status,elapsedMs:Date.now()-start});
       // Observe a copy asynchronously; never await telemetry or alter a business response.
       try {void response.clone().json().then(body=>{
         const ok=response.ok && body?.ok===true;
-        record({operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start});
-      },()=>record({operationId,action,stage:'RESULT',outcome:'failure',code:'GAS_NON_JSON_RESPONSE',httpStatus:response.status,elapsedMs:Date.now()-start}));}catch{}
+        record({...metadata,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start});
+      },error=>record({...metadata,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':error?.name==='SyntaxError'?'GAS_NON_JSON_RESPONSE':'NETWORK_ERROR',httpStatus:response.status,elapsedMs:Date.now()-start}));}catch{}
       return response;
     } catch(error) {record({operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':'NETWORK_ERROR',elapsedMs:Date.now()-start});throw error;}
   };

@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260916-diagnostics-v2">
+<html lang="zh-Hant" data-release-version="20260917-response-recovery-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260916-diagnostics-v2" />
+    <meta name="admin-release" content="20260917-response-recovery-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
     <script src="./customer-config.js?v=20260816-group-orders-1"></script>
-    <script src="./admin-diagnostics.js?v=20260916-diagnostics-v2"></script>
+    <script src="./admin-diagnostics.js?v=20260917-response-recovery-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -6643,31 +6643,34 @@
         if (overlay) overlay.classList.add("hidden");
       }
 
-      async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
-        if (typeof AbortController === "undefined") {
-          let fallbackTimer;
-          try {
-            return await Promise.race([
-              fetch(url, options),
-              new Promise((_, reject) => {
-                fallbackTimer = window.setTimeout(() => {
-                  const timeoutError = new Error("REQUEST_TIMEOUT");
-                  timeoutError.name = "AbortError";
-                  reject(timeoutError);
-                }, timeoutMs);
-              }),
-            ]);
-          } finally {
-            window.clearTimeout(fallbackTimer);
-          }
-        }
-        const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+      async function fetchWithTimeout(url, options = {}, timeoutMs = 15000, fullBody = false) {
+        const controller = typeof AbortController === "undefined" ? null : new AbortController();
+        let timer;
         try {
-          return await fetch(url, { ...options, signal: controller.signal });
-        } finally {
-          window.clearTimeout(timer);
-        }
+          return await Promise.race([
+            (async () => {
+              const response = await fetch(url, {
+                ...options, ...(controller ? { signal: controller.signal } : {}),
+              });
+              if (!fullBody) return response;
+              // Create/result reads need one budget through body download, not
+              // just response headers. Never retry the mutation here.
+              const text = await response.text();
+              return {
+                ok: response.ok, status: response.status, headers: response.headers,
+                text: async () => text, json: async () => JSON.parse(text),
+              };
+            })(),
+            new Promise((_, reject) => {
+              timer = window.setTimeout(() => {
+                controller?.abort();
+                const error = new Error("REQUEST_TIMEOUT");
+                error.name = "AbortError";
+                reject(error);
+              }, timeoutMs);
+            }),
+          ]);
+        } finally { window.clearTimeout(timer); }
       }
 
       async function fetchAdminRecoverableResponse(url, options, timeoutMs, recoveryOptions = {}) {
@@ -22184,13 +22187,16 @@ ${adminNote}
           feedback.innerText = "系統正在查詢原本的建單結果，不會再次建立或重扣庫存。";
         }
 
+        // Policy budget, not a measured latency promise. A failed read must
+        // never count as evidence that the original write did not arrive.
+        const readDeadline = Date.now() + 45000;
         let lastStatus = "";
         let confirmedNotFoundCount = 0;
         let checkFailed = false;
         let sessionExpired = false;
         for (const delayMs of ADMIN_CREATE_AUTO_CHECK_DELAYS_MS) {
           if (delayMs > 0) {
-            await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+            await new Promise((resolve) => window.setTimeout(resolve, Math.min(delayMs, Math.max(0, readDeadline - Date.now()))));
           }
           if (navigator.onLine === false) {
             return showPendingAdminCreateOfflineState(options);
@@ -22198,6 +22204,9 @@ ${adminNote}
           if (!isPendingAdminCreateRequestActive(requestKey)) {
             return true;
           }
+          const remainingMs = readDeadline - Date.now();
+          if (remainingMs <= 0) { checkFailed = true; break; }
+          let readingResponse = true;
           try {
             const recoverySessionToken = String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "").trim();
             const response = await fetchWithTimeout(
@@ -22213,9 +22222,17 @@ ${adminNote}
                   requestKey,
                 }),
               },
-              ADMIN_CREATE_CHECK_TIMEOUT_MS,
+              Math.min(ADMIN_CREATE_CHECK_TIMEOUT_MS, remainingMs),
+              true,
             );
+            if (!isPendingAdminCreateRequestActive(requestKey)) return true;
+            if (!response.ok) {
+              checkFailed = true;
+              if ([404, 408, 429].includes(response.status) || response.status >= 500) continue;
+              break; // Includes HTTP 401/403: no automatic permission retries.
+            }
             const result = await response.json();
+            readingResponse = false;
             if (
               result?.action === "adminCheckCreateOrderResult" &&
               result?.errorCode === "ADMIN_SESSION_REQUIRED"
@@ -22245,6 +22262,10 @@ ${adminNote}
             confirmedNotFoundCount += 1;
           } catch (error) {
             checkFailed = true;
+            // Only retry transient transport/body failures. Business rejection
+            // above stops immediately; an uncertain read can never permit resend.
+            if (readingResponse && (error?.name === "AbortError" || error?.name === "TypeError" ||
+                error?.name === "SyntaxError")) continue;
             break;
           }
         }
@@ -22283,6 +22304,7 @@ ${adminNote}
                   body: JSON.stringify(pendingPayload),
                 },
                 ADMIN_CREATE_ORDER_TIMEOUT_MS,
+                true,
               );
               const resendResult = await resendResponse.json();
               if (
@@ -22623,6 +22645,7 @@ ${adminNote}
               body: JSON.stringify(payload),
             },
             ADMIN_CREATE_ORDER_TIMEOUT_MS,
+            true,
           );
           const result = await response.json();
           if (
