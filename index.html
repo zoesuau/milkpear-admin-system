@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260917-cache-diagnostics-v1">
+<html lang="zh-Hant" data-release-version="20260917-verified-cache-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260917-cache-diagnostics-v1" />
+    <meta name="admin-release" content="20260917-verified-cache-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
     <script src="./customer-config.js?v=20260816-group-orders-1"></script>
-    <script src="./admin-diagnostics.js?v=20260917-cache-diagnostics-v1"></script>
+    <script src="./admin-diagnostics.js?v=20260917-verified-cache-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -10586,62 +10586,74 @@
       }
 
       async function restoreAdminOrderSnapshotSessionCache(expectedPayload) {
-        let cached;
-        try {
-          cached = JSON.parse(
-            sessionStorage.getItem(ADMIN_ORDER_SNAPSHOT_SESSION_CACHE_KEY) || "null",
-          );
-        } catch (cacheParseError) {
-          clearAdminOrderSnapshotSessionCache();
-          return false;
-        }
-        const expectedManifest = Array.isArray(expectedPayload?.manifest)
-          ? expectedPayload.manifest
-          : [];
-        if (
-          !cached ||
-          String(cached.version || "") !== String(expectedPayload?.version || "") ||
-          !Array.isArray(cached.manifest) ||
-          !Array.isArray(cached.chunks) ||
-          cached.manifest.length !== expectedManifest.length ||
-          expectedManifest.some(expected => {
-            const stored = cached.manifest.find(
-              entry => Number(entry.bucketId) === Number(expected.bucketId),
-            );
-            return !stored || String(stored.checksum || "") !== String(expected.checksum || "");
-          })
-        ) {
-          clearAdminOrderSnapshotSessionCache();
-          return false;
-        }
-        try {
+        // Only publish restored state after every chunk has passed validation.
+        const discard = () => {
           adminOrderSnapshotChunks.clear();
           adminOrderSnapshotEncodedChunks.clear();
-          for (const chunk of cached.chunks) {
-            const entry = expectedManifest.find(
-              item => Number(item.bucketId) === Number(chunk.bucketId),
-            );
-            if (!entry || String(entry.checksum || "") !== String(chunk.checksum || "")) {
-              throw new Error("ADMIN_ORDER_SNAPSHOT_SESSION_CACHE_MISMATCH");
-            }
-            const decoded = await decodeAdminSnapshotGzipBase64Json(chunk.data);
-            if (
-              Number(decoded?.bucketId) !== Number(chunk.bucketId) ||
-              !Array.isArray(decoded?.orders)
-            ) throw new Error("ADMIN_ORDER_SNAPSHOT_SESSION_CACHE_INVALID");
-            adminOrderSnapshotChunks.set(Number(chunk.bucketId), decoded.orders);
-            adminOrderSnapshotEncodedChunks.set(Number(chunk.bucketId), chunk.data);
-          }
-          adminOrderSnapshotManifest = expectedManifest.slice();
-          adminOrderSnapshotVersion = String(expectedPayload.version || "");
-          return flattenAdminOrderSnapshotChunks(adminOrderSnapshotManifest).length ===
-            Math.max(0, Number(expectedPayload.orderCount) || 0);
-        } catch (cacheDecodeError) {
-          adminOrderSnapshotChunks.clear();
           adminOrderSnapshotManifest = [];
           adminOrderSnapshotVersion = "";
-          clearAdminOrderSnapshotSessionCache();
+          try { clearAdminOrderSnapshotSessionCache(); } catch {}
           return false;
+        };
+        try {
+          const cached = JSON.parse(
+            sessionStorage.getItem(ADMIN_ORDER_SNAPSHOT_SESSION_CACHE_KEY) || "null",
+          );
+          const expectedManifest = expectedPayload?.manifest;
+          const version = String(expectedPayload?.version || "");
+          const orderCount = Number(expectedPayload?.orderCount);
+          if (
+            expectedPayload?.stale === true || !version || !cached ||
+            String(cached.version || "") !== version ||
+            !Number.isInteger(orderCount) || orderCount < 0 ||
+            !Array.isArray(expectedManifest) ||
+            !Array.isArray(cached.manifest) || !Array.isArray(cached.chunks) ||
+            cached.manifest.length !== expectedManifest.length ||
+            cached.chunks.length !== expectedManifest.length
+          ) return discard();
+
+          const uniqueBuckets = entries => {
+            const ids = entries.map(entry => Number(entry?.bucketId));
+            return ids.every(id => Number.isInteger(id) && id >= 0) &&
+              new Set(ids).size === ids.length;
+          };
+          if (![expectedManifest, cached.manifest, cached.chunks].every(uniqueBuckets)) {
+            return discard();
+          }
+          const decodedChunks = new Map();
+          const encodedChunks = new Map();
+          let restoredCount = 0;
+          for (const entry of expectedManifest) {
+            const bucketId = Number(entry.bucketId);
+            const checksum = String(entry.checksum || "");
+            const stored = cached.manifest.find(item => Number(item.bucketId) === bucketId);
+            const chunk = cached.chunks.find(item => Number(item.bucketId) === bucketId);
+            if (!stored || !chunk || !/^[a-f0-9]{64}$/.test(checksum) ||
+                stored.checksum !== checksum || chunk.checksum !== checksum) {
+              return discard();
+            }
+            const bytes = Uint8Array.from(atob(chunk.data), char => char.charCodeAt(0));
+            const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+            const actualChecksum = Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
+            if (actualChecksum !== checksum) return discard();
+            const decoded = await decodeAdminSnapshotGzipBase64Json(chunk.data);
+            if (Number(decoded?.bucketId) !== bucketId || !Array.isArray(decoded?.orders) ||
+                !Number.isInteger(entry.orderCount) || entry.orderCount < 0 ||
+                decoded.orders.length !== entry.orderCount) return discard();
+            decodedChunks.set(bucketId, decoded.orders);
+            encodedChunks.set(bucketId, chunk.data);
+            restoredCount += decoded.orders.length;
+          }
+          if (restoredCount !== orderCount) return discard();
+          adminOrderSnapshotChunks.clear();
+          adminOrderSnapshotEncodedChunks.clear();
+          for (const [id, orders] of decodedChunks) adminOrderSnapshotChunks.set(id, orders);
+          for (const [id, data] of encodedChunks) adminOrderSnapshotEncodedChunks.set(id, data);
+          adminOrderSnapshotManifest = expectedManifest.slice();
+          adminOrderSnapshotVersion = version;
+          return true;
+        } catch (cacheError) {
+          return discard();
         }
       }
 
@@ -10833,14 +10845,19 @@
             payload,
           );
           const cacheRestored = await restoreAdminOrderSnapshotSessionCache(payload);
+          const orders = cacheRestored
+            ? attachAdminOrderSnapshotReadMeta(
+                flattenAdminOrderSnapshotChunks(adminOrderSnapshotManifest), payload,
+              )
+            : previewOrders;
           markAdminSessionVerified();
           recordAdminReadBreadcrumb("FETCH_SUCCESS", {
             requestId,
             elapsedMs: Date.now() - startedAt,
-            orderCount: previewOrders.length,
+            orderCount: orders.length,
             timing: { ...payload.timing, bootstrap: true },
           });
-          return { orders: previewOrders, payload, fullSnapshot: false, cacheRestored };
+          return { orders, payload, fullSnapshot: cacheRestored, cacheRestored };
         } catch (error) {
           if (String(error?.message || "") === "ADMIN_SESSION_REQUIRED") {
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);

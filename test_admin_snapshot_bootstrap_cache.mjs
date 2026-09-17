@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { gzipSync } from 'node:zlib';
+import { createHash, webcrypto } from 'node:crypto';
 
 const html = fs.readFileSync(new URL('./index.html', import.meta.url), 'utf8');
 const gas = fs.readFileSync(new URL('../0707.gs', import.meta.url), 'utf8');
@@ -34,10 +35,10 @@ assert.ok(
 
 const cacheWriter = between(
   gas,
-  'function storeAdminOrderSnapshotCache_(manifest)',
-  'function readAdminOrderSnapshotCache_()',
+  'function storeAdminOrderSnapshotCache_(manifest, diagnostic)',
+  'function readAdminOrderSnapshotCache_(diagnostic)',
 );
-assert.match(cacheWriter, /manifest\.bootstrapPayload/);
+assert.match(cacheWriter, /JSON\.stringify\(manifest\)/);
 assert.doesNotMatch(cacheWriter, /manifest\.chunks\.length !== 1/);
 assert.match(gas, /refreshAdminOrderSnapshotBootstrap_\(manifest, orders\)/);
 assert.match(gas, /mergeAdminOrderSnapshotBootstrap_\([\s\S]*?queuedOrders/);
@@ -54,14 +55,19 @@ const manifest = [
   { bucketId: 0, checksum: 'a', orderCount: 1 },
   { bucketId: 1, checksum: 'b', orderCount: 1 },
 ];
-storage.set('snapshot', JSON.stringify({
+const cachedFixture = {
   version: 'v1',
   manifest,
   chunks: [
     { bucketId: 0, checksum: 'a', data: encodeChunk(0, [{ orderNo: 'A', createdAt: '2026-09-16T02:00:00Z' }]) },
     { bucketId: 1, checksum: 'b', data: encodeChunk(1, [{ orderNo: 'B', createdAt: '2026-09-16T01:00:00Z' }]) },
   ],
-}));
+};
+for (const chunk of cachedFixture.chunks) {
+  chunk.checksum = createHash('sha256').update(Buffer.from(chunk.data, 'base64')).digest('hex');
+  manifest.find(e => e.bucketId === chunk.bucketId).checksum = chunk.checksum;
+}
+storage.set('snapshot', JSON.stringify(cachedFixture));
 const context = {
   ADMIN_ORDER_SNAPSHOT_SESSION_CACHE_KEY: 'snapshot',
   ADMIN_ORDERS_PER_PAGE: 20,
@@ -74,6 +80,7 @@ const context = {
     setItem: (key, value) => storage.set(key, value),
     removeItem: key => storage.delete(key),
   },
+  crypto: webcrypto,
   DecompressionStream,
   Response,
   Blob,
@@ -91,7 +98,7 @@ assert.equal(await context.restoreAdminOrderSnapshotSessionCache({
 assert.equal(context.adminOrderSnapshotVersion, 'v1');
 assert.deepEqual(
   context.getAdminOrderSnapshotKnownChunks().map(value => ({ ...value })),
-  [{ bucketId: 0, checksum: 'a' }, { bucketId: 1, checksum: 'b' }],
+  manifest.map(({bucketId, checksum}) => ({bucketId, checksum})),
 );
 assert.equal(context.flattenAdminOrderSnapshotChunks(manifest).length, 2);
 assert.equal(context.persistAdminOrderSnapshotSessionCache(), true);
@@ -108,3 +115,81 @@ assert.ok(
 );
 
 console.log('snapshot bootstrap cache: PASS no full chunk read, multi-chunk cache, session reuse, bootstrap-first startup');
+
+const bootstrapSource = between(html, '      async function fetchAdminOrderBootstrapFromGas()', '      let adminOrderSnapshotReadPromise');
+Object.assign(context, {
+ GAS_ORDERS_API_URL: 'https://example.invalid', ADMIN_LINE_SESSION_TOKEN_KEY: 'token', ADMIN_READ_ORDERS_TIMEOUT_MS: 10000,
+ createAdminDiagnosticRequestId: () => 'fixture', markAdminSessionVerified() {}, recordAdminReadBreadcrumb() {}, showAdminAuthOverlay() {},
+});
+storage.set('token', 'fixture-only');
+let payload;
+context.fetchAdminRecoverableResponse = async () => ({ok:true, json:async()=>payload});
+vm.runInContext(bootstrapSource, context);
+function reset() {
+ storage.set('snapshot', JSON.stringify(cachedFixture)); storage.set('token','fixture-only');
+ payload = {ok:true, action:'adminReadOrderSnapshot', bootstrap:true, encoding:'gzip-base64', version:'v1', orderCount:2, manifest:structuredClone(manifest), data:gzipSync(JSON.stringify({version:'v1',orders:[{orderNo:'A'}]})).toString('base64')};
+}
+reset();
+let restored = await context.fetchAdminOrderBootstrapFromGas();
+assert.equal(restored.fullSnapshot, true, 'validated complete cache must skip second read');
+assert.equal(restored.orders.length, 2);
+for (const [name, mutate] of [
+ ['missing', c=>c.chunks.pop()],
+ ['duplicate', c=>c.chunks=[c.chunks[0],c.chunks[0]]],
+ ['wrong version', c=>c.version='old'],
+ ['bad gzip', c=>c.chunks[0].data='invalid'],
+ ['changed content same metadata', c=>c.chunks[0].data=encodeChunk(0,[{orderNo:'OTHER'}])],
+ ['wrong count', c=>c.chunks[0].data=encodeChunk(0,[])],
+]) {
+ reset(); const corrupt=structuredClone(cachedFixture); mutate(corrupt); storage.set('snapshot',JSON.stringify(corrupt));
+ const r=await context.fetchAdminOrderBootstrapFromGas();
+ assert.equal(r.fullSnapshot,false,name); assert.equal(r.orders.length,1,name);
+ assert.equal(context.adminOrderSnapshotVersion,'',name+' clears known version');
+ assert.equal(context.adminOrderSnapshotChunks.size,0,name+' clears partial chunks');
+}
+reset(); payload.stale=true;
+assert.equal((await context.fetchAdminOrderBootstrapFromGas()).fullSnapshot,false,'stale cannot bypass read');
+reset(); payload.orderCount=3;
+assert.equal((await context.fetchAdminOrderBootstrapFromGas()).fullSnapshot,false,'total mismatch');
+reset(); payload.manifest[1].bucketId=0;
+assert.equal((await context.fetchAdminOrderBootstrapFromGas()).fullSnapshot,false,'duplicate expected manifest');
+reset(); payload={ok:false,action:'adminReadOrderSnapshot',error:'ADMIN_SESSION_REQUIRED'};
+assert.equal(await context.fetchAdminOrderBootstrapFromGas(),null);
+assert.equal(storage.has('token'),false);
+reset(); payload.orderCount=0; payload.manifest=[]; payload.data=gzipSync(JSON.stringify({version:'v1',orders:[]})).toString('base64');
+storage.set('snapshot',JSON.stringify({version:'v1',manifest:[],chunks:[]}));
+restored=await context.fetchAdminOrderBootstrapFromGas();
+assert.equal(restored.fullSnapshot,true); assert.equal(restored.orders.length,0);
+console.log('PASS verified cache shortcut, corruption, duplicates, stale, session rejection and empty snapshot');
+
+// Execute the real startup branch: assert request count and readiness, not just flags.
+const startupBody = startup.slice(0, startup.lastIndexOf('      });'));
+async function runStartup(useCache) {
+ reset(); if (!useCache) storage.delete('snapshot');
+ let bootstrapCalls=0, fullCalls=0, rendered=[];
+ const element={className:'',innerText:'',disabled:true,setAttribute(){}};
+ const c={
+  initAdminAuth:async()=>true,initializeAdminSessionRecovery(){},
+  window:{setTimeout:()=>1,clearTimeout(){}},ADMIN_INITIAL_LOAD_SLOW_MS:10000,
+  showAdminAuthOverlay(){}, hideAdminAuthOverlay(){},adminAuthBlocksDataLoad:false,
+  fetchAdminOrderBootstrapFromGas:async()=>{bootstrapCalls++;return context.fetchAdminOrderBootstrapFromGas();},
+  fetchInitialAdminOrdersWithRecovery:async()=>{fullCalls++;return [{orderNo:'A'},{orderNo:'B'}];},
+  renderAdminOrders:orders=>{rendered.push(orders.length);return true;},
+  updateStatsCounters(){},handleBatchCheckChange(){},updateNotifyButton(){},applyReadOnlyModeToRealOrders(){},
+  markAdminSessionVerified(){},recordAdminReadBreadcrumb(){},restoreAdminTab(){},setAdminStatusPanelVisible(){},
+  document:{getElementById:()=>element,querySelector:()=>element,querySelectorAll:()=>[]},
+  adminInitialOrdersReady:false,reconcilePendingAdminShipment:async()=>{},recoverPendingAdminCreateOrderOnLoad:async()=>{},
+  loadPendingAdminCreateRequest:()=>null,readAdminCreateDraft:()=>null,Date,
+ };
+ vm.createContext(c); await vm.runInContext('(async()=>{'+startupBody+'})()',c);
+ assert.equal(bootstrapCalls,1); assert.equal(fullCalls,useCache?0:1);
+ assert.equal(c.adminInitialOrdersReady,true); assert.equal(element.disabled,false);
+ assert.equal(rendered.at(-1),2);
+}
+await runStartup(true); await runStartup(false);
+reset(); payload.manifest[0].orderCount=2;
+assert.equal((await context.fetchAdminOrderBootstrapFromGas()).fullSnapshot,false,'per-chunk count mismatch');
+reset(); storage.delete('token'); let unauthFetches=0;
+context.fetchAdminRecoverableResponse=async()=>{unauthFetches++;throw Error('must not fetch');};
+assert.equal(await context.fetchAdminOrderBootstrapFromGas(),null);assert.equal(unauthFetches,0);
+console.log('PASS real startup uses one request for verified cache, two for cold load; readiness and auth guards');
