@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260919-order-read-wait-v1">
+<html lang="zh-Hant" data-release-version="20260919-product-catalog-recovery-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260919-order-read-wait-v1" />
+    <meta name="admin-release" content="20260919-product-catalog-recovery-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -5661,6 +5661,7 @@
             class="product-management-feedback"
             id="productManagementFeedback"
           ></div>
+          <div id="productCatalogReadFeedback" role="status" aria-live="polite" hidden></div>
           <div class="product-card-list" id="product-management-list"></div>
           <section class="shipping-batch-management" aria-labelledby="shippingBatchManagementTitle">
             <div class="shipping-batch-management-header">
@@ -6572,6 +6573,7 @@
       let adminProductCatalog = [];
       let adminProductCatalogVersion = "";
       let adminProductCatalogLoading = false;
+      let adminProductCatalogReadFailed = false;
       let adminProductOperationsLoading = false;
       let adminProductOperations = {
         byCode: {},
@@ -8604,9 +8606,16 @@
         renderProductBannerSettings();
         renderShippingBatchManagement();
 
+        const readFeedback = document.getElementById("productCatalogReadFeedback");
+        if (readFeedback) {
+          readFeedback.hidden = !adminProductCatalogReadFailed;
+          readFeedback.innerHTML = adminProductCatalogReadFailed
+            ? `<p style="color:#b45309;">${adminProductCatalog.length ? "商品更新失敗，顯示上次資料" : "商品讀取失敗，請重試"} <button type="button" class="product-action-btn" onclick="fetchAdminProductCatalogFromGas()">重試</button></p>`
+            : "";
+        }
         if (!adminProductCatalog.length) {
           list.innerHTML =
-            `<div class="product-card-empty">${adminProductCatalogLoading ? "商品讀取中" : "目前沒有商品資料"}</div>`;
+            `<div class="product-card-empty">${adminProductCatalogLoading ? "商品讀取中" : adminProductCatalogReadFailed ? "商品資料尚未成功讀取" : "目前沒有商品資料"}</div>`;
           return;
         }
 
@@ -9804,11 +9813,11 @@
         return getActiveAdminProducts()[0] || null;
       }
 
-      function buildAdminProductOptionsHtml(selectedCode = "") {
+      function buildAdminProductOptionsHtml(selectedCode = "", preserveExisting = true) {
         const products = getActiveAdminProducts();
         const selectedExistingProduct = getProductByCode(selectedCode);
         if (
-          selectedExistingProduct &&
+          preserveExisting && selectedExistingProduct &&
           !products.some((product) => product.code === selectedExistingProduct.code)
         ) {
           products.unshift(selectedExistingProduct);
@@ -9852,14 +9861,14 @@
           const select = row.querySelector(".modal-spec-select");
           if (!select) continue;
           const code = select.value;
-          const previousLabel = select.selectedOptions?.[0]?.textContent || code;
-          select.innerHTML = buildAdminProductOptionsHtml(code);
+          select.innerHTML = buildAdminProductOptionsHtml(code, false);
           if ([...select.options].some(option => option.value === code)) select.value = code;
           else {
             // Never silently switch a removed product in an unfinished order.
             const option = document.createElement("option");
-            option.value = code;
-            option.textContent = `${previousLabel}（已無法訂購，請重新選擇）`;
+            option.value = "";
+            option.textContent = "原商品已無法訂購，請重新選擇";
+            option.disabled = true;
             option.selected = true;
             select.prepend(option);
           }
@@ -11560,6 +11569,7 @@
 
         setAdminProductCatalogState(false, "讀取管理員商品目錄中...");
         adminProductCatalogLoading = true;
+        adminProductCatalogReadFailed = false;
         if (includeOperations) adminProductOperationsLoading = true;
         renderProductManagement();
         renderShippingManifest();
@@ -11635,13 +11645,7 @@
             setAdminAuthRetryButtonMode(false);
             if (!preserveDraft) showAdminAuthOverlay("登入已過期，請重新登入後繼續。", true);
           }
-          adminProductCatalog = [];
-          adminProductCatalogVersion = "";
-          adminProductOperations = {
-            byCode: {},
-            complete: false,
-            unreadableOrderCount: 0,
-          };
+          adminProductCatalogReadFailed = true;
           setAdminProductCatalogState(
             false,
             "商品目錄讀取失敗，請再按新增訂單重試。",
