@@ -6434,6 +6434,8 @@
 
       let adminProductCatalog = [];
       let adminProductCatalogVersion = "";
+      let adminProductCatalogLoading = false;
+      let adminProductOperationsLoading = false;
       let adminProductOperations = {
         byCode: {},
         complete: false,
@@ -8369,7 +8371,7 @@
 
         if (!adminProductCatalog.length) {
           list.innerHTML =
-            '<div class="product-card-empty">目前沒有商品資料</div>';
+            `<div class="product-card-empty">${adminProductCatalogLoading ? "商品讀取中" : "目前沒有商品資料"}</div>`;
           return;
         }
 
@@ -8427,12 +8429,16 @@
             normalizeAdminProductCode(product.code)
           ] || null;
         const operationsComplete = adminProductOperations?.complete === true;
-        const bookedText = operations
-          ? `已訂 ${Number(operations.bookedQty || 0)}${operationsComplete ? "" : "＋待確認"}`
-          : "已訂待重試";
-        const shippedText = operations
-          ? `已寄 ${Number(operations.shippedQty || 0)}${operationsComplete ? "" : "＋待確認"}`
-          : "已寄待重試";
+        const bookedText = adminProductOperationsLoading
+          ? "已訂 —統計讀取中"
+          : operations
+            ? `已訂 ${Number(operations.bookedQty || 0)}${operationsComplete ? "" : "＋待確認"}`
+            : "已訂待重試";
+        const shippedText = adminProductOperationsLoading
+          ? "已寄 —統計讀取中"
+          : operations
+            ? `已寄 ${Number(operations.shippedQty || 0)}${operationsComplete ? "" : "＋待確認"}`
+            : "已寄待重試";
         return `
             <article class="product-admin-card${activeText === "上架" ? "" : " is-inactive"}" data-product-id="${escapeHtml(product.id)}">
               <div class="product-admin-summary">
@@ -11312,6 +11318,10 @@
         ).trim();
 
         setAdminProductCatalogState(false, "讀取管理員商品目錄中...");
+        adminProductCatalogLoading = true;
+        if (includeOperations) adminProductOperationsLoading = true;
+        renderProductManagement();
+        renderShippingManifest();
 
         try {
           if (!baseUrl || !adminSessionToken) {
@@ -11363,6 +11373,8 @@
             typeof payload.productOperations === "object"
               ? payload.productOperations
               : { byCode: {}, complete: false, unreadableOrderCount: 0 };
+          adminProductCatalogLoading = false;
+          if (includeOperations) adminProductOperationsLoading = false;
           adminSiteSettings = {
             ...adminSiteSettings,
             ...(payload.siteSettings || {}),
@@ -11375,6 +11387,8 @@
           return adminProductCatalog;
         } catch (error) {
           console.error("GAS 商品目錄讀取失敗", error);
+          adminProductCatalogLoading = false;
+          if (includeOperations) adminProductOperationsLoading = false;
           if (String(error?.message) === "ADMIN_SESSION_REQUIRED") {
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
             setAdminAuthRetryButtonMode(false);
@@ -17066,7 +17080,9 @@
           <div class="shipping-tracking-list">
             ${Array.from({ length: slotCount }, (_, index) => {
               const trackingNumber = trackingNumbers[index] || "";
-              const packageSize = packageSizes[index] || "尺寸待確認";
+              const packageSize =
+                packageSizes[index] ||
+                (adminProductCatalogLoading ? "尺寸讀取中" : "尺寸待確認");
               return `
                 <div class="shipping-tracking-line">
                   <span>${escapeHtml(packageSize)}｜</span>

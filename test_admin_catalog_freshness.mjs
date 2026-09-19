@@ -35,4 +35,6 @@ const lean=c.fetchAdminProductCatalogFromGas({includeOperations:false});
 const full=c.fetchAdminProductCatalogFromGas();
 assert.deepEqual(modes,[false]);finishLean();await Promise.all([lean,full]);
 assert.deepEqual(modes,[false,true]);assert.equal(c.adminProductOperations.byCode.B.bookedQty,12);
+assert.match(html,/adminProductCatalogLoading\s*\?\s*"商品讀取中"\s*:\s*"目前沒有商品資料"/,'empty catalog must identify an active read instead of claiming no products');
+assert.match(html,/adminProductOperationsLoading[\s\S]*?"已訂 —統計讀取中"[\s\S]*?"已寄 —統計讀取中"/,'product operation chips must identify an active statistics read');
 console.log('catalog freshness: PASS repeat openings, external price/stock change, preserved quantity/selection, removed SKU, duplicate opening and failed refresh');

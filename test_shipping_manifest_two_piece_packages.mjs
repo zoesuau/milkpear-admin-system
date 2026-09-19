@@ -9,8 +9,20 @@ const functionsEnd = html.indexOf(
   functionsStart,
 );
 assert.ok(functionsStart >= 0 && functionsEnd > functionsStart);
+const trackingFunctionStart = html.indexOf(
+  "function buildShippingTrackingNumberSlotsHtml",
+  functionsEnd,
+);
+const trackingFunctionEnd = html.indexOf(
+  "function getShippingManifestNote",
+  trackingFunctionStart,
+);
+assert.ok(
+  trackingFunctionStart >= 0 && trackingFunctionEnd > trackingFunctionStart,
+);
 
 const context = {
+  adminProductCatalogLoading: false,
   adminProductCatalog: [
     {
       id: "general-12a",
@@ -37,12 +49,23 @@ const context = {
   normalizeAdminProductCategory(value) {
     return String(value || "").includes("兩粒") ? "兩粒禮盒" : "一般禮盒";
   },
+  getActiveShippingTrackingNumbersFromStoredValue() {
+    return [];
+  },
+  formatShippingTrackingNumberForDisplay(value) {
+    return String(value || "");
+  },
+  escapeHtml(value) {
+    return String(value ?? "");
+  },
 };
 vm.createContext(context);
 vm.runInContext(
   `${html.slice(functionsStart, functionsEnd)}
+${html.slice(trackingFunctionStart, trackingFunctionEnd)}
 this.getPackageSpecs = getShippingManifestOrderPackageSpecs;
-this.buildStats = buildShippingManifestStats;`,
+this.buildStats = buildShippingManifestStats;
+this.buildTrackingSlots = buildShippingTrackingNumberSlotsHtml;`,
   context,
 );
 
@@ -126,6 +149,20 @@ const stats = context.buildStats([
 assert.equal(stats.boxTotal, 6, "總盒數仍須顯示 6 個實體禮盒");
 assert.equal(stats.package120cmTotal, 1);
 assert.equal(stats.package90cmTotal, 0);
+
+context.adminProductCatalog = [];
+context.adminProductCatalogLoading = true;
+assert.match(
+  context.buildTrackingSlots(order("無法辨識商品", 1)),
+  /尺寸讀取中/,
+  "商品目錄載入期間不可把尺寸顯示為待確認",
+);
+context.adminProductCatalogLoading = false;
+assert.match(
+  context.buildTrackingSlots(order("無法辨識商品", 1)),
+  /尺寸待確認/,
+  "商品目錄完成後仍無法辨識時才顯示尺寸待確認",
+);
 
 assert.match(
   html,
