@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260919-product-catalog-recovery-v1">
+<html lang="zh-Hant" data-release-version="20260920-product-shipping-rules-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260919-product-catalog-recovery-v1" />
+    <meta name="admin-release" content="20260920-product-shipping-rules-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -8622,7 +8622,7 @@
         const sortedProducts = adminProductCatalog
           .slice()
           .sort(compareAdminProductsForAutoSort);
-        const varieties = ["牛奶梨", "蔗香梨"];
+        const varieties = ["牛奶梨", "蔗香梨", "日本蜜柑"];
         const extraVarieties = [
           ...new Set(
             sortedProducts
@@ -8715,7 +8715,7 @@
                   <div>
                     <div class="product-admin-title">${escapeHtml(product.grade || product.code || "")}</div>
                   </div>
-                  <div class="product-admin-meta">${escapeHtml(product.count || "")}裝</div>
+                  <div class="product-admin-meta">${escapeHtml(product.count || "")}裝<br><small>${getAdminProductShippingRule(product) === "half_6" ? "六盒免運" : "三盒免運"}</small></div>
                   <div class="product-admin-price">$${formatMoney(product.price)}</div>
                 </div>
               </div>
@@ -8911,28 +8911,37 @@
       }
 
       function renderProductManagementFields(product) {
+        const isMikan = product.variety === "日本蜜柑";
         return `
           <div class="product-field">
             <label>品種</label>
-            <select data-product-field="variety">
-              ${renderSimpleOptions(["牛奶梨", "蔗香梨"], product.variety)}
+            <select data-product-field="variety" ${product.isNew ? 'onchange="updateNewProductVariety(this)"' : "disabled"}>
+              ${renderSimpleOptions(["牛奶梨", "蔗香梨", "日本蜜柑"], product.variety)}
             </select>
           </div>
-          <div class="product-field">
+          <div class="product-field" ${isMikan ? 'style="display:none;"' : ""}>
             <label>分類</label>
-            <select data-product-field="category">
+            <select data-product-field="category" onchange="updateNewProductShippingDefault(this)">
               ${renderSimpleOptions(["一般禮盒", "兩粒禮盒"], normalizeAdminProductCategory(product.category))}
             </select>
           </div>
-          <div class="product-field">
+          <div class="product-field" ${isMikan ? 'style="display:none;"' : ""}>
             <label>A數 / 等級</label>
             <input data-product-field="grade" value="${escapeHtml(product.grade || "")}">
           </div>
           <div class="product-field">
-            <label>顆數</label>
-            <select data-product-field="count">
-              ${renderSimpleOptions(["2顆", "5顆", "6顆", "8顆", "10顆", "12顆"], product.count)}
+            <label>${isMikan ? "包裝規格" : "顆數"}</label>
+            <select data-product-field="count" onchange="updateNewProductShippingDefault(this)">
+              ${renderSimpleOptions(isMikan ? ["5斤", "10斤"] : ["2顆", "5顆", "6顆", "8顆", "10顆", "12顆"], product.count)}
             </select>
+          </div>
+          <div class="product-field full">
+            <label>運費規則</label>
+            <select data-product-field="shippingRule">
+              <option value="standard_3" ${getAdminProductShippingRule(product) === "standard_3" ? "selected" : ""}>三盒免運</option>
+              <option value="half_6" ${getAdminProductShippingRule(product) === "half_6" ? "selected" : ""}>六盒免運</option>
+            </select>
+            <small style="color:#64748b;">${isMikan ? "五斤裝預設六盒免運，十斤裝預設三盒免運；皆可單盒購買。" : "兩粒禮盒預設六盒免運，前台仍須成雙購買。"} 離島及未滿免運組數依既有運費計算。</small>
           </div>
           <div class="product-field">
             <label>價格</label>
@@ -8957,20 +8966,44 @@
               ${renderSimpleOptions(["上架", "僅後台販售", "停售"], normalizeAdminProductStatus(product.status))}
             </select>
           </div>
-          <details class="product-code-details" ${product.isNew ? "open" : ""}>
+          ${product.isNew ? "" : `<details class="product-code-details">
             <summary>系統代碼</summary>
             <div class="product-code-grid">
               <div class="product-field">
                 <label>id</label>
-                <input data-product-field="id" value="${escapeHtml(product.id || "")}" ${product.isNew ? "" : "readonly"}>
+                <input data-product-field="id" value="${escapeHtml(product.id || "")}" readonly>
               </div>
               <div class="product-field">
                 <label>code</label>
-                <input data-product-field="code" value="${escapeHtml(product.code || "")}" ${product.isNew ? "" : "readonly"}>
+                <input data-product-field="code" value="${escapeHtml(product.code || "")}" readonly>
               </div>
             </div>
-          </details>
+          </details>`}
         `;
+      }
+
+      function getAdminProductShippingRule(product) {
+        return product?.shippingRule || (normalizeAdminProductCategory(product?.category) === "兩粒禮盒" ||
+          (product?.variety === "日本蜜柑" && product?.count === "5斤") ? "half_6" : "standard_3");
+      }
+
+      function updateNewProductVariety(select) {
+        const fields = document.getElementById("productAddModalFields");
+        const product = readProductManagementCard(fields);
+        product.isNew = true;
+        product.category = "一般禮盒";
+        product.count = product.variety === "日本蜜柑" ? "5斤" : "8顆";
+        product.grade = product.variety === "日本蜜柑" ? "5斤" : "";
+        product.shippingRule = product.variety === "日本蜜柑" ? "half_6" : "standard_3";
+        fields.innerHTML = renderProductManagementFields(product);
+      }
+
+      function updateNewProductShippingDefault(select) {
+        const fields = select.closest("#productAddModalFields");
+        if (!fields) return;
+        const product = readProductManagementCard(fields);
+        delete product.shippingRule;
+        fields.querySelector('[data-product-field="shippingRule"]').value = getAdminProductShippingRule(product);
       }
 
       function renderSimpleOptions(options, selectedValue) {
@@ -9009,6 +9042,7 @@
       function getAdminProductVarietyRank(product) {
         if (product?.variety === "牛奶梨") return 1;
         if (product?.variety === "蔗香梨") return 2;
+        if (product?.variety === "日本蜜柑") return 3;
         return 99;
       }
 
@@ -9107,6 +9141,7 @@
 
       function getAdminProductOrderDisplayName(product) {
         const baseName = getAdminProductDisplayName(product);
+        if (product?.variety === "日本蜜柑") return baseName;
         const count = String(product?.count || "").trim();
         return [baseName, count].filter(Boolean).join("｜") || baseName;
       }
@@ -9252,7 +9287,7 @@
 
       function addProductManagementCard() {
         const draft = {
-          id: `p${Date.now()}`,
+          id: "",
           code: "",
           variety: "蔗香梨",
           category: "一般禮盒",
@@ -9614,7 +9649,7 @@
         const products = applyAdminProductAutoSort(
           adminProductCatalog.concat(product),
         );
-        const validationMessage = validateProductManagementProducts(products);
+        const validationMessage = validateProductManagementProducts(adminProductCatalog.concat(product), product);
         if (validationMessage) {
           if (feedback) {
             feedback.className = "product-management-feedback error";
@@ -9654,8 +9689,9 @@
           code: normalizeAdminProductCode(getValue("code")),
           variety: getValue("variety"),
           category: normalizeAdminProductCategory(getValue("category")),
-          grade: getValue("grade"),
+          grade: getValue("variety") === "日本蜜柑" ? getValue("count") : getValue("grade"),
           count: getValue("count"),
+          shippingRule: getValue("shippingRule"),
           price: Number(getValue("price")),
           stock,
           adminReservedStock,
@@ -9665,21 +9701,22 @@
         };
       }
 
-      function validateProductManagementProducts(products) {
+      function validateProductManagementProducts(products, newProduct = null) {
         const seenIds = new Set();
         const seenCodes = new Set();
         for (const product of products) {
           const requiredStrings = [
-            product.id,
-            product.code,
             product.variety,
             product.category,
             product.grade,
             product.count,
           ];
           if (requiredStrings.some((value) => !String(value || "").trim())) {
-            return "商品欄位不可空白，系統代碼也要填。";
+            return "請填寫完整的商品規格。";
           }
+          const isNew = product === newProduct;
+          if (!isNew && (!product.id || !product.code)) return "商品識別資料不完整，請重新整理。";
+          if (!["standard_3", "half_6"].includes(getAdminProductShippingRule(product))) return "請選擇有效的運費規則。";
           if (!Number.isInteger(product.price) || product.price <= 0) {
             return "價格需為正整數。";
           }
@@ -9696,11 +9733,10 @@
           ) {
             return "保留給後台的庫存需為 0 以上整數；不限量商品請填 0。";
           }
-          if (seenIds.has(product.id) || seenCodes.has(product.code)) {
+          if ((!isNew && seenIds.has(product.id)) || (!isNew && seenCodes.has(product.code))) {
             return "id 和 code 不可重複。";
           }
-          seenIds.add(product.id);
-          seenCodes.add(product.code);
+          if (!isNew) { seenIds.add(product.id); seenCodes.add(product.code); }
         }
         return "";
       }
@@ -9948,6 +9984,7 @@
           weight: "",
           count: product.count,
           category: normalizeAdminProductCategory(product.category),
+          shippingRule: getAdminProductShippingRule(product),
           unitPrice: product.price,
           qty,
         };
@@ -10043,7 +10080,7 @@
         const shippingUnits = normalizedItems.reduce((sum, item) => {
           return (
             sum +
-            (normalizeAdminProductCategory(item.category) === "兩粒禮盒"
+            (getAdminProductShippingRule(item) === "half_6"
               ? item.qty / 2
               : item.qty)
           );
@@ -16818,6 +16855,7 @@
 
         let generalBoxes = 0;
         let twoPieceBoxes = 0;
+        let shippingUnits = 0;
         for (const item of parsedItems.items) {
           const productId = getShippingManifestProductId(
             item.label,
@@ -16827,6 +16865,7 @@
             (entry) => String(entry?.id || "").trim() === productId,
           );
           if (!product) return null;
+          shippingUnits += item.qty * (getAdminProductShippingRule(product) === "half_6" ? 0.5 : 1);
           if (normalizeAdminProductCategory(product.category) === "兩粒禮盒") {
             twoPieceBoxes += item.qty;
           } else {
@@ -16851,7 +16890,7 @@
 
         const packageSpecs = [];
         let remainingShippingUnits = Math.ceil(
-          generalBoxes + twoPieceBoxes / 2,
+          shippingUnits,
         );
         while (remainingShippingUnits > 0) {
           const unitsInPackage = Math.min(3, remainingShippingUnits);
@@ -16958,7 +16997,7 @@
           ? "牛奶梨"
           : /(蔗香梨|薦香梨)/.test(String(label || ""))
             ? "蔗香梨"
-            : "";
+            : String(label || "").includes("日本蜜柑") ? "日本蜜柑" : "";
         if (candidates.length > 1 && labelVariety) {
           const varietyCandidates = candidates.filter(
             (product) => String(product?.variety || "").trim() === labelVariety,

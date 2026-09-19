@@ -61,7 +61,8 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(
-  `${html.slice(functionsStart, functionsEnd)}
+  `${html.match(/function getAdminProductShippingRule\([\s\S]*?\n      \}/)[0]}
+${html.slice(functionsStart, functionsEnd)}
 ${html.slice(trackingFunctionStart, trackingFunctionEnd)}
 this.getPackageSpecs = getShippingManifestOrderPackageSpecs;
 this.buildStats = buildShippingManifestStats;
@@ -74,6 +75,10 @@ const order = (itemsSummary, totalBoxes) => ({
   totalBoxes,
   finalAmount: 0,
 });
+
+context.adminProductCatalog.push({id:'mikan-five',code:'M5',variety:'日本蜜柑',grade:'5斤',count:'5斤',category:'一般禮盒',price:500,shippingRule:'half_6'});
+assert.deepEqual(Array.from(context.getPackageSpecs(order('日本蜜柑 5斤（$500 × 1盒）',1))),['2'],'single five-jin box must not be rejected as an incomplete pear pair');
+assert.deepEqual(Array.from(context.getPackageSpecs(order('日本蜜柑 5斤（$500 × 6盒）',6))),['3'],'six five-jin boxes use the same package units as six small pear boxes');
 
 assert.deepEqual(
   Array.from(
