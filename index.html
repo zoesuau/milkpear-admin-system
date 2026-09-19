@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260920-product-shipping-rules-v1">
+<html lang="zh-Hant" data-release-version="20260920-product-management-groups-v1">
   <head>
     <meta charset="UTF-8" />
     <meta name="admin-release" content="20260920-product-shipping-rules-v1" />
@@ -8636,7 +8636,6 @@
             const products = sortedProducts.filter(
               (product) => product.variety === variety,
             );
-            if (!products.length) return "";
             return `
               <details class="product-variety-group" data-variety="${escapeHtml(variety)}" open>
                 <summary>
@@ -8715,7 +8714,7 @@
                   <div>
                     <div class="product-admin-title">${escapeHtml(product.grade || product.code || "")}</div>
                   </div>
-                  <div class="product-admin-meta">${escapeHtml(product.count || "")}裝<br><small>${getAdminProductShippingRule(product) === "half_6" ? "六盒免運" : "三盒免運"}</small></div>
+                  <div class="product-admin-meta">${escapeHtml(product.count || "")}裝</div>
                   <div class="product-admin-price">$${formatMoney(product.price)}</div>
                 </div>
               </div>
@@ -8966,19 +8965,6 @@
               ${renderSimpleOptions(["上架", "僅後台販售", "停售"], normalizeAdminProductStatus(product.status))}
             </select>
           </div>
-          ${product.isNew ? "" : `<details class="product-code-details">
-            <summary>系統代碼</summary>
-            <div class="product-code-grid">
-              <div class="product-field">
-                <label>id</label>
-                <input data-product-field="id" value="${escapeHtml(product.id || "")}" readonly>
-              </div>
-              <div class="product-field">
-                <label>code</label>
-                <input data-product-field="code" value="${escapeHtml(product.code || "")}" readonly>
-              </div>
-            </div>
-          </details>`}
         `;
       }
 
@@ -9667,6 +9653,16 @@
           String(
             card.querySelector(`[data-product-field="${field}"]`)?.value || "",
           ).trim();
+        const cardProductId = String(
+          card?.dataset?.productId ||
+            card?.closest?.(".product-admin-card")?.dataset?.productId ||
+            "",
+        ).trim();
+        const existingProduct = cardProductId
+          ? adminProductCatalog.find(
+              (product) => String(product.id || "") === cardProductId,
+            )
+          : null;
         const stockText = getValue("stock");
         const stock =
           stockText === ""
@@ -9685,8 +9681,8 @@
         const status = normalizeAdminProductStatus(getValue("status"));
 
         return {
-          id: getValue("id"),
-          code: normalizeAdminProductCode(getValue("code")),
+          id: String(existingProduct?.id || ""),
+          code: normalizeAdminProductCode(existingProduct?.code || ""),
           variety: getValue("variety"),
           category: normalizeAdminProductCategory(getValue("category")),
           grade: getValue("variety") === "日本蜜柑" ? getValue("count") : getValue("grade"),
