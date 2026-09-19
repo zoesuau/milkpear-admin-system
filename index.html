@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260919-auth-result-only-v1">
+<html lang="zh-Hant" data-release-version="20260919-request-correlation-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260919-auth-result-only-v1" />
+    <meta name="admin-release" content="20260919-request-correlation-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
     <script src="./customer-config.js?v=20260816-group-orders-1"></script>
-    <script src="./admin-diagnostics.js?v=20260919-auth-result-only-v1"></script>
+    <script src="./admin-diagnostics.js?v=20260919-request-correlation-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -4740,9 +4740,6 @@
         >
           重新登入 LINE
         </button>
-        <button type="button" class="admin-auth-retry hidden" id="adminAuthRestartBtn">
-          重新登入 LINE
-        </button>
         <button type="button" class="admin-auth-close" id="adminAuthCloseBtn">
           關閉提示
         </button>
@@ -6634,9 +6631,6 @@
 
         if (messageEl) messageEl.innerText = message;
         if (retryBtn) retryBtn.classList.toggle("hidden", !showRetry);
-        document.getElementById("adminAuthRestartBtn")?.classList.toggle(
-          "hidden", !(showRetry && retryBtn?.dataset.retryCallback === "true"),
-        );
         if (refreshBtn)
           refreshBtn.classList.toggle("hidden", !shouldShowRefresh);
         if (closeBtn) closeBtn.classList.toggle("hidden", !shouldShowClose);
@@ -6917,7 +6911,7 @@
       }
 
       function publishAdminAuthDiagnostic(diagnostic) {
-        window.AdminDiagnostics?.record({action:"adminAuth", stage:"AUTH", outcome:"failure", code:diagnostic?.errorCode});
+        window.AdminDiagnostics?.record({action:"adminAuth", stage:"AUTH", outcome:"failure", code:diagnostic?.errorCode, requestId:diagnostic?.requestId});
         const safeDiagnostic = {
           requestId: String(diagnostic?.requestId || "").replace(/[^A-Za-z0-9_.:-]/g, "-").slice(0, 150),
           event: String(diagnostic?.event || "ADMIN_AUTH_FAILURE").slice(0, 80),
@@ -7744,8 +7738,8 @@
             setAdminAuthRetryButtonMode(true);
             showAdminAuthOverlay(
               errorCode === "ADMIN_AUTH_PENDING"
-                ? "登入仍在處理中，請稍後按「再次確認登入」；如持續無法完成，可重新登入 LINE。"
-                : "尚未查到這次登入結果，請稍後再次確認，或重新登入 LINE。",
+                ? "登入仍在處理中，請稍後按「再次確認登入」。"
+                : "尚未查到這次登入結果，請稍後按「再次確認登入」。",
               true, false, true,
             );
             return false;
@@ -19190,10 +19184,6 @@
             startAdminAuth(true);
           });
         }
-        document.getElementById("adminAuthRestartBtn")?.addEventListener("click", () => {
-          if (adminAuthCompletionPromise) return;
-          void startAdminAuth(true);
-        });
         if (refreshBtn) {
           refreshBtn.addEventListener("click", refreshAdminOrdersFromOverlay);
         }
