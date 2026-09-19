@@ -118,12 +118,16 @@ console.log('snapshot bootstrap cache: PASS no full chunk read, multi-chunk cach
 
 const bootstrapSource = between(html, '      async function fetchAdminOrderBootstrapFromGas()', '      let adminOrderSnapshotReadPromise');
 Object.assign(context, {
- GAS_ORDERS_API_URL: 'https://example.invalid', ADMIN_LINE_SESSION_TOKEN_KEY: 'token', ADMIN_READ_ORDERS_TIMEOUT_MS: 10000,
+ GAS_ORDERS_API_URL: 'https://example.invalid', ADMIN_LINE_SESSION_TOKEN_KEY: 'token', ADMIN_READ_ORDERS_TIMEOUT_MS: 60000,
+ ADMIN_ORDER_SNAPSHOT_ATTEMPT_TIMEOUT_MS: 20000,
  createAdminDiagnosticRequestId: () => 'fixture', markAdminSessionVerified() {}, recordAdminReadBreadcrumb() {}, showAdminAuthOverlay() {},
 });
 storage.set('token', 'fixture-only');
-let payload;
-context.fetchAdminRecoverableResponse = async () => ({ok:true, json:async()=>payload});
+let payload, bootstrapRecoveryOptions;
+context.fetchAdminRecoverableResponse = async (...args) => {
+ bootstrapRecoveryOptions = args[3];
+ return {ok:true, json:async()=>payload};
+};
 vm.runInContext(bootstrapSource, context);
 function reset() {
  storage.set('snapshot', JSON.stringify(cachedFixture)); storage.set('token','fixture-only');
@@ -131,6 +135,11 @@ function reset() {
 }
 reset();
 let restored = await context.fetchAdminOrderBootstrapFromGas();
+assert.deepEqual(
+ JSON.parse(JSON.stringify(bootstrapRecoveryOptions)),
+ {totalBudgetMs:20000,maxAttempts:1},
+ 'bootstrap must allow one complete 20-second response without duplicate reads',
+);
 assert.equal(restored.fullSnapshot, true, 'validated complete cache must skip second read');
 assert.equal(restored.orders.length, 2);
 for (const [name, mutate] of [

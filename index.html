@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260919-shipping-batches-v1">
+<html lang="zh-Hant" data-release-version="20260919-order-read-wait-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260919-shipping-batches-v1" />
+    <meta name="admin-release" content="20260919-order-read-wait-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -6563,6 +6563,10 @@
       const ADMIN_GROUP_CREATE_PENDING_STORAGE_KEY = `${ADMIN_STORAGE_NAMESPACE}:pending-admin-group-create-v1`;
       const ADMIN_SHIPPING_NOTICE_TIMEOUT_MS = 60000;
       const ADMIN_INITIAL_LOAD_SLOW_MS = 12000;
+      // The backend can finish quickly while Google's ContentService redirect
+      // is still delivering the response. Keep the slow-state message at 12s,
+      // but allow one safe order-snapshot read to finish before aborting.
+      const ADMIN_ORDER_SNAPSHOT_ATTEMPT_TIMEOUT_MS = 20000;
       const ADMIN_INITIAL_ORDER_RETRY_DELAY_MS = 2000;
 
       let adminProductCatalog = [];
@@ -6850,7 +6854,12 @@
           : defaultRecoveryBudgetMs;
         const perAttemptBudgetMs = backgroundValidation || oneTimeAdminAuth
           ? recoveryBudgetMs
-          : Math.min(recoveryBudgetMs, 12000);
+          : action === "adminReadOrderSnapshot"
+            ? Math.min(
+                recoveryBudgetMs,
+                ADMIN_ORDER_SNAPSHOT_ATTEMPT_TIMEOUT_MS,
+              )
+            : Math.min(recoveryBudgetMs, 12000);
         const deadline = Date.now() + recoveryBudgetMs;
         // Reconciliation owns the readback retry budget and records each attempt.
         const defaultMaxAttempts = action === "adminReadShipmentResults" ||
@@ -11070,7 +11079,10 @@
               }),
             },
             ADMIN_READ_ORDERS_TIMEOUT_MS,
-            { totalBudgetMs: 10000, maxAttempts: 1 },
+            {
+              totalBudgetMs: ADMIN_ORDER_SNAPSHOT_ATTEMPT_TIMEOUT_MS,
+              maxAttempts: 1,
+            },
           );
           if (!response.ok) throw new Error(`HTTP_${response.status}`);
           const payload = await response.json();
@@ -11178,7 +11190,10 @@
             },
             ADMIN_READ_ORDERS_TIMEOUT_MS,
             options.networkRecovery === true
-              ? { totalBudgetMs: 10000, maxAttempts: 1 }
+              ? {
+                  totalBudgetMs: ADMIN_ORDER_SNAPSHOT_ATTEMPT_TIMEOUT_MS,
+                  maxAttempts: 1,
+                }
               : {},
           );
 

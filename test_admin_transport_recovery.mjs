@@ -16,6 +16,7 @@ function fixture(sequence) {
   const requests = [], timers = new Map();
   let tick = 0, nextTimer = 0;
   const ctx = { Response, AbortController, Date: { now: () => tick }, navigator: { onLine: true }, GAS_ORDERS_API_URL: endpoint,
+    ADMIN_ORDER_SNAPSHOT_ATTEMPT_TIMEOUT_MS: 20000,
     window: { setTimeout(fn, ms) { const id = ++nextTimer; timers.set(id, { fn, ms }); if (ms <= 1000) queueMicrotask(() => { if (timers.delete(id)) { tick += ms; fn(); } }); return id; }, clearTimeout(id) { timers.delete(id); } },
     fetch: async (url, options) => { requests.push({ url, body: options.body, signal: options.signal }); const step = sequence.shift(); if (typeof step === 'function') return step(ctx, timers); if (step instanceof Error) throw step; assert.ok(step, 'unexpected extra request'); return step; },
   };
@@ -79,7 +80,7 @@ for (const status of [401, 403]) {
 }
 {
   // A stalled body must time out too, not only the initial response headers.
-  const stall = (ctx, timers) => { queueMicrotask(() => { const timeout = [...timers.values()].find(t => t.ms > 1000); assert.ok(timeout.ms <= 12000, 'foreground auth/read attempt must not block longer than 12 seconds on weak networks'); timeout.fn(); }); return { ok: true, status: 200, text: () => new Promise(() => {}) }; };
+  const stall = (ctx, timers) => { queueMicrotask(() => { const timeout = [...timers.values()].find(t => t.ms > 1000); assert.ok(timeout.ms <= 12000, 'non-order foreground reads retain the 12-second attempt bound'); timeout.fn(); }); return { ok: true, status: 200, text: () => new Promise(() => {}) }; };
   const f = fixture([stall, json(success('adminValidateSession'))]);
   assert.equal((await (await f.call()).json()).allowed, true);
   assert.equal(f.requests[0].signal.aborted, true);
@@ -175,3 +176,14 @@ console.log('background transport: PASS one attempt and ten-second full-body bud
  assert.equal(f.requests.length,1,'automatic reconnect owns its outer second attempt and must keep each read to one request');
 }
 console.log('reconnect transport: PASS one safe read per automatic recovery attempt');
+{
+ const f=fixture([()=>({ok:true,status:200,text:()=>new Promise(()=>{})})]);
+ const request=f.ctx.fetchAdminRecoverableResponse(endpoint,{method:'POST',body:JSON.stringify({action:'adminReadOrderSnapshot',adminSessionToken:'fake-session'})},60000,{totalBudgetMs:20000,maxAttempts:1});
+ await new Promise(setImmediate);
+ const timer=[...f.timers.values()][0];
+ assert.equal(timer.ms,20000,'order snapshot must keep waiting after the 12-second slow-state notice');
+ timer.fn();
+ await assert.rejects(request,/GAS_TIMEOUT/);
+ assert.equal(f.requests.length,1,'the longer attempt must not add another request');
+}
+console.log('order snapshot transport: PASS one 20-second full-body attempt without duplicate reads');
