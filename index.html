@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260919-request-correlation-v1">
+<html lang="zh-Hant" data-release-version="20260919-shipping-batches-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260919-request-correlation-v1" />
+    <meta name="admin-release" content="20260919-shipping-batches-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -4290,47 +4290,120 @@
         gap: 8px;
       }
 
+      .shipping-batch-management-actions {
+        flex-shrink: 0;
+      }
+
       .shipping-batch-list {
         display: grid;
-        gap: 10px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
       }
 
       .shipping-batch-card {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px 14px;
-        padding: 14px;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: "chips actions" "identity identity" "meta meta";
+        align-content: start;
+        align-items: start;
+        gap: 12px;
+        padding: 16px;
         border: 1px solid #dfe8e2;
         border-radius: 12px;
         background: white;
+        box-shadow: 0 2px 5px rgba(15, 23, 42, 0.04);
       }
 
       .shipping-batch-card.is-closed {
-        background: #f8fafc;
+        background: #fafafa;
+      }
+
+      .shipping-batch-card.is-open {
+        border-color: #cfe1d4;
+      }
+
+      .shipping-batch-card-identity {
+        grid-area: identity;
+        min-width: 0;
+      }
+
+      .shipping-batch-card-chips {
+        grid-area: chips;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .shipping-batch-card-footer {
+        grid-area: meta;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+        border-top: 1px solid #edf0ed;
+        padding-top: 10px;
+      }
+
+      .shipping-batch-card-range {
+        display: block;
+        color: #00863b;
+        font-size: clamp(22px, 2.6vw, 32px);
+        font-weight: 900;
+        line-height: 1.3;
+        margin: 6px 0 0;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .shipping-batch-card.is-closed .shipping-batch-card-range {
+        color: #787878;
       }
 
       .shipping-batch-card-title {
+        margin: 0;
         color: #334155;
+        font-size: 15px;
         font-weight: 900;
+        line-height: 1.5;
+        overflow-wrap: anywhere;
       }
 
       .shipping-batch-card-meta {
         color: #64748b;
         font-size: 12px;
         line-height: 1.5;
-        margin-top: 3px;
+        margin-top: 5px;
+        overflow-wrap: anywhere;
       }
 
       .shipping-batch-card-actions {
-        grid-column: 1 / -1;
+        grid-area: actions;
+        justify-content: flex-end;
+      }
+
+      .shipping-batch-card-actions .product-action-btn {
+        min-height: 34px;
+        padding: 6px 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 999px;
+        background: white;
+        color: #334155;
+        white-space: nowrap;
+      }
+
+      .shipping-batch-management button:focus-visible {
+        outline: 3px solid #4f7f63;
+        outline-offset: 3px;
       }
 
       .shipping-batch-status {
         display: inline-flex;
         width: fit-content;
-        padding: 4px 9px;
+        padding: 3px 9px;
         border-radius: 999px;
-        background: #dcfce7;
+        border: 1px solid #16a34a;
+        background: white;
         color: #166534;
         font-size: 12px;
         font-weight: 800;
@@ -4338,11 +4411,19 @@
 
       .shipping-batch-status.expired,
       .shipping-batch-status.manually_closed {
-        background: #e2e8f0;
+        border-color: #cbd5e1;
+        background: transparent;
         color: #475569;
       }
 
+      .shipping-batch-status.scheduled {
+        border-color: #d6ac55;
+        color: #8a5a16;
+        background: #fffbeb;
+      }
+
       .shipping-batch-empty {
+        grid-column: 1 / -1;
         padding: 20px;
         border: 1px dashed #cbd5e1;
         border-radius: 12px;
@@ -4360,11 +4441,50 @@
         grid-column: 1 / -1;
       }
 
+      .shipping-batch-range-toggle {
+        width: 100%;
+        padding: 12px;
+        text-align: left;
+        color: #334155;
+        background: white;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      #shippingBatchRangeCalendar {
+        width: 100%;
+        margin-top: 8px;
+        box-shadow: none;
+      }
+
+      @media (max-width: 800px) {
+        .shipping-batch-list { grid-template-columns: 1fr; }
+      }
+
       @media (max-width: 560px) {
-        .shipping-batch-management-header,
-        .shipping-batch-card {
+        .shipping-batch-management-header {
           display: flex;
           flex-direction: column;
+        }
+
+        .shipping-batch-management-actions {
+          width: 100%;
+        }
+
+        .shipping-batch-management-actions .product-action-btn {
+          flex: 1;
+          min-height: 44px;
+        }
+
+        .shipping-batch-card {
+          gap: 12px;
+          padding: 14px;
+        }
+
+        .shipping-batch-card-actions .product-action-btn {
+          min-height: 44px;
         }
 
         .shipping-batch-form-grid {
@@ -5852,13 +5972,21 @@
               <label for="shippingBatchDisplayLabel">前台顯示名稱</label>
               <input id="shippingBatchDisplayLabel" maxlength="120" />
             </div>
-            <div class="product-field">
-              <label for="shippingBatchStartDate">寄出開始日</label>
-              <input id="shippingBatchStartDate" type="date" />
-            </div>
-            <div class="product-field">
-              <label for="shippingBatchEndDate">寄出結束日</label>
-              <input id="shippingBatchEndDate" type="date" />
+            <div class="product-field full">
+              <label for="shippingBatchRangeToggle">寄出區間</label>
+              <input id="shippingBatchStartDate" type="hidden" />
+              <input id="shippingBatchEndDate" type="hidden" />
+              <button type="button" id="shippingBatchRangeToggle" class="shipping-batch-range-toggle" aria-expanded="false" aria-controls="shippingBatchRangeCalendar" onclick="toggleShippingBatchRangeCalendar()">請選擇寄出區間</button>
+              <div id="shippingBatchRangeCalendar" class="range-calendar" hidden>
+                <div class="range-calendar-header">
+                  <button type="button" class="range-calendar-nav" aria-label="寄出區間上個月" onclick="shiftShippingBatchCalendarMonth(-1)">‹</button>
+                  <span id="shippingBatchCalendarTitle" class="range-calendar-title" aria-live="polite"></span>
+                  <button type="button" class="range-calendar-nav" aria-label="寄出區間下個月" onclick="shiftShippingBatchCalendarMonth(1)">›</button>
+                </div>
+                <div class="range-calendar-weekdays" aria-hidden="true"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
+                <div id="shippingBatchCalendarGrid" class="range-calendar-grid"></div>
+                <p id="shippingBatchRangeHint" class="shipping-batch-card-meta" aria-live="polite">先選開始日，再選結束日；同一天可選兩次。</p>
+              </div>
             </div>
             <div class="product-field full">
               <label for="shippingBatchCutoffAt">收單截止日期與時間</label>
@@ -5872,8 +6000,13 @@
             </div>
             <label class="full" style="display:flex;gap:8px;align-items:center;color:#475569;font-weight:800;">
               <input id="shippingBatchIsActive" type="checkbox" checked />
-              開放給前台客戶選擇
+              啟用批次（依開始顯示日期與收單截止時間開放）
             </label>
+            <div class="product-field full">
+              <label for="shippingBatchOpensOn">前台開始顯示日期</label>
+              <input id="shippingBatchOpensOn" type="date" aria-describedby="shippingBatchOpensOnNote" />
+              <small id="shippingBatchOpensOnNote" style="color:#64748b;">留空立即顯示；設定後從當日台灣時間 00:00 開始顯示，客人才可選取。</small>
+            </div>
           </div>
           <div
             class="product-management-feedback"
@@ -7972,9 +8105,27 @@
 
       function getAdminShippingBatchStatusLabel(status) {
         if (status === "open") return "開放中";
+        if (status === "scheduled") return "尚未開放";
         if (status === "expired") return "時間截止";
         if (status === "manually_closed") return "人工關閉";
         return "狀態待確認";
+      }
+
+      function formatShippingBatchRange(start, end) {
+        if (!start || !end) return "請選擇寄出區間";
+        const compact = (value) => String(value).replace(/^(\d{4})-(\d{2})-(\d{2})$/, (_, y, m, d) => `${Number(m)}/${Number(d)}`);
+        return String(start).slice(0, 4) === String(end).slice(0, 4)
+          ? `${String(start).slice(0, 4)} · ${compact(start)}～${compact(end)}`
+          : `${start}～${end}`;
+      }
+
+      function compareShippingBatchesForManagement(a, b) {
+        const closed = batch => ["expired", "manually_closed"].includes(batch.status);
+        const rank = batch => batch.status === "open" ? 0 : closed(batch) ? 2 : 1;
+        const rankDifference = rank(a) - rank(b);
+        if (rankDifference) return rankDifference;
+        const dateDifference = String(a.shippingStartDate || "").localeCompare(String(b.shippingStartDate || ""));
+        return (closed(a) ? -dateDifference : dateDifference) || String(a.batchId || "").localeCompare(String(b.batchId || ""));
       }
 
       function renderShippingBatchManagement() {
@@ -7995,11 +8146,7 @@
 
         list.innerHTML = adminShippingBatches
           .slice()
-          .sort((a, b) =>
-            String(a.shippingStartDate || "").localeCompare(
-              String(b.shippingStartDate || ""),
-            ),
-          )
+          .sort(compareShippingBatchesForManagement)
           .map((batch) => {
             const status = String(batch.status || "");
             const isOpen = status === "open";
@@ -8009,19 +8156,25 @@
             const activeOrderCount = Number(batch.activeOrderCount || 0);
             const totalOrderCount = Number(batch.orderCount || 0);
             return `
-              <article class="shipping-batch-card${isOpen ? "" : " is-closed"}" data-batch-id="${escapeHtml(batch.batchId)}">
-                <div>
-                  <div class="shipping-batch-card-title">${escapeHtml(batch.displayLabel || batch.batchId)}</div>
-                  <div class="shipping-batch-card-meta">寄出區間：${escapeHtml(batch.shippingStartDate)}～${escapeHtml(batch.shippingEndDate)}</div>
-                </div>
-                <div>
+              <article class="shipping-batch-card${isOpen ? " is-open" : status === "scheduled" ? " is-scheduled" : " is-closed"}" data-batch-id="${escapeHtml(batch.batchId)}">
+                <div class="shipping-batch-card-chips">
                   <span class="shipping-batch-status ${escapeHtml(status)}">${escapeHtml(getAdminShippingBatchStatusLabel(status))}</span>
-                  <div class="shipping-batch-card-meta">截止：${escapeHtml(cutoffText)}</div>
-                  <div class="shipping-batch-card-meta">有效訂單 ${escapeHtml(activeOrderCount)} 筆${totalOrderCount !== activeOrderCount ? `｜含取消共 ${escapeHtml(totalOrderCount)} 筆` : ""}</div>
+                  <span class="product-chip">有效訂單 ${escapeHtml(activeOrderCount)} 筆</span>
+                  ${totalOrderCount !== activeOrderCount ? `<span class="product-chip">含取消共 ${escapeHtml(totalOrderCount)} 筆</span>` : ""}
                 </div>
                 <div class="shipping-batch-card-actions">
-                  <button type="button" class="product-action-btn secondary" onclick="openShippingBatchModal('${escapeHtml(batch.batchId)}')">編輯</button>
-                  ${isOpen ? `<button type="button" class="product-action-btn danger" onclick="closeAdminShippingBatch('${escapeHtml(batch.batchId)}')">立即關閉</button>` : ""}
+                  <button type="button" class="product-action-btn secondary" aria-label="編輯 ${escapeHtml(batch.displayLabel || batch.batchId)}" onclick="openShippingBatchModal('${escapeHtml(batch.batchId)}')">✏️編輯</button>
+                </div>
+                <div class="shipping-batch-card-identity">
+                  <h4 class="shipping-batch-card-title">${escapeHtml(batch.displayLabel || batch.batchId)}</h4>
+                  <span class="shipping-batch-card-range" aria-label="寄出區間 ${escapeHtml(batch.shippingStartDate)} 至 ${escapeHtml(batch.shippingEndDate)}">${escapeHtml(formatShippingBatchRange(batch.shippingStartDate, batch.shippingEndDate))}</span>
+                </div>
+                <div class="shipping-batch-card-footer">
+                  <div>
+                    ${batch.opensOn ? `<div class="shipping-batch-card-meta">前台開放：${escapeHtml(batch.opensOn)} 00:00</div>` : ""}
+                    <div class="shipping-batch-card-meta">收單截止：${escapeHtml(cutoffText)}</div>
+                  </div>
+                  ${isOpen || status === "scheduled" ? `<button type="button" class="product-action-btn danger" onclick="closeAdminShippingBatch('${escapeHtml(batch.batchId)}')">立即關閉</button>` : ""}
                 </div>
               </article>
             `;
@@ -8109,6 +8262,66 @@
         return start && end ? `${start}～${end}` : "";
       }
 
+      let shippingBatchCalendarMonth = "";
+      let shippingBatchSelectingEnd = false;
+
+      function toggleShippingBatchRangeCalendar() {
+        const calendar = document.getElementById("shippingBatchRangeCalendar");
+        calendar.hidden = !calendar.hidden;
+        document.getElementById("shippingBatchRangeToggle").setAttribute("aria-expanded", String(!calendar.hidden));
+        if (!calendar.hidden) renderShippingBatchRangeCalendar();
+      }
+
+      function shiftShippingBatchCalendarMonth(offset) {
+        const [year, month] = shippingBatchCalendarMonth.split("-").map(Number);
+        shippingBatchCalendarMonth = new Date(Date.UTC(year, month - 1 + offset, 1)).toISOString().slice(0, 7);
+        renderShippingBatchRangeCalendar();
+      }
+
+      function renderShippingBatchRangeCalendar() {
+        const [year, month] = shippingBatchCalendarMonth.split("-").map(Number);
+        const start = document.getElementById("shippingBatchStartDate").value;
+        const end = document.getElementById("shippingBatchEndDate").value;
+        document.getElementById("shippingBatchCalendarTitle").textContent = `${year}年${month}月`;
+        document.getElementById("shippingBatchRangeHint").textContent = shippingBatchSelectingEnd
+          ? "請選擇結束日；同一天可再選一次。"
+          : "先選開始日，再選結束日；同一天可選兩次。";
+        const firstDay = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+        const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+        const cells = Array.from({length: firstDay}, () => '<span aria-hidden="true"></span>');
+        for (let day = 1; day <= days; day++) {
+          const date = `${shippingBatchCalendarMonth}-${String(day).padStart(2, "0")}`;
+          const selected = !!(start && end && date >= start && date <= end);
+          const classes = ["range-calendar-day", selected ? "in-range" : "", date === start ? "range-start" : "", date === end ? "range-end" : ""].filter(Boolean).join(" ");
+          cells.push(`<button type="button" class="${classes}" aria-label="${date}" aria-pressed="${selected}" onclick="selectShippingBatchRangeDay('${date}')"><span>${day}</span></button>`);
+        }
+        document.getElementById("shippingBatchCalendarGrid").innerHTML = cells.join("");
+        document.getElementById("shippingBatchRangeToggle").textContent = end
+          ? formatShippingBatchRange(start, end)
+          : start ? `${start} ～ 請選結束日` : "請選擇寄出區間";
+      }
+
+      function selectShippingBatchRangeDay(date) {
+        const start = document.getElementById("shippingBatchStartDate");
+        const end = document.getElementById("shippingBatchEndDate");
+        if (!shippingBatchSelectingEnd) {
+          start.value = date;
+          end.value = "";
+          shippingBatchSelectingEnd = true;
+          document.getElementById("shippingBatchCutoffAt").value = "";
+        } else {
+          const previous = start.value;
+          start.value = date < previous ? date : previous;
+          end.value = date < previous ? previous : date;
+          shippingBatchSelectingEnd = false;
+          updateShippingBatchModalDefaults();
+          document.getElementById("shippingBatchRangeCalendar").hidden = true;
+          document.getElementById("shippingBatchRangeToggle").setAttribute("aria-expanded", "false");
+          document.getElementById("shippingBatchRangeToggle").focus();
+        }
+        renderShippingBatchRangeCalendar();
+      }
+
       function updateShippingBatchModalDefaults() {
         const startInput = document.getElementById("shippingBatchStartDate");
         const endInput = document.getElementById("shippingBatchEndDate");
@@ -8154,7 +8367,13 @@
         labelInput.value = batch?.displayLabel || "";
         startInput.value = batch?.shippingStartDate || "";
         endInput.value = batch?.shippingEndDate || "";
+        shippingBatchSelectingEnd = false;
+        shippingBatchCalendarMonth = (startInput.value || getTaipeiToday()).slice(0, 7);
+        document.getElementById("shippingBatchRangeCalendar").hidden = true;
+        document.getElementById("shippingBatchRangeToggle").setAttribute("aria-expanded", "false");
+        renderShippingBatchRangeCalendar();
         cutoffInput.value = "";
+        document.getElementById("shippingBatchOpensOn").value = batch?.opensOn || "";
         if (activeInput) activeInput.checked = batch ? batch.isActive === true : true;
         labelInput.dataset.manuallyEdited = batch ? "true" : "false";
         cutoffInput.dataset.manuallyEdited = "false";
@@ -8196,6 +8415,9 @@
         if (draft.cutoffAt.slice(0, 10) >= draft.shippingEndDate) {
           return "收單截止日必須早於寄出結束日。";
         }
+        if (draft.opensOn && (!/^\d{4}-\d{2}-\d{2}$/.test(draft.opensOn) || `${draft.opensOn}T00:00` >= draft.cutoffAt)) {
+          return "前台開始顯示日期必須早於收單截止時間。";
+        }
         const overlap = adminShippingBatches.find(
           (batch) =>
             batch.batchId !== draft.batchId &&
@@ -8209,6 +8431,9 @@
       }
 
       function getShippingBatchSaveErrorMessage(errorCode, payload) {
+        if (errorCode === "SHIPPING_BATCH_OPEN_DATE_INVALID") {
+          return "前台開始顯示日期不正確，或已晚於收單截止時間。";
+        }
         if (errorCode === "SHIPPING_BATCH_RANGE_OVERLAP") {
           const label = payload?.conflictingBatch?.displayLabel || "既有批次";
           return `寄出日期與「${label}」重疊，請重新選擇。`;
@@ -8235,6 +8460,7 @@
           shippingStartDate: String(document.getElementById("shippingBatchStartDate")?.value || "").trim(),
           shippingEndDate: String(document.getElementById("shippingBatchEndDate")?.value || "").trim(),
           cutoffAt: String(document.getElementById("shippingBatchCutoffAt")?.value || "").trim(),
+          opensOn: String(document.getElementById("shippingBatchOpensOn")?.value || "").trim(),
           isActive: document.getElementById("shippingBatchIsActive")?.checked === true,
         };
         const validationMessage = validateShippingBatchDraft(draft);
