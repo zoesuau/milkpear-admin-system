@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260917-verified-cache-v1">
+<html lang="zh-Hant" data-release-version="20260919-auth-result-only-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260917-verified-cache-v1" />
+    <meta name="admin-release" content="20260919-auth-result-only-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
     <script src="./customer-config.js?v=20260816-group-orders-1"></script>
-    <script src="./admin-diagnostics.js?v=20260917-verified-cache-v1"></script>
+    <script src="./admin-diagnostics.js?v=20260919-auth-result-only-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -4740,6 +4740,9 @@
         >
           重新登入 LINE
         </button>
+        <button type="button" class="admin-auth-retry hidden" id="adminAuthRestartBtn">
+          重新登入 LINE
+        </button>
         <button type="button" class="admin-auth-close" id="adminAuthCloseBtn">
           關閉提示
         </button>
@@ -6631,6 +6634,9 @@
 
         if (messageEl) messageEl.innerText = message;
         if (retryBtn) retryBtn.classList.toggle("hidden", !showRetry);
+        document.getElementById("adminAuthRestartBtn")?.classList.toggle(
+          "hidden", !(showRetry && retryBtn?.dataset.retryCallback === "true"),
+        );
         if (refreshBtn)
           refreshBtn.classList.toggle("hidden", !shouldShowRefresh);
         if (closeBtn) closeBtn.classList.toggle("hidden", !shouldShowClose);
@@ -7350,6 +7356,7 @@
       function clearAdminAuthSession() {
         sessionStorage.removeItem(ADMIN_LINE_STATE_KEY);
         sessionStorage.removeItem(ADMIN_LINE_NONCE_KEY);
+        sessionStorage.removeItem(ADMIN_LINE_NONCE_KEY + ":submitted");
         sessionStorage.removeItem(ADMIN_LINE_CODE_VERIFIER_KEY);
         if (typeof ADMIN_ORDER_SNAPSHOT_SESSION_CACHE_KEY !== "undefined") {
           sessionStorage.removeItem(ADMIN_ORDER_SNAPSHOT_SESSION_CACHE_KEY);
@@ -7599,7 +7606,16 @@
         }
       }
 
+      let adminAuthCompletionPromise = null;
       async function completeAdminAuth(code) {
+        if (adminAuthCompletionPromise) return adminAuthCompletionPromise;
+        const pending = performAdminAuthCompletion(code);
+        adminAuthCompletionPromise = pending;
+        try { return await pending; }
+        finally { if (adminAuthCompletionPromise === pending) adminAuthCompletionPromise = null; }
+      }
+
+      async function performAdminAuthCompletion(code) {
         const codeVerifier = sessionStorage.getItem(
           ADMIN_LINE_CODE_VERIFIER_KEY,
         );
@@ -7629,6 +7645,10 @@
         }
 
         try {
+          const sentKey = ADMIN_LINE_NONCE_KEY + ":submitted";
+          const resultOnly = sessionStorage.getItem(sentKey) === nonce;
+          // Persist before dispatch: a reload cannot replay an uncertain exchange.
+          sessionStorage.setItem(sentKey, nonce);
           const response = await fetchAdminRecoverableResponse(
             GAS_ORDERS_API_URL,
             {
@@ -7638,7 +7658,7 @@
               },
               body: JSON.stringify({
                 action: "adminAuth",
-                code,
+                ...(resultOnly ? { resultOnly: true } : { code }),
                 redirectUri: ADMIN_AUTH_REDIRECT_URI,
                 codeVerifier,
                 nonce,
@@ -7720,6 +7740,16 @@
           }
 
           const errorCode = String(payload?.error || "").trim();
+          if (["ADMIN_AUTH_PENDING", "ADMIN_AUTH_RESULT_NOT_FOUND"].includes(errorCode)) {
+            setAdminAuthRetryButtonMode(true);
+            showAdminAuthOverlay(
+              errorCode === "ADMIN_AUTH_PENDING"
+                ? "登入仍在處理中，請稍後按「再次確認登入」；如持續無法完成，可重新登入 LINE。"
+                : "尚未查到這次登入結果，請稍後再次確認，或重新登入 LINE。",
+              true, false, true,
+            );
+            return false;
+          }
           publishAdminAuthDiagnostic({ requestId: diagnosticRequestId, errorCode: errorCode || "ADMIN_AUTH_REJECTED", httpStatus: response.status, responseFormat: "json" });
           clearAdminAuthSession();
           sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
@@ -19160,6 +19190,10 @@
             startAdminAuth(true);
           });
         }
+        document.getElementById("adminAuthRestartBtn")?.addEventListener("click", () => {
+          if (adminAuthCompletionPromise) return;
+          void startAdminAuth(true);
+        });
         if (refreshBtn) {
           refreshBtn.addEventListener("click", refreshAdminOrdersFromOverlay);
         }
