@@ -11,7 +11,7 @@ function fixture(){
  const calls=[],timers=new Map(),nodes=new Map();let token='fixture-token',range={startDate:'2026-09-20',endDate:'2026-09-20'},id=0;
  const node=()=>({innerText:'',classList:{add(){},remove(){}},style:{}});
  const c={Map,JSON,Error,AbortController,console:{error(){}},ADMIN_EZCAT_READ_TIMEOUT_MS:30000,adminEzcatCandidateRequests:new Map(),GAS_ORDERS_API_URL:'mock',
- createAdminDiagnosticRequestId:()=>`adminReadEzcatExportCandidates_${String(++id).padStart(32,'0')}`,
+ markAdminSessionVerified(){},createAdminDiagnosticRequestId:()=>`adminReadEzcatExportCandidates_${String(++id).padStart(32,'0')}`,
  window:{setTimeout:(fn,ms)=>{assert.equal(ms,30000);timers.set(id,fn);return id},clearTimeout:i=>timers.delete(i)},
  fetch:(_url,options)=>new Promise((resolve,reject)=>calls.push({options,resolve,reject})),
  shippingManifestLoadRequestId:0,shippingManifestDateMode:'today',shippingManifestRemoteRangeKey:'',shippingManifestRemoteCandidates:[],shippingManifestRemoteBatches:[],

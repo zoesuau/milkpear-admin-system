@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260920-ezcat-read-recovery-v1">
+<html lang="zh-Hant" data-release-version="20260920-session-validation-recovery-v1">
   <head>
     <meta charset="UTF-8" />
     <meta name="admin-release" content="20260920-product-shipping-rules-v1" />
@@ -7577,6 +7577,7 @@
 
       let adminSessionVerifiedAt = 0;
       let adminSessionCheckPromise = null;
+      let adminSessionValidationFlight = null;
       let adminInitialOrdersReady = false;
       let adminResumeNeedsCheck = false;
       let adminSessionVerificationRevision = 0;
@@ -7937,23 +7938,49 @@
 
       async function validateExistingAdminSession(token, { redirectOnExpired = true, background = false } = {}) {
         const requestId = createAdminDiagnosticRequestId("adminValidateSession");
+        let diagnosticRequestId = requestId;
         const revision = adminSessionVerificationRevision;
         const isStale = () => sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) !== token ||
-          (background && adminSessionVerificationRevision !== revision);
+          adminSessionVerificationRevision !== revision;
+        const acceptNewerVerification = () => {
+          if (sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) !== token || adminSessionVerificationRevision === revision) return false;
+          if (!background) adminAuthBlocksDataLoad = false;
+          return true;
+        };
         const reportBackgroundStatus = message => {
           const status = document.getElementById("adminSessionStatus");
           if (status) status.textContent = message;
         };
         try {
-          const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({ action: "adminValidateSession", adminSessionToken: token, requestId }),
-          }, background ? 10000 : ADMIN_AUTH_TIMEOUT_MS, { singleAttempt: background });
-          let payload;
-          try { payload = await response.json(); }
-          catch { throw new Error("GAS_NON_JSON_RESPONSE"); }
-          if (isStale()) return false;
+          // Both callers consume one bounded request for this exact session.
+          // Joining a background check keeps its original 10-second deadline.
+          let flight = adminSessionValidationFlight;
+          if (!flight || flight.token !== token) {
+            const work = (async () => {
+              const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                body: JSON.stringify({ action: "adminValidateSession", adminSessionToken: token, requestId }),
+              }, background ? 10000 : ADMIN_AUTH_TIMEOUT_MS, { singleAttempt: background });
+              let payload;
+              try { payload = await response.json(); }
+              catch { throw new Error("GAS_NON_JSON_RESPONSE"); }
+              return { response, payload };
+            })();
+            flight = { token, requestId, work };
+            adminSessionValidationFlight = flight;
+            const cleanup = () => { if (adminSessionValidationFlight === flight) adminSessionValidationFlight = null; };
+            work.then(cleanup, cleanup);
+          }
+          diagnosticRequestId = flight.requestId;
+          const { response, payload } = await flight.work;
+          if (!background && !sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) &&
+              payload?.action === "adminValidateSession" && payload?.error === "ADMIN_SESSION_REQUIRED") {
+            setAdminAuthRetryButtonMode(false);
+            showAdminAuthOverlay("登入已過期，請重新登入後繼續；尚未重新送出任何操作。", true);
+            return false;
+          }
+          if (isStale()) return acceptNewerVerification();
           if (!response.ok) throw new Error("GAS_AUTH_REQUEST_FAILED");
           if (payload?.action !== "adminValidateSession") throw new Error("GAS_AUTH_RESPONSE_INVALID");
           if (payload.ok === true && payload.allowed === true) {
@@ -7971,12 +7998,12 @@
           }
           throw new Error("ADMIN_SESSION_VALIDATION_FAILED");
         } catch (error) {
-          if (isStale()) return false;
+          if (isStale()) return acceptNewerVerification();
           const knownErrors = ["GAS_TIMEOUT", "GAS_NON_JSON_RESPONSE", "GAS_AUTH_REQUEST_FAILED", "GAS_AUTH_RESPONSE_INVALID", "ADMIN_SESSION_VALIDATION_FAILED"];
           const errorCode = error?.name === "AbortError" ? "GAS_TIMEOUT" :
             knownErrors.includes(error?.message) || /^HTTP_\d{3}$/.test(error?.message || "")
               ? error.message : "NETWORK_ERROR";
-          publishAdminAuthDiagnostic({ requestId, errorCode,
+          publishAdminAuthDiagnostic({ requestId: diagnosticRequestId, errorCode,
             httpStatus: error?.httpStatus, responseFormat: error?.responseFormat });
           if (background) {
             reportBackgroundStatus("暫時無法確認登入，可繼續填寫；送出時由系統再次驗證。");
@@ -11468,6 +11495,7 @@
               String(payload?.error || "ADMIN_ORDER_SNAPSHOT_SYNC_FAILED"),
             );
           }
+          markAdminSessionVerified(adminSessionToken);
           return payload;
         } catch (error) {
           if (String(error?.message || "") === "ADMIN_SESSION_REQUIRED") {
@@ -16742,6 +16770,7 @@
           if (payload?.ok !== true || payload.action !== "adminReadEzcatExportCandidates" || !Array.isArray(payload.candidates)) {
             throw new Error(String(payload?.errorCode || payload?.error || "EZCAT_EXPORT_READ_FAILED"));
           }
+          markAdminSessionVerified(adminSessionToken);
           return payload;
         })();
         adminEzcatCandidateRequests.set(key, work);
@@ -18916,6 +18945,7 @@
             );
           }
 
+          markAdminSessionVerified(adminSessionToken);
           const updatedOrders = Number(payload?.updated?.orders || 0);
           const addedNumbers = Number(payload?.updated?.trackingNumbers || 0);
           const unchanged = Number(payload?.unchanged || 0);

@@ -65,3 +65,48 @@ for(const busy of ['adminCreateOrderSubmitting','adminCreateProductsRefreshing',
 }
 assert.equal(f.stats().checks,0,'resuming must not add validation traffic alongside catalog/create requests');
 console.log('busy create/catalog resume: PASS no additional authentication request');
+
+// Background and foreground requests share transport, but each preserves its UI semantics.
+for (const outcome of ['success','expired','network','storage']) {
+ f=fixture();vm.runInContext('adminInitialOrdersReady=true',f.c);f.c.initializeAdminSessionRecovery();
+ let count=0,resolve,reject;
+ f.c.fetchAdminRecoverableResponse=()=>{count++;return new Promise((r,j)=>{resolve=r;reject=j})};
+ f.events.visibilitychange();const foreground=f.c.ensureAdminSessionReady();
+ assert.equal(count,1,'background + foreground must send only one validation');
+ if(outcome==='network') reject(Error('NETWORK_ERROR'));
+ else resolve({ok:true,json:async()=>outcome==='success'?{ok:true,allowed:true,action:'adminValidateSession'}:{ok:false,action:'adminValidateSession',error:outcome==='expired'?'ADMIN_SESSION_REQUIRED':'ADMIN_SESSION_VALIDATION_FAILED'}});
+ assert.equal(await foreground,outcome==='success');await tick();
+ assert.equal(f.storage.has('token'),outcome!=='expired');
+ assert.equal(f.c.adminAuthBlocksDataLoad,outcome!=='success');
+ if(outcome==='expired')assert.match(f.nodes.adminAuthMessage.innerText,/登入已過期/);
+ if(outcome==='network'||outcome==='storage')assert.match(f.nodes.adminAuthMessage.innerText,/暫時無法確認/);
+}
+for (const outcome of ['network','expired']) {
+ f=fixture();vm.runInContext('adminInitialOrdersReady=true',f.c);let resolve,reject;
+ f.c.fetchAdminRecoverableResponse=()=>new Promise((r,j)=>{resolve=r;reject=j});
+ const foreground=f.c.ensureAdminSessionReady(true);f.c.markAdminSessionVerified('fixture');
+ if(outcome==='network')reject(Error('NETWORK_ERROR'));
+ else resolve({ok:true,json:async()=>({ok:false,action:'adminValidateSession',error:'ADMIN_SESSION_REQUIRED'})});
+ assert.equal(await foreground,true,'newer same-session success supersedes old failure');
+ assert.equal(f.storage.get('token'),'fixture');assert.equal(f.c.adminAuthBlocksDataLoad,false);
+}
+f=fixture();let resolveOld;f.c.fetchAdminRecoverableResponse=()=>new Promise(r=>resolveOld=r);
+const old=f.c.ensureAdminSessionReady(true);f.storage.set('token','different');
+resolveOld({ok:true,json:async()=>({ok:true,allowed:true,action:'adminValidateSession'})});
+assert.equal(await old,false,'old session success cannot authorize a different session');
+assert.equal(f.c.adminAuthBlocksDataLoad,true);
+console.log('session shared validation PASS: single request, expiry/storage/network distinctions, newer success and session isolation');
+// Reverse arrival order shares the foreground request as well; failure allows a fresh manual retry.
+f=fixture();let complete,rejectFlight,requestCount=0;
+f.c.fetchAdminRecoverableResponse=()=>{requestCount++;return new Promise((r,j)=>{complete=r;rejectFlight=j})};
+const fg=f.c.ensureAdminSessionReady(true),bg=f.c.validateExistingAdminSession('fixture',{background:true});
+assert.equal(requestCount,1);rejectFlight(Error('NETWORK_ERROR'));await Promise.all([fg,bg]);
+const retried=f.c.ensureAdminSessionReady(true);assert.equal(requestCount,2);complete({ok:true,json:async()=>({ok:true,allowed:true,action:'adminValidateSession'})});assert.equal(await retried,true);
+// Different session tokens cannot share validation or erase the newer flight during cleanup.
+f=fixture();const flights=[];f.c.fetchAdminRecoverableResponse=()=>new Promise(r=>flights.push(r));
+const firstToken=f.c.validateExistingAdminSession('fixture',{background:true});f.storage.set('token','new');
+const nextToken=f.c.validateExistingAdminSession('new',{background:true});assert.equal(flights.length,2);
+flights[0]({ok:true,json:async()=>({ok:true,allowed:true,action:'adminValidateSession'})});assert.equal(await firstToken,false);
+const joined=f.c.validateExistingAdminSession('new',{background:true});assert.equal(flights.length,2);
+flights[1]({ok:true,json:async()=>({ok:true,allowed:true,action:'adminValidateSession'})});assert.equal(await nextToken,true);assert.equal(await joined,true);
+console.log('session flight lifecycle PASS: reverse sharing, manual retry, separate tokens and old cleanup');
