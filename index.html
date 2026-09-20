@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260920-product-management-groups-v1">
+<html lang="zh-Hant" data-release-version="20260920-ezcat-read-recovery-v1">
   <head>
     <meta charset="UTF-8" />
     <meta name="admin-release" content="20260920-product-shipping-rules-v1" />
@@ -6676,6 +6676,9 @@
       let shippingManifestRemoteBatches = [];
       let shippingManifestRemoteRangeKey = "";
       let shippingManifestLoadRequestId = 0;
+      let ezcatExportLoadRequestId = 0;
+      const ADMIN_EZCAT_READ_TIMEOUT_MS = 30000;
+      const adminEzcatCandidateRequests = new Map();
       let shippingManifestRemoteLoading = false;
       let shippingManifestRemoteError = "";
       const OPEN_NOTIFICATION_STATUSES = new Set([
@@ -8090,7 +8093,7 @@
         if (normalizedTabName === "shippingPrint") {
           if (!adminProductsReady) void fetchAdminProductCatalogFromGas({ includeOperations: false });
           renderShippingManifest();
-          loadCompleteShippingManifestOrders();
+          loadCompleteShippingManifestOrders("manifest_tab");
         }
         if (normalizedTabName === "groupOrders") {
           if (!adminProductsReady) void fetchAdminProductCatalogFromGas({ includeOperations: false });
@@ -16216,7 +16219,7 @@
         }
 
         renderShippingManifest();
-        loadCompleteShippingManifestOrders();
+        loadCompleteShippingManifestOrders("date_selection");
       }
 
       function moveShippingManifestCustomDateCalendarMonth(offset) {
@@ -16284,7 +16287,7 @@
           shippingManifestCustomDateRangeSelectingEnd = false;
         }
         renderShippingManifest();
-        loadCompleteShippingManifestOrders();
+        loadCompleteShippingManifestOrders("date_mode");
       }
 
       function formatShippingManifestDate(dateString) {
@@ -16718,7 +16721,47 @@
         };
       }
 
-      async function loadCompleteShippingManifestOrders() {
+      // One bounded attempt per range/session. Never retry exports or mutations.
+      function fetchAdminEzcatCandidates(startDate, endDate, adminSessionToken, requestSource) {
+        const sources = ["manifest_tab", "date_mode", "date_selection", "tracking_import", "manifest_retry", "export_modal"];
+        const source = sources.includes(requestSource) ? requestSource : "manifest_retry";
+        const key = JSON.stringify([adminSessionToken, startDate, endDate]);
+        if (adminEzcatCandidateRequests.has(key)) return adminEzcatCandidateRequests.get(key);
+        const requestId = createAdminDiagnosticRequestId("adminReadEzcatExportCandidates");
+        const work = (async () => {
+          const response = await fetchWithTimeout(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ action: "adminReadEzcatExportCandidates", adminSessionToken,
+              startDate, endDate, requestId, requestSource: source + "_attempt1" }),
+          }, ADMIN_EZCAT_READ_TIMEOUT_MS, true);
+          if (!response.ok) throw new Error(`HTTP_${response.status}`);
+          let payload;
+          try { payload = await response.json(); }
+          catch { throw new Error("GAS_NON_JSON_RESPONSE"); }
+          if (payload?.ok !== true || payload.action !== "adminReadEzcatExportCandidates" || !Array.isArray(payload.candidates)) {
+            throw new Error(String(payload?.errorCode || payload?.error || "EZCAT_EXPORT_READ_FAILED"));
+          }
+          return payload;
+        })();
+        adminEzcatCandidateRequests.set(key, work);
+        // Handle both outcomes without creating an unhandled rejected promise.
+        const cleanup = () => { if (adminEzcatCandidateRequests.get(key) === work) adminEzcatCandidateRequests.delete(key); };
+        work.then(cleanup, cleanup);
+        return work;
+      }
+
+      function getEzcatReadErrorMessage(error) {
+        const code = error?.name === "AbortError" ? "GAS_TIMEOUT" : String(error?.message || error || "");
+        if (code === "ADMIN_SESSION_REQUIRED") return "登入已過期，請重新登入後再讀取。";
+        if (code === "GAS_TIMEOUT") return "讀取超過 30 秒，已停止等待；請重新載入。";
+        if (/^HTTP_[45]\d{2}$/.test(code)) return `讀取服務暫時無法回應（${code.slice(5)}），請重新載入。`;
+        if (code === "GAS_NON_JSON_RESPONSE") return "收到非預期的回應，請重新載入。";
+        return "無法讀取出貨清單，請重新載入。";
+      }
+
+      async function loadCompleteShippingManifestOrders(requestSource = "manifest_retry") {
+        const requestId = ++shippingManifestLoadRequestId;
         const { startDate, endDate } = getShippingManifestDateRange();
         const isPendingDateMode = shippingManifestDateMode === "pending";
         if (
@@ -16747,7 +16790,6 @@
           renderShippingManifest();
           return false;
         }
-        const requestId = ++shippingManifestLoadRequestId;
         const rangeKey = isPendingDateMode
           ? "pending"
           : `${startDate}|${endDate}`;
@@ -16758,20 +16800,20 @@
           const manifestAction = isPendingDateMode
             ? "adminReadShippingManifest"
             : "adminReadEzcatExportCandidates";
-          const response = await fetch(GAS_ORDERS_API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({
-              action: manifestAction,
-              adminSessionToken,
-              startDate,
-              endDate,
-              ...(isPendingDateMode ? { mode: "pending", requestId: `pending-${Date.now()}` } : {}),
-            }),
-          });
-          const payload = await response.json();
+          let payload;
+          if (!isPendingDateMode) {
+            payload = await fetchAdminEzcatCandidates(startDate, endDate, adminSessionToken, requestSource);
+          } else {
+            const response = await fetch(GAS_ORDERS_API_URL, {
+              method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+              body: JSON.stringify({ action: manifestAction, adminSessionToken, startDate, endDate,
+                mode: "pending", requestId: `pending-${Date.now()}` }),
+            });
+            payload = await response.json();
+          }
           if (
-            requestId !== shippingManifestLoadRequestId
+            requestId !== shippingManifestLoadRequestId ||
+            sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) !== adminSessionToken
           ) {
             return false;
           }
@@ -16803,10 +16845,10 @@
           return true;
         } catch (error) {
           console.error("讀取完整出貨總表失敗", error);
-          if (requestId === shippingManifestLoadRequestId) {
+          if (requestId === shippingManifestLoadRequestId && sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) === adminSessionToken) {
             shippingManifestRemoteLoading = false;
             shippingManifestRemoteError = String(
-              error?.message || "SHIPPING_MANIFEST_READ_FAILED",
+              error?.name === "AbortError" ? "GAS_TIMEOUT" : error?.message || "SHIPPING_MANIFEST_READ_FAILED",
             );
             renderShippingManifest();
           }
@@ -17493,7 +17535,7 @@
           : shippingManifestRemoteLoading
             ? "宅配單號載入中，完成前暫停列印…"
             : remoteDataFailed
-              ? `⚠️ 宅配單號載入失敗，請重試。<button type="button" class="shipping-manifest-load-retry" onclick="loadCompleteShippingManifestOrders()">重新載入</button>`
+              ? `⚠️ ${escapeHtml(getEzcatReadErrorMessage(shippingManifestRemoteError))}<button type="button" class="shipping-manifest-load-retry" onclick="loadCompleteShippingManifestOrders()">重新載入</button>`
               : remoteDataReady
                 ? "✓ 宅配單號已同步，可以列印。"
                 : "宅配單號等待同步，完成前暫停列印…";
@@ -18213,6 +18255,7 @@
       }
 
       async function openEzcatExportModal() {
+        const requestId = ++ezcatExportLoadRequestId;
         const { startDate, endDate } = getShippingManifestDateRange();
         if (!startDate || startDate !== endDate) {
           setEzcatExportFeedback(
@@ -18246,6 +18289,7 @@
         const rangeKey = `${startDate}|${endDate}`;
         if (
           shippingManifestRemoteRangeKey === rangeKey &&
+          !shippingManifestRemoteLoading && !shippingManifestRemoteError &&
           shippingManifestRemoteCandidates.length
         ) {
           applyEzcatExportCandidateData(
@@ -18265,46 +18309,27 @@
           return;
         }
         try {
-          const response = await fetch(GAS_ORDERS_API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({
-              action: "adminReadEzcatExportCandidates",
-              adminSessionToken,
-              startDate,
-              endDate,
-            }),
-          });
-          const payload = await response.json();
-          if (
-            !payload ||
-            payload.ok !== true ||
-            payload.action !== "adminReadEzcatExportCandidates" ||
-            !Array.isArray(payload.candidates)
-          ) {
-            throw new Error(
-              String(payload?.errorCode || "EZCAT_EXPORT_READ_FAILED"),
-            );
-          }
+          const payload = await fetchAdminEzcatCandidates(startDate, endDate, adminSessionToken, "export_modal");
+          if (requestId !== ezcatExportLoadRequestId || sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) !== adminSessionToken) return;
           applyEzcatExportCandidateData(
             payload.candidates,
             payload.recentBatches,
           );
           if (feedback) feedback.innerText = "";
         } catch (error) {
+          if (requestId !== ezcatExportLoadRequestId || sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) !== adminSessionToken) return;
           console.error("讀取黑貓匯出清單失敗", error);
           if (feedback) {
             feedback.classList.add("is-error");
             feedback.innerText =
-              String(error?.message || "") === "ADMIN_SESSION_REQUIRED"
-                ? "登入已過期，請重新登入 LINE。"
-                : "無法讀取黑貓匯出清單，請關閉後重新整理再試。";
+              getEzcatReadErrorMessage(error) + " 可關閉後重新開啟匯出清單。";
           }
         }
       }
 
       function closeEzcatExportModal() {
         if (ezcatExportSubmitting) return;
+        ++ezcatExportLoadRequestId;
         document.getElementById("ezcatExportModal")?.classList.remove("open");
         document.body.style.overflow = "";
         ezcatExportPreviewMode = false;
@@ -18930,8 +18955,11 @@
           shippingManifestRemoteLoading = true;
           shippingManifestRemoteError = "";
           renderShippingManifest();
+          adminEzcatCandidateRequests.clear();
+          ++shippingManifestLoadRequestId;
+          ++ezcatExportLoadRequestId;
           await refreshAdminOrdersManually();
-          const manifestSynced = await loadCompleteShippingManifestOrders();
+          const manifestSynced = await loadCompleteShippingManifestOrders("tracking_import");
           if (!manifestSynced) {
             setShippingTrackingImportFeedback(
               `${resultMessage}\n⚠️ 宅配單號已寫入，但出貨總表同步失敗；請按「重新載入」後再列印。`,

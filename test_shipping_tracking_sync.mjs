@@ -14,7 +14,7 @@ assert.match(
 );
 assert.match(
   html,
-  /shippingManifestRemoteRangeKey\s*=\s*"";[\s\S]*?shippingManifestRemoteLoading\s*=\s*true;[\s\S]*?await refreshAdminOrdersManually\(\);[\s\S]*?await loadCompleteShippingManifestOrders\(\);[\s\S]*?宅配單號已寫入，但出貨總表同步失敗/,
+  /shippingManifestRemoteRangeKey\s*=\s*"";[\s\S]*?shippingManifestRemoteLoading\s*=\s*true;[\s\S]*?await refreshAdminOrdersManually\(\);[\s\S]*?await loadCompleteShippingManifestOrders\("tracking_import"\);[\s\S]*?宅配單號已寫入，但出貨總表同步失敗/,
 );
 
 const renderStart = html.indexOf("function renderShippingManifest()");
@@ -87,7 +87,7 @@ const context = {
 };
 
 runInNewContext(
-  `${html.slice(renderStart, renderEnd)}\nthis.render = renderShippingManifest;`,
+  `${html.slice(html.indexOf("      function getEzcatReadErrorMessage("), html.indexOf("      async function loadCompleteShippingManifestOrders("))}\n${html.slice(renderStart, renderEnd)}\nthis.render = renderShippingManifest;`,
   context,
 );
 
@@ -105,5 +105,13 @@ context.shippingManifestRemoteError = "READ_FAILED";
 context.render();
 assert.equal(element("shippingManifestPrintButton").disabled, true);
 assert.match(element("shippingManifestLoadStatus").innerHTML, /重新載入/);
+
+context.shippingManifestRemoteError = "GAS_TIMEOUT";
+context.render();
+assert.match(element("shippingManifestLoadStatus").innerHTML, /30 秒/);
+assert.equal(element("shippingManifestPrintButton").disabled, true);
+context.shippingManifestRemoteError = "HTTP_404";
+context.render();
+assert.match(element("shippingManifestLoadStatus").innerHTML, /404/);
 
 console.log("shipping tracking synchronization controls: ok");
