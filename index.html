@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260920-session-validation-recovery-v1">
+<html lang="zh-Hant" data-release-version="20260921-product-media-packaging-v1">
   <head>
     <meta charset="UTF-8" />
     <meta name="admin-release" content="20260920-product-shipping-rules-v1" />
@@ -4140,6 +4140,41 @@
         display: block;
         width: 100%;
         height: auto;
+      }
+
+      .product-card-image {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        height: 64px;
+        object-fit: cover;
+        width: 64px;
+      }
+
+      .product-image-editor {
+        align-items: start;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: 120px minmax(0, 1fr);
+      }
+
+      .product-image-preview {
+        background: #f8fafc;
+        border: 1px dashed #cbd5e1;
+        border-radius: 10px;
+        height: 120px;
+        object-fit: cover;
+        width: 120px;
+      }
+
+      .product-image-controls {
+        display: grid;
+        gap: 8px;
+      }
+
+      .product-image-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
       }
 
       .product-field {
@@ -8735,12 +8770,15 @@
                         : '<span class="product-chip">可售未控管</span>'
                     }
                     ${reservedStock > 0 ? `<span class="product-chip">後台保留 ${escapeHtml(reservedStock)}｜前台可售 ${escapeHtml(publicStock)}</span>` : ""}
+                    ${product.productSeries ? `<span class="product-chip">${escapeHtml(product.productSeries)}</span>` : ""}
+                    ${product.includesIndividualPackaging ? '<span class="product-chip" style="color:#166534;border-color:#86b89c;">含個別包裝</span>' : ""}
                   </div>
                   <div class="product-admin-card-actions">
                     <button type="button" class="product-edit-mini-btn" onclick="toggleProductManagementEdit(this)">✏️編輯</button>
                   </div>
                 </div>
                 <div class="product-admin-main">
+                  ${product.imageUrl ? `<img class="product-card-image" src="${escapeHtml(product.imageUrl)}" alt="${escapeHtml(getAdminProductDisplayName(product))}">` : ""}
                   <div>
                     <div class="product-admin-title">${escapeHtml(product.grade || product.code || "")}</div>
                   </div>
@@ -8954,6 +8992,13 @@
               ${renderSimpleOptions(["一般禮盒", "兩粒禮盒"], normalizeAdminProductCategory(product.category))}
             </select>
           </div>
+          <div class="product-field" ${isMikan ? "" : 'style="display:none;"'}>
+            <label>商品系列</label>
+            <select data-product-field="productSeries">
+              ${renderSimpleOptions(["禮盒版", "Ｑ版", "火燒柑"], product.productSeries || "禮盒版")}
+            </select>
+            <small style="color:#64748b;">火燒柑可先保留；前台完成系列顯示改版前，新建立的日本蜜柑請維持停售。</small>
+          </div>
           <div class="product-field" ${isMikan ? 'style="display:none;"' : ""}>
             <label>A數 / 等級</label>
             <input data-product-field="grade" value="${escapeHtml(product.grade || "")}">
@@ -8995,6 +9040,29 @@
               ${renderSimpleOptions(["上架", "僅後台販售", "停售"], normalizeAdminProductStatus(product.status))}
             </select>
           </div>
+          <div class="product-field">
+            <label>個別包裝</label>
+            <select data-product-field="includesIndividualPackaging">
+              <option value="false" ${product.includesIndividualPackaging ? "" : "selected"}>不提供</option>
+              <option value="true" ${product.includesIndividualPackaging ? "selected" : ""}>商品已包含</option>
+            </select>
+            <small style="color:#64748b;">只記錄商品是否已含個別包裝，不開放加購。前台本產季暫不顯示。</small>
+          </div>
+          <div class="product-field full">
+            <label>商品照片</label>
+            <div class="product-image-editor">
+              <img class="product-image-preview" data-product-image-preview src="${escapeHtml(product.imageUrl || "")}" alt="商品照片預覽" ${product.imageUrl ? "" : "hidden"}>
+              <div class="product-image-controls">
+                <input type="hidden" data-product-field="imageUrl" value="${escapeHtml(product.imageUrl || "")}">
+                <input type="file" data-product-image-file accept="image/png,image/jpeg,image/webp,image/gif" onchange="previewSelectedProductImage(this)">
+                <div class="product-image-actions">
+                  <button type="button" class="product-action-btn secondary" onclick="uploadSelectedProductImage(this)">上傳照片</button>
+                  <button type="button" class="product-action-btn danger" onclick="clearSelectedProductImage(this)">移除照片</button>
+                </div>
+                <small data-product-image-status style="color:#64748b;">支援 PNG、JPG、WEBP、GIF，5MB 以下。上傳後仍需儲存商品；前台目前不顯示。</small>
+              </div>
+            </div>
+          </div>
         `;
       }
 
@@ -9010,6 +9078,7 @@
         product.category = "一般禮盒";
         product.count = product.variety === "日本蜜柑" ? "5斤" : "8顆";
         product.grade = product.variety === "日本蜜柑" ? "5斤" : "";
+        product.productSeries = product.variety === "日本蜜柑" ? "禮盒版" : "";
         product.shippingRule = product.variety === "日本蜜柑" ? "half_6" : "standard_3";
         fields.innerHTML = renderProductManagementFields(product);
       }
@@ -9074,6 +9143,13 @@
           : 1;
       }
 
+      function getAdminProductSeriesRank(product) {
+        if (product?.productSeries === "禮盒版") return 1;
+        if (product?.productSeries === "Ｑ版") return 2;
+        if (product?.productSeries === "火燒柑") return 3;
+        return 99;
+      }
+
       function compareAdminProductsForAutoSort(a, b) {
         const statusRanks = { 上架: 1, 僅後台販售: 2, 停售: 3 };
         const statusDiff =
@@ -9084,6 +9160,10 @@
         const varietyDiff =
           getAdminProductVarietyRank(a) - getAdminProductVarietyRank(b);
         if (varietyDiff !== 0) return varietyDiff;
+
+        const seriesDiff =
+          getAdminProductSeriesRank(a) - getAdminProductSeriesRank(b);
+        if (seriesDiff !== 0) return seriesDiff;
 
         const gradeDiff =
           getAdminProductGradeNumber(a) - getAdminProductGradeNumber(b);
@@ -9110,6 +9190,10 @@
         const varietyDiff =
           getAdminProductVarietyRank(a) - getAdminProductVarietyRank(b);
         if (varietyDiff !== 0) return varietyDiff;
+
+        const seriesDiff =
+          getAdminProductSeriesRank(a) - getAdminProductSeriesRank(b);
+        if (seriesDiff !== 0) return seriesDiff;
 
         const statusRanks = { 上架: 1, 僅後台販售: 2, 停售: 3 };
         const statusDiff =
@@ -9148,7 +9232,7 @@
 
       function getAdminProductDisplayName(product) {
         return (
-          [product?.variety, product?.grade]
+          [product?.variety, product?.productSeries, product?.grade]
             .map((value) => String(value || "").trim())
             .filter(Boolean)
             .join(" ") || String(product?.code || "").trim()
@@ -9287,6 +9371,99 @@
         }
       }
 
+      function previewSelectedProductImage(input) {
+        const editor = input?.closest(".product-image-editor");
+        const preview = editor?.querySelector("[data-product-image-preview]");
+        const status = editor?.querySelector("[data-product-image-status]");
+        const file = input?.files?.[0] || null;
+        if (!file || !preview) return;
+        if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
+          if (status) status.textContent = "只支援 PNG、JPG、WEBP、GIF 圖片。";
+          input.value = "";
+          return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          if (status) status.textContent = "圖片請小於 5MB。";
+          input.value = "";
+          return;
+        }
+        preview.src = URL.createObjectURL(file);
+        preview.hidden = false;
+        if (status) status.textContent = "已選擇照片，請按「上傳照片」。";
+      }
+
+      async function uploadSelectedProductImage(button) {
+        const editor = button?.closest(".product-image-editor");
+        const input = editor?.querySelector("[data-product-image-file]");
+        const imageUrlInput = editor?.querySelector('[data-product-field="imageUrl"]');
+        const preview = editor?.querySelector("[data-product-image-preview]");
+        const status = editor?.querySelector("[data-product-image-status]");
+        const file = input?.files?.[0] || null;
+        const adminSessionToken = String(
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+        ).trim();
+        if (!adminSessionToken) {
+          if (status) status.textContent = "登入已過期，請重新登入 LINE。";
+          return;
+        }
+        if (!file) {
+          if (status) status.textContent = "請先選擇一張圖片。";
+          return;
+        }
+        if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type) || file.size > 5 * 1024 * 1024) {
+          if (status) status.textContent = "請選擇支援格式且小於 5MB 的圖片。";
+          return;
+        }
+
+        button.disabled = true;
+        if (status) status.textContent = "照片上傳中...";
+        try {
+          const base64Data = await readFileAsBase64(file);
+          const response = await fetch(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({
+              action: "adminUploadProductImage",
+              adminSessionToken,
+              fileName: file.name,
+              mimeType: file.type,
+              base64Data,
+            }),
+          });
+          const result = await response.json();
+          if (!response.ok || result?.ok !== true || result?.action !== "adminUploadProductImage" || !String(result.imageUrl || "").trim()) {
+            throw new Error(result?.error || "PRODUCT_IMAGE_UPLOAD_FAILED");
+          }
+          if (imageUrlInput) imageUrlInput.value = result.imageUrl;
+          if (preview) {
+            preview.src = result.imageUrl;
+            preview.hidden = false;
+          }
+          if (input) input.value = "";
+          if (status) status.textContent = "✅ 照片已上傳，請再按「儲存商品」。";
+        } catch (error) {
+          console.error("商品照片上傳失敗", error);
+          if (status) status.textContent = "照片上傳失敗，請換一張較小的圖片再試。";
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      function clearSelectedProductImage(button) {
+        const editor = button?.closest(".product-image-editor");
+        const input = editor?.querySelector("[data-product-image-file]");
+        const imageUrlInput = editor?.querySelector('[data-product-field="imageUrl"]');
+        const preview = editor?.querySelector("[data-product-image-preview]");
+        const status = editor?.querySelector("[data-product-image-status]");
+        if (input) input.value = "";
+        if (imageUrlInput) imageUrlInput.value = "";
+        if (preview) {
+          preview.removeAttribute("src");
+          preview.hidden = true;
+        }
+        if (status) status.textContent = "照片將在儲存商品後移除。";
+      }
+
       function setProductManagementFeedback(message, type = "") {
         const feedback = document.getElementById("productManagementFeedback");
         if (!feedback) return;
@@ -9315,6 +9492,9 @@
           active: false,
           status: "停售",
           sortOrder: adminProductCatalog.length + 1,
+          productSeries: "",
+          imageUrl: "",
+          includesIndividualPackaging: false,
           isNew: true,
         };
 
@@ -9718,6 +9898,9 @@
           grade: getValue("variety") === "日本蜜柑" ? getValue("count") : getValue("grade"),
           count: getValue("count"),
           shippingRule: getValue("shippingRule"),
+          productSeries: getValue("variety") === "日本蜜柑" ? getValue("productSeries") : "",
+          imageUrl: getValue("imageUrl"),
+          includesIndividualPackaging: getValue("includesIndividualPackaging") === "true",
           price: Number(getValue("price")),
           stock,
           adminReservedStock,
@@ -9743,6 +9926,8 @@
           const isNew = product === newProduct;
           if (!isNew && (!product.id || !product.code)) return "商品識別資料不完整，請重新整理。";
           if (!["standard_3", "half_6"].includes(getAdminProductShippingRule(product))) return "請選擇有效的運費規則。";
+          if (product.variety === "日本蜜柑" && !["禮盒版", "Ｑ版", "火燒柑"].includes(product.productSeries)) return "請選擇日本蜜柑的商品系列。";
+          if (String(product.imageUrl || "").length > 1000 || (product.imageUrl && !String(product.imageUrl).startsWith("https://"))) return "商品照片網址格式無效，請重新上傳。";
           if (!Number.isInteger(product.price) || product.price <= 0) {
             return "價格需為正整數。";
           }

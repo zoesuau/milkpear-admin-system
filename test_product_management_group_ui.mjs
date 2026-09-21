@@ -33,6 +33,13 @@ const fields = section(
   "function getAdminProductShippingRule(product)",
 );
 assert.match(fields, /data-product-field="shippingRule"/);
+assert.match(fields, /data-product-field="productSeries"/);
+assert.match(fields, /data-product-field="imageUrl"/);
+assert.match(fields, /data-product-field="includesIndividualPackaging"/);
+assert.match(fields, /禮盒版/);
+assert.match(fields, /Ｑ版/);
+assert.match(fields, /火燒柑/);
+assert.match(fields, /前台本產季暫不顯示/);
 assert.doesNotMatch(fields, /系統代碼|data-product-field="(?:id|code)"/);
 
 const readCard = section(
@@ -41,6 +48,8 @@ const readCard = section(
 );
 assert.match(readCard, /existingProduct\?\.id/);
 assert.match(readCard, /existingProduct\?\.code/);
+assert.match(readCard, /imageUrl: getValue\("imageUrl"\)/);
+assert.match(readCard, /includesIndividualPackaging:/);
 assert.doesNotMatch(readCard, /getValue\("(?:id|code)"\)/);
 
 console.log("product management group UI tests passed");
