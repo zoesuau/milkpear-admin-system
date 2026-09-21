@@ -15,7 +15,7 @@ function fixture(){
  node('admin-sync-customer-profile').type='checkbox';node('admin-sync-customer-profile').checked=true;
  const select={value:'sku',options:[{value:'sku'}]},qty={value:'3'},row={querySelector:q=>q==='.modal-spec-select'?select:qty};
  let pending=null,checks=0,catalogReads=0;
- const c={console,ADMIN_STORAGE_NAMESPACE:'fixture',ADMIN_LINE_SESSION_TOKEN_KEY:'token',GAS_ORDERS_API_URL:'fixture',ADMIN_CREATE_ORDER_TIMEOUT_MS:60000,
+ const c={console,adminGroupOrderSubmitting:false,getNewOrderGroupId:()=>'',loadPendingAdminGroupCreateRequest:()=>null,renderNewOrderGroupChoices:noop,syncNewOrderGroupContext:noop,refreshNewOrderGroups:async()=>true,restorePendingGroupChildForm:noop,ADMIN_STORAGE_NAMESPACE:'fixture',ADMIN_LINE_SESSION_TOKEN_KEY:'token',GAS_ORDERS_API_URL:'fixture',ADMIN_CREATE_ORDER_TIMEOUT_MS:60000,
  sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  document:{getElementById:node,querySelector:()=>row,querySelectorAll:q=>q.includes('input[id]')?[...nodes.values()].filter(n=>n.id.startsWith('new-')||n.id==='admin-sync-customer-profile'):[row],body:{style:{}}},
  adminProductsReady:true,adminSelectedCustomer:{customerId:'test-customer'},adminCreateOrderSubmitting:false,adminCreateOrderChecking:false,adminCreateRequestContext:null,

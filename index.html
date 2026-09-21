@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260922-admin-cod-collection-v1">
+<html lang="zh-Hant" data-release-version="20260922-group-order-workspace-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260920-product-shipping-rules-v1" />
+    <meta name="admin-release" content="20260922-group-order-workspace-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -3975,9 +3975,15 @@
         color: white;
       }
 
-      .admin-tab-bar.group-orders-enabled {
-        grid-template-columns: repeat(2, 1fr);
-      }
+      .order-workspace-nav { max-width: 1250px; margin: 0 auto 16px; padding: 0 16px; }
+      .order-workspace-nav h2 { margin: 0 0 12px; font-size: 24px; color: #334155; }
+      .order-workspace-tabs { display: flex; gap: 24px; border-bottom: 1px solid #dbe5dd; }
+      .order-workspace-tabs[hidden] { display: none; }
+      .order-workspace-tabs button { border: 0; border-bottom: 3px solid transparent; background: transparent; padding: 12px 8px; font-size: 17px; font-weight: 700; color: #64748b; cursor: pointer; }
+      .order-workspace-tabs button[aria-selected="true"] { color: #2f6847; border-bottom-color: #4f7f63; }
+      .new-group-selection { grid-column: 1 / -1; padding: 14px; border-radius: 12px; border: 1px solid #dbe5dd; background: #f6faf7; }
+      .new-group-selection small { display: block; margin-top: 8px; color: #64748b; line-height: 1.6; }
+      .new-group-selection[hidden], #newOrderForm [hidden] { display: none; }
 
       .group-order-panel {
         max-width: 920px;
@@ -4913,16 +4919,6 @@
       <button
         type="button"
         class="admin-tab-btn"
-        id="groupOrdersTabButton"
-        data-tab="groupOrders"
-        onclick="switchAdminTab('groupOrders')"
-        hidden
-      >
-        團體訂單
-      </button>
-      <button
-        type="button"
-        class="admin-tab-btn"
         data-tab="shippingPrint"
         onclick="switchAdminTab('shippingPrint')"
       >
@@ -4938,6 +4934,14 @@
       </button>
     </div>
 
+    <section id="order-workspace-section">
+      <div class="order-workspace-nav">
+        <h2>訂單作業</h2>
+        <div id="order-workspace-tabs" class="order-workspace-tabs" role="tablist" aria-label="訂單作業內容" hidden>
+          <button type="button" role="tab" id="orderListTabButton" aria-controls="order-page-section" aria-selected="true" onclick="switchAdminTab('orders')">訂單列表</button>
+          <button type="button" role="tab" id="groupOrdersTabButton" aria-controls="group-order-page-section" aria-selected="false" onclick="switchAdminTab('groupOrders')">團體管理</button>
+        </div>
+      </div>
     <section id="order-page-section">
       <div
         class="gas-test-panel hidden"
@@ -4954,7 +4958,7 @@
 
       <div class="top-filter-panel">
         <div class="panel-header-row">
-          <h2>訂單作業</h2>
+          <h2>訂單列表</h2>
           <div class="admin-header-actions">
             <button
               type="button"
@@ -5326,15 +5330,17 @@
       <div class="group-order-panel">
         <div class="group-order-header">
           <div>
-            <h2>團體訂單</h2>
+            <h2>團體管理</h2>
             <div class="group-order-meta">母單一次預留庫存；收件子單仍在「訂單作業」出貨。</div>
           </div>
-          <button type="button" class="btn-add-order-trigger" onclick="openGroupOrderModal()">＋ 新增母單</button>
+          <button type="button" class="btn-add-order-trigger" onclick="openGroupOrderModal()">＋ 新增團體</button>
         </div>
         <div id="groupOrderFeedback" class="admin-content-feedback" aria-live="polite"></div>
         <div id="groupOrderCards"><div class="group-order-empty">尚未讀取團體訂單。</div></div>
       </div>
     </section>
+
+    </section><!-- order-workspace-section -->
 
     <section id="shipping-print-page-section" style="display: none">
       <div class="shipping-print-control-panel">
@@ -6257,36 +6263,6 @@
       </div>
     </div>
 
-    <div class="modal-overlay" id="groupChildModal">
-      <div class="modal-container">
-        <div class="modal-header"><h3>新增收件子單</h3><button class="modal-close-btn" onclick="closeGroupChildModal()">&times;</button></div>
-        <div class="modal-body">
-          <form id="groupChildForm" onsubmit="submitGroupChild(event)">
-            <input type="hidden" id="group-child-parent-id">
-            <div id="group-child-parent-summary" class="group-order-meta"></div>
-            <div class="admin-content-section-title">訂購人資料（可依子單修改）</div>
-            <div class="form-group"><label>訂購人姓名</label><input id="group-child-buyer-name" class="form-control" required></div>
-            <div class="form-group"><label>訂購人電話</label><input id="group-child-buyer-phone" type="tel" class="form-control" required></div>
-            <div class="admin-content-section-title">收件人資料</div>
-            <div class="form-group"><label>收件人姓名</label><input id="group-child-name" class="form-control" required></div>
-            <div class="form-group"><label>收件人電話</label><input id="group-child-phone" type="tel" class="form-control" required></div>
-            <div class="form-group"><label>收件地址</label><input id="group-child-address" class="form-control" required></div>
-            <div class="form-group"><label>確定出貨日期</label><input id="group-child-date" type="date" class="form-control" required></div>
-            <div class="form-group"><label>黑貓配達時段</label><select id="group-child-slot" class="form-control"><option value="4">不指定</option><option value="1">13:00 前</option><option value="2">14:00～18:00</option></select></div>
-            <div class="admin-content-section-title">本收件人商品</div>
-            <div id="group-child-product-list" class="product-edit-list"></div>
-            <button type="button" class="btn-add-product" onclick="addGroupProductRow('child')">＋ 新增品項</button>
-            <div class="form-group"><label>優惠金額</label><input id="group-child-discount" type="number" min="0" value="0" class="form-control"></div>
-            <div class="form-group"><label>優惠原因</label><input id="group-child-discount-reason" class="form-control"></div>
-            <div class="form-group"><label>客戶備註</label><textarea id="group-child-note" class="form-control"></textarea></div>
-            <div class="form-group"><label>管理員備註</label><textarea id="group-child-admin-note" class="edit-textarea"></textarea></div>
-            <div id="group-child-modal-feedback" class="admin-content-feedback"></div>
-          </form>
-        </div>
-        <div class="modal-footer"><button type="button" class="btn btn-modal-cancel" onclick="closeGroupChildModal()">取消</button><button type="submit" form="groupChildForm" class="btn btn-modal-submit" id="group-child-submit">建立收件子單</button></div>
-      </div>
-    </div>
-
     <div class="modal-overlay" id="addOrderModal">
       <div class="modal-container">
         <div class="modal-header">
@@ -6297,6 +6273,12 @@
         </div>
         <div class="modal-body">
           <form id="newOrderForm" onsubmit="handleNewOrderSubmit(event)">
+            <div id="new-group-selection" class="form-group new-group-selection" hidden>
+              <label for="new-group-order">所屬團體</label>
+              <select id="new-group-order" class="form-control" onchange="changeNewOrderGroup()"><option value="">一般訂單</option></select>
+              <small id="new-group-order-hint">選擇已建立的團體，從母單預留額度分配。</small>
+              <button type="button" class="btn-modal-cancel" onclick="refreshNewOrderGroups()">重新讀取團體</button>
+            </div>
             <div class="admin-content-section-title">客戶查詢</div>
             <div class="form-group">
               <label>輸入姓名或電話搜尋舊客戶</label>
@@ -6450,7 +6432,7 @@
               </select>
             </div>
 
-            <div class="admin-content-section-title">四、商品內容</div>
+            <div class="admin-content-section-title" id="new-order-items-title">四、商品內容</div>
             <div class="form-group">
               <div id="modal-product-list" class="product-edit-list"></div>
               <button
@@ -8122,6 +8104,12 @@
             ? tabName
             : "orders";
         sessionStorage.setItem(ADMIN_ACTIVE_TAB_KEY, normalizedTabName);
+        const workspace = document.getElementById("order-workspace-section");
+        if (workspace) workspace.style.display = ["orders", "groupOrders"].includes(normalizedTabName) ? "" : "none";
+        const subTabs = document.getElementById("order-workspace-tabs");
+        if (subTabs) subTabs.hidden = !GROUP_ORDERS_ENABLED;
+        document.getElementById("orderListTabButton")?.setAttribute("aria-selected", String(normalizedTabName === "orders"));
+        document.getElementById("groupOrdersTabButton")?.setAttribute("aria-selected", String(normalizedTabName === "groupOrders"));
         const orderSection = document.getElementById("order-page-section");
         const shippingPrintSection = document.getElementById(
           "shipping-print-page-section",
@@ -8151,7 +8139,7 @@
         tabButtons.forEach((button) => {
           button.classList.toggle(
             "active",
-            button.dataset.tab === normalizedTabName,
+            button.dataset.tab === (normalizedTabName === "groupOrders" ? "orders" : normalizedTabName),
           );
         });
 
@@ -10109,6 +10097,132 @@
         if (isError) setAdminStatusPanelVisible(true);
       }
 
+      let adminCreateGroupsReady = false;
+      let adminCreateGroupsRefreshing = false;
+
+      function getNewOrderGroupId() {
+        return GROUP_ORDERS_ENABLED ? String(document.getElementById("new-group-order")?.value || "") : "";
+      }
+
+      function getNewOrderGroupPaymentState(group) {
+        const children = (group?.children || []).filter(child => !child.cancelled);
+        return children.length && children.every(child => child.paymentStatus === "已付款") ? "bank_paid" : "bank_unpaid";
+      }
+
+      function renderNewOrderGroupChoices(selectedId = getNewOrderGroupId()) {
+        const select = document.getElementById("new-group-order");
+        if (!select) return;
+        const available = adminGroupOrders.filter(group => group.status === "open");
+        select.innerHTML = '<option value="">一般訂單</option>' + available.map(group => {
+          const remaining = (group.items || []).reduce((sum, item) => sum + Number(item.remainingQty || 0), 0);
+          return `<option value="${escapeHtml(group.groupOrderId)}">${escapeHtml(group.groupName)}｜剩餘 ${remaining} 盒</option>`;
+        }).join("");
+        if (selectedId && !available.some(group => group.groupOrderId === selectedId)) {
+          select.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(selectedId)}" disabled>原團體已結束或無法讀取，請重新選擇</option>`);
+        }
+        select.value = selectedId;
+        const pending = loadPendingAdminGroupCreateRequest();
+        select.disabled = adminCreateGroupsRefreshing || pending?.action === "adminCreateGroupOrderChild";
+      }
+
+      async function refreshNewOrderGroups(selectedId = getNewOrderGroupId()) {
+        if (!GROUP_ORDERS_ENABLED || adminCreateGroupsRefreshing) return false;
+        adminCreateGroupsRefreshing = true;
+        adminCreateGroupsReady = false;
+        renderNewOrderGroupChoices(selectedId);
+        try {
+          const groups = await fetchAdminGroupOrders();
+          adminCreateGroupsReady = Array.isArray(groups);
+          if (adminCreateGroupsReady) renderNewOrderGroupChoices(selectedId);
+          return adminCreateGroupsReady;
+        } finally {
+          adminCreateGroupsRefreshing = false;
+          renderNewOrderGroupChoices(selectedId);
+          syncNewOrderGroupContext();
+          refreshNewOrderProductOptions();
+          updateNewOrderAmountPreview();
+        }
+      }
+
+      function syncNewOrderGroupContext(fillBuyer = false) {
+        const id = getNewOrderGroupId();
+        const group = getGroupOrderById(id);
+        const payment = document.getElementById("new-payment-method");
+        if (payment) {
+          payment.disabled = !!id;
+          if (id) payment.value = getNewOrderGroupPaymentState(group);
+        }
+        for (const field of ["admin-sync-customer-profile", "new-oa-text-order-marker"]) {
+          const input = document.getElementById(field);
+          if (input) {
+            input.disabled = !!id;
+            const wrap = input.closest(field === "admin-sync-customer-profile" ? "label" : ".form-group");
+            if (wrap) wrap.hidden = !!id;
+          }
+        }
+        const hint = document.getElementById("new-group-order-hint");
+        if (hint) hint.textContent = id
+          ? !adminCreateGroupsReady ? "團體資料尚未確認，請重新讀取團體後再送出。"
+            : !group || group.status !== "open" ? "這個團體目前無法新增收件人。"
+            : `${group.groupName}｜僅分配母單已預留商品，不重複扣庫存。付款依母單狀態鎖定，實際狀態由送出時確認。`
+          : "一般訂單直接扣庫存；選擇團體後，改從母單預留額度分配。";
+        const title = document.getElementById("new-order-items-title");
+        if (title) title.textContent = id ? "四、本收件人商品（母單剩餘可分配）" : "四、商品內容";
+        if (fillBuyer && group) {
+          document.getElementById("new-sender-name").value = group.buyerName || "";
+          document.getElementById("new-sender-phone").value = group.buyerPhone || "";
+          document.getElementById("new-sender-same-as-recipient").checked = false;
+        }
+      }
+
+      function changeNewOrderGroup() {
+        syncNewOrderGroupContext(true);
+        const submitButton = document.getElementById("new-order-submit");
+        if (adminProductsReady && submitButton && !submitButton.disabled) submitButton.innerText = getNewOrderGroupId() ? "建立收件子單" : "建立訂單";
+        resetModalProductRows();
+        updateNewOrderAmountPreview();
+        persistAdminCreateDraft();
+      }
+
+      function buildNewOrderProductOptionsHtml(selectedCode = "") {
+        const id = getNewOrderGroupId();
+        if (!id) return buildAdminProductOptionsHtml(selectedCode, false);
+        const group = getGroupOrderById(id);
+        const items = group?.status === "open" ? group.items || [] : [];
+        const options = items.filter(item => Number(item.remainingQty) > 0).map(item => {
+          const product = getProductByCode(item.code);
+          if (!product) return "";
+          const label = [product.variety, product.productSeries, product.grade, product.count].filter(Boolean).join(" ");
+          return `<option value="${escapeHtml(item.code)}" ${normalizeAdminProductCode(item.code) === normalizeAdminProductCode(selectedCode) ? "selected" : ""}>${escapeHtml(label || item.code)}｜$${escapeHtml(product.price)}｜剩餘可分配 ${Number(item.remainingQty)} 盒</option>`;
+        }).filter(Boolean);
+        return options.length ? options.join("") : '<option value="" disabled selected>母單目前沒有可分配商品</option>';
+      }
+
+      function updateNewOrderGroupQuantityLimits() {
+        const id = getNewOrderGroupId();
+        const group = getGroupOrderById(id);
+        document.querySelectorAll("#modal-product-list .product-edit-row").forEach(row => {
+          const code = row.querySelector(".modal-spec-select")?.value;
+          const qty = row.querySelector(".modal-qty-input");
+          if (!qty) return;
+          const item = group?.items?.find(item => normalizeAdminProductCode(item.code) === normalizeAdminProductCode(code));
+          if (id) qty.max = String(item?.remainingQty || 0);
+          else qty.removeAttribute("max");
+        });
+      }
+
+      function restorePendingGroupChildForm() {
+        const pending = loadPendingAdminGroupCreateRequest();
+        if (pending?.action !== "adminCreateGroupOrderChild") return;
+        const p = pending.payload;
+        renderNewOrderGroupChoices(p.groupOrderId);
+        const fields = {"new-name":"recipientName", "new-phone":"recipientPhone", "new-address":"recipientAddress", "new-sender-name":"buyerName", "new-sender-phone":"buyerPhone", "new-expected-shipping-date":"expectedShippingDate", "new-delivery-time-slot":"deliveryTimeSlot", "new-discount-amount":"discountAmount", "new-discount-reason":"discountReason", "new-note":"customerNote", "new-admin-note":"adminNote"};
+        for (const [id, key] of Object.entries(fields)) document.getElementById(id).value = String(p[key] ?? "");
+        restoreAdminCreateDraftItems({items:p.items});
+        document.getElementById("new-order-submit").formNoValidate = true;
+        document.getElementById("new-order-feedback").textContent = "上一筆團體子單結果尚未確認；再次送出會核對同一筆，不會重複建立。";
+      }
+
       function refreshNewOrderProductOptions() {
         const rows = [...document.querySelectorAll("#modal-product-list .product-edit-row")];
         if (!rows.length) { resetModalProductRows(); return; }
@@ -10116,7 +10230,7 @@
           const select = row.querySelector(".modal-spec-select");
           if (!select) continue;
           const code = select.value;
-          select.innerHTML = buildAdminProductOptionsHtml(code, false);
+          select.innerHTML = buildNewOrderProductOptionsHtml(code);
           if ([...select.options].some(option => option.value === code)) select.value = code;
           else {
             // Never silently switch a removed product in an unfinished order.
@@ -10132,19 +10246,9 @@
 
       function resetModalProductRows() {
         const list = document.getElementById("modal-product-list");
-        const defaultProduct = getDefaultAdminProduct();
-        if (!list || !defaultProduct) return;
-
-        list.innerHTML = `
-          <div class="product-edit-row">
-            <select class="edit-select modal-spec-select" onchange="updateNewOrderAmountPreview()">
-              ${buildAdminProductOptionsHtml(defaultProduct.code)}
-            </select>
-            <span style="font-size:16px; font-weight:bold; color:#64748b;">×</span>
-            <input type="number" class="edit-qty modal-qty-input" value="1" min="1" style="text-align:center;" oninput="updateNewOrderAmountPreview()">
-            <span style="cursor:pointer; font-size:14px; padding:2px 6px; color:#ef4444;" onclick="this.parentElement.remove(); updateNewOrderAmountPreview();">🗑️</span>
-          </div>
-        `;
+        if (!list) return;
+        list.innerHTML = "";
+        addModalProductRow();
       }
 
       function normalizeMoney(value) {
@@ -19338,12 +19442,15 @@
         setGroupOrderFeedback("讀取中…");
         try {
           const result = await postGroupOrderAction({ action: "adminReadGroupOrders" });
-          adminGroupOrders = Array.isArray(result.groups) ? result.groups : [];
+          if (!Array.isArray(result.groups)) throw new Error("GROUP_ORDER_RESPONSE_INVALID");
+          adminGroupOrders = result.groups;
           adminGroupOrdersLoaded = true;
           renderAdminGroupOrders();
           setGroupOrderFeedback("");
+          return adminGroupOrders;
         } catch (error) {
           setGroupOrderFeedback("團體訂單讀取失敗，請稍後再試。", true);
+          return null;
         }
       }
 
@@ -19545,56 +19652,51 @@
         } finally { adminGroupOrderSubmitting = false; }
       }
 
-      function openGroupChildModal(groupOrderId) {
+      async function openGroupChildModal(groupOrderId) {
         const group = getGroupOrderById(groupOrderId);
         if (!group || group.status !== "open") return;
-        document.getElementById("groupChildForm")?.reset();
-        document.getElementById("group-child-parent-id").value = groupOrderId;
-        document.getElementById("group-child-parent-summary").innerText = `${group.groupName}｜訂購人 ${group.buyerName}｜尚餘 ${group.items.reduce((sum, item) => sum + Number(item.remainingQty || 0), 0)} 盒`;
-        document.getElementById("group-child-buyer-name").value = group.buyerName || "";
-        document.getElementById("group-child-buyer-phone").value = group.buyerPhone || "";
-        const list = document.getElementById("group-child-product-list");
-        if (list) list.innerHTML = "";
-        const firstRemaining = group.items.find((item) => Number(item.remainingQty || 0) > 0);
-        if (firstRemaining) addGroupProductRow("child", firstRemaining.code, 1);
-        setGroupOrderFeedback("", false, "group-child-modal-feedback");
-        document.getElementById("groupChildModal")?.classList.add("open");
-        document.body.style.overflow = "hidden";
+        await openAddOrderModal(groupOrderId);
       }
 
       function closeGroupChildModal() {
-        if (adminGroupOrderSubmitting) return;
-        document.getElementById("groupChildModal")?.classList.remove("open");
-        document.body.style.overflow = "";
+        closeAddOrderModal();
       }
 
       async function submitGroupChild(event) {
         event.preventDefault();
         if (adminGroupOrderSubmitting) return;
-        const submitButton = document.getElementById("group-child-submit");
-        const items = readGroupProductRows("child");
-        if (!items) return setGroupOrderFeedback("商品不可重複，數量須為正整數。", true, "group-child-modal-feedback");
-        const payload = {
+        const submitButton = document.getElementById("new-order-submit");
+        const pending = loadPendingAdminGroupCreateRequest();
+        const replay = pending?.action === "adminCreateGroupOrderChild" ? pending.payload : null;
+        if (replay && replay.groupOrderId !== getNewOrderGroupId()) return setGroupOrderFeedback("請先確認上一筆團體子單結果，再切換團體。", true, "new-order-feedback");
+        const items = replay?.items || [...document.querySelectorAll("#modal-product-list .product-edit-row")].map(row => ({code: row.querySelector(".modal-spec-select")?.value || "", qty: Number(row.querySelector(".modal-qty-input")?.value || 0)}));
+        const group = getGroupOrderById(getNewOrderGroupId());
+        if (!replay && (!adminCreateGroupsReady || adminCreateGroupsRefreshing || !group || group.status !== "open")) return setGroupOrderFeedback("請重新讀取團體，確認母單仍可分配後再送出。", true, "new-order-feedback");
+        if (!replay && (!items.length || new Set(items.map(item => item.code)).size !== items.length || items.some(item => !item.code || !Number.isInteger(item.qty) || item.qty <= 0))) return setGroupOrderFeedback("請選擇母單商品，品項不可重複，數量須為正整數。", true, "new-order-feedback");
+        if (!replay && items.some(item => item.qty > Number(group.items.find(reserved => normalizeAdminProductCode(reserved.code) === normalizeAdminProductCode(item.code))?.remainingQty || 0))) return setGroupOrderFeedback("超過母單尚餘數量，請重新確認分配盒數。", true, "new-order-feedback");
+        const payload = replay || {
           action: "adminCreateGroupOrderChild",
-          groupOrderId: document.getElementById("group-child-parent-id")?.value || "",
-          buyerName: document.getElementById("group-child-buyer-name")?.value.trim() || "",
-          buyerPhone: document.getElementById("group-child-buyer-phone")?.value.trim() || "",
-          recipientName: document.getElementById("group-child-name")?.value.trim() || "",
-          recipientPhone: document.getElementById("group-child-phone")?.value.trim() || "",
-          recipientAddress: document.getElementById("group-child-address")?.value.trim() || "",
-          expectedShippingDate: document.getElementById("group-child-date")?.value || "",
-          deliveryTimeSlot: document.getElementById("group-child-slot")?.value || "4",
-          discountAmount: Number(document.getElementById("group-child-discount")?.value || 0),
-          discountReason: document.getElementById("group-child-discount-reason")?.value.trim() || "",
-          customerNote: document.getElementById("group-child-note")?.value.trim() || "",
-          adminNote: document.getElementById("group-child-admin-note")?.value.trim() || "",
+          groupOrderId: document.getElementById("new-group-order")?.value || "",
+          buyerName: document.getElementById("new-sender-name")?.value.trim() || "",
+          buyerPhone: document.getElementById("new-sender-phone")?.value.trim() || "",
+          recipientName: document.getElementById("new-name")?.value.trim() || "",
+          recipientPhone: document.getElementById("new-phone")?.value.trim() || "",
+          recipientAddress: document.getElementById("new-address")?.value.trim() || "",
+          expectedShippingDate: document.getElementById("new-expected-shipping-date")?.value || "",
+          deliveryTimeSlot: document.getElementById("new-delivery-time-slot")?.value || "4",
+          discountAmount: Number(document.getElementById("new-discount-amount")?.value || 0),
+          discountReason: document.getElementById("new-discount-reason")?.value.trim() || "",
+          customerNote: document.getElementById("new-note")?.value.trim() || "",
+          adminNote: document.getElementById("new-admin-note")?.value.trim() || "",
           items,
         };
         try {
+          persistAdminCreateDraft();
           const requestContext = ensureAdminGroupCreateRequestContext(payload);
           payload.requestKey = requestContext.requestKey;
           storePendingAdminGroupCreateRequest(payload);
           adminGroupOrderSubmitting = true;
+          document.getElementById("new-group-order").disabled = true;
           if (submitButton) {
             submitButton.disabled = true;
             submitButton.innerText = "建立中…";
@@ -19602,7 +19704,7 @@
           setGroupOrderFeedback(
             "正在建立收件子單，完成前不需要重複按送出。",
             false,
-            "group-child-modal-feedback",
+            "new-order-feedback",
           );
           const result = await postGroupOrderAction(payload);
           if (Array.isArray(result.groups)) {
@@ -19621,8 +19723,9 @@
             });
           }
           adminGroupOrderSubmitting = false;
-          closeGroupChildModal();
           clearPendingAdminGroupCreateRequest();
+          closeGroupChildModal();
+          switchAdminTab("groupOrders");
           setGroupOrderFeedback(
             `收件子單 ${result.orderNo} 已建立並加入訂單作業；庫存沒有重複扣除。`,
           );
@@ -19634,12 +19737,14 @@
             : preservePending
               ? "收件子單結果尚未確認。請保留原內容再次送出；系統會沿用同一識別碼，不會建立第二張子單。"
               : "收件子單建立失敗，後端已確認未建立；請修正後再試。";
-          setGroupOrderFeedback(message, true, "group-child-modal-feedback");
+          if (submitButton) submitButton.formNoValidate = preservePending;
+          setGroupOrderFeedback(message, true, "new-order-feedback");
         } finally {
           adminGroupOrderSubmitting = false;
+          renderNewOrderGroupChoices();
           if (submitButton) {
             submitButton.disabled = false;
-            submitButton.innerText = "建立收件子單";
+            submitButton.innerText = getNewOrderGroupId() ? "建立收件子單" : "建立訂單";
           }
         }
       }
@@ -19691,7 +19796,8 @@
         const groupTabButton = document.getElementById("groupOrdersTabButton");
         if (GROUP_ORDERS_ENABLED && groupTabButton) {
           groupTabButton.hidden = false;
-          document.querySelector(".admin-tab-bar")?.classList.add("group-orders-enabled");
+          document.getElementById("order-workspace-tabs").hidden = false;
+          document.getElementById("new-group-selection").hidden = false;
         }
         initializeAdminCardViewMode();
         window.addEventListener("pageshow", (event) => {
@@ -22485,21 +22591,29 @@ ${adminNote}
       }
 
       let adminAddOrderOpening = false;
-      async function openAddOrderModal() {
+      async function openAddOrderModal(groupOrderId = "") {
         const modal = document.getElementById("addOrderModal");
         if (adminAddOrderOpening || modal.classList.contains("open")) return;
         adminAddOrderOpening = true;
-        const draft = readAdminCreateDraft();
+        const pendingGroup = loadPendingAdminGroupCreateRequest();
+        const draft = groupOrderId ? null : readAdminCreateDraft();
+        const selectedGroupId = pendingGroup?.action === "adminCreateGroupOrderChild" ? pendingGroup.payload.groupOrderId : groupOrderId || draft?.fields?.["new-group-order"] || "";
+        renderNewOrderGroupChoices(selectedGroupId);
         try {
           resetAdminCustomerLookup();
           if (!document.querySelector("#modal-product-list .product-edit-row")) resetModalProductRows();
           restoreAdminCreateDraftFields(draft);
           restoreAdminCreateDraftItems(draft);
+          syncNewOrderGroupContext(!!groupOrderId && !pendingGroup);
+          if (groupOrderId && !pendingGroup) resetModalProductRows();
           modal.classList.add("open");
           document.body.style.overflow = "hidden";
           const modalBody = modal.querySelector(".modal-body");
           if (modalBody) modalBody.scrollTop = 0;
-          await refreshAdminCreateProducts();
+          await Promise.all([refreshAdminCreateProducts(), refreshNewOrderGroups(selectedGroupId)]);
+          restorePendingGroupChildForm();
+          syncNewOrderGroupContext();
+          updateNewOrderAmountPreview();
         } finally { adminAddOrderOpening = false; }
       }
 
@@ -22524,7 +22638,7 @@ ${adminNote}
             ? "商品更新失敗，填寫內容已保留。請按「重新讀取商品」。"
             : "登入已過期，填寫內容已保留。請重新登入後繼續。";
           button.formNoValidate = !products;
-          button.innerText = products ? "建立訂單" : hasSession ? "重新讀取商品" : "重新登入並保留草稿";
+          button.innerText = products ? (getNewOrderGroupId() ? "建立收件子單" : "建立訂單") : hasSession ? "重新讀取商品" : "重新登入並保留草稿";
           updateNewOrderAmountPreview();
         } finally {
           adminCreateProductsRefreshing = false;
@@ -22533,11 +22647,14 @@ ${adminNote}
       }
 
       function closeAddOrderModal() {
-        if (adminCreateOrderSubmitting) return;
-        try { sessionStorage.removeItem(ADMIN_CREATE_DRAFT_KEY); } catch {}
+        if (adminCreateOrderSubmitting || adminGroupOrderSubmitting) return;
+        const pendingGroup = loadPendingAdminGroupCreateRequest();
+        if (pendingGroup?.action === "adminCreateGroupOrderChild") persistAdminCreateDraft();
+        else { try { sessionStorage.removeItem(ADMIN_CREATE_DRAFT_KEY); } catch {} }
         document.getElementById("addOrderModal").classList.remove("open");
         document.body.style.overflow = "";
         document.getElementById("newOrderForm").reset();
+        syncNewOrderGroupContext();
         resetAdminCustomerLookup();
         resetModalProductRows();
         const feedback = document.getElementById("new-order-feedback");
@@ -22548,6 +22665,7 @@ ${adminNote}
         const submitButton = document.getElementById("new-order-submit");
         if (submitButton) {
           submitButton.disabled = false;
+          submitButton.formNoValidate = false;
           submitButton.innerText = "建立訂單";
         }
         updateNewOrderAmountPreview();
@@ -22611,6 +22729,8 @@ ${adminNote}
       }
 
       function updateNewOrderAmountPreview() {
+        if (getNewOrderGroupId()) syncNewOrderGroupContext();
+        updateNewOrderGroupQuantityLimits();
         updateNewOrderCodAmount(null);
         if (!adminProductsReady) return;
         const totals = calculateNewOrderPreviewTotals();
@@ -22636,7 +22756,7 @@ ${adminNote}
         const row = document.createElement("div");
         row.className = "product-edit-row";
 
-        const selectHtml = `<select class="edit-select modal-spec-select" onchange="updateNewOrderAmountPreview()">${buildAdminProductOptionsHtml()}</select>`;
+        const selectHtml = `<select class="edit-select modal-spec-select" onchange="updateNewOrderAmountPreview()">${buildNewOrderProductOptionsHtml()}</select>`;
 
         row.innerHTML = `
           ${selectHtml}
@@ -23128,7 +23248,7 @@ ${adminNote}
 
       async function handleNewOrderSubmit(event) {
         event.preventDefault();
-        if (adminCreateOrderSubmitting) return;
+        if (adminCreateOrderSubmitting || adminGroupOrderSubmitting) return;
         if (adminCreateOrderChecking || loadPendingAdminCreateRequest()) {
           await checkPendingAdminCreateOrder();
           return;
@@ -23140,7 +23260,21 @@ ${adminNote}
           showAdminAuthOverlay("登入已過期，填寫內容已保留，請重新登入後繼續。", true);
           return;
         }
+        const pendingChild = loadPendingAdminGroupCreateRequest();
+        if (pendingChild?.action === "adminCreateGroupOrderChild") {
+          if (getNewOrderGroupId() !== pendingChild.payload.groupOrderId) {
+            setGroupOrderFeedback("上一筆團體子單結果尚未確認，請重新開啟新增訂單，先確認原子單結果。", true, "new-order-feedback");
+            return;
+          }
+          await submitGroupChild(event);
+          return;
+        }
         if (!adminProductsReady) { await refreshAdminCreateProducts(); return; }
+
+        if (getNewOrderGroupId()) {
+          await submitGroupChild(event);
+          return;
+        }
 
         const feedback = document.getElementById("new-order-feedback");
         const submitButton = document.getElementById("new-order-submit");

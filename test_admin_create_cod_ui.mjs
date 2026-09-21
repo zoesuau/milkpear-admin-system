@@ -5,7 +5,7 @@ const html=fs.readFileSync(new URL('./index.html',import.meta.url),'utf8');
 for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))new vm.Script(m[1]);
 const nodes=new Map();const node=id=>{if(!nodes.has(id))nodes.set(id,{value:'',style:{}});return nodes.get(id)};
 let totals={valid:true,finalTotal:3030,codFee:30};
-const c=vm.createContext({document:{getElementById:node},adminProductsReady:true,calculateNewOrderPreviewTotals:()=>totals,formatMoney:x=>String(x)});
+const c=vm.createContext({getNewOrderGroupId:()=>'',updateNewOrderGroupQuantityLimits:()=>{},document:{getElementById:node},adminProductsReady:true,calculateNewOrderPreviewTotals:()=>totals,formatMoney:x=>String(x)});
 for(const name of ['updateNewOrderCodAmount','updateNewOrderAmountPreview'])vm.runInContext(html.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n      \\}`))[0],c);
 node('new-payment-method').value='bank_unpaid';c.updateNewOrderAmountPreview();assert.equal(node('new-cod-amount-group').style.display,'none');assert.equal(node('new-cod-amount').disabled,true);
 node('new-payment-method').value='cod';node('new-cod-amount-mode').value='auto';c.updateNewOrderAmountPreview();assert.equal(node('new-cod-amount').value,'3030');assert.equal(node('new-cod-amount').required,true);

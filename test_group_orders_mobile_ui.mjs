@@ -75,31 +75,38 @@ await page.evaluate(() => {
   ];
   const tab = document.getElementById("groupOrdersTabButton");
   tab.hidden = false;
-  document.querySelector(".admin-tab-bar").classList.add("group-orders-enabled");
+  document.getElementById("order-workspace-tabs").hidden = false;
+  document.getElementById("new-group-selection").hidden = false;
+  adminGroupOrdersLoaded = true;
+  fetchAdminGroupOrders = async () => adminGroupOrders;
+  fetchAdminProductCatalogFromGas = async () => { refreshNewOrderProductOptions(); return adminProductCatalog; };
   document.getElementById("adminAuthOverlay").style.display = "none";
   switchAdminTab("groupOrders");
   renderAdminGroupOrders();
 });
 
-assert.equal(await page.getByRole("button", { name: "團體訂單" }).isVisible(), true);
+assert.equal(await page.getByRole("tab", { name: "團體管理" }).isVisible(), true);
 assert.match(await page.locator("#groupOrderCards").innerText(), /已分配 2／50 盒，尚餘 48 盒/);
 assert.equal(await page.getByRole("button", { name: /批次已付款/ }).count(), 1);
 const panelBox = await page.locator(".group-order-panel").boundingBox();
 assert.ok(panelBox && panelBox.width <= 390, "團體訂單頁不可超出 390px 手機畫面");
 
-await page.getByRole("button", { name: "＋ 新增母單" }).click();
+await page.getByRole("button", { name: "＋ 新增團體" }).click();
 const parentModalBox = await page.locator("#groupOrderModal .modal-container").boundingBox();
 assert.ok(parentModalBox && parentModalBox.width <= 390, "母單視窗需適合手機");
 await page.locator("#groupOrderModal .modal-close-btn").click();
 
 await page.getByRole("button", { name: "＋ 新增收件人" }).click();
-const childModalBox = await page.locator("#groupChildModal .modal-container").boundingBox();
+const childModalBox = await page.locator("#addOrderModal .modal-container").boundingBox();
 assert.ok(childModalBox && childModalBox.width <= 390, "子單視窗需適合手機");
-assert.match(await page.locator("#group-child-parent-summary").innerText(), /尚餘 48 盒/);
-assert.equal(await page.locator("#group-child-buyer-name").inputValue(), "王小姐");
-assert.equal(await page.locator("#group-child-buyer-phone").inputValue(), "0912345678");
-await page.locator("#group-child-buyer-name").fill("李小姐");
-assert.equal(await page.locator("#group-child-buyer-name").inputValue(), "李小姐");
+assert.match(await page.locator("#new-group-order").innerText(), /剩餘 48 盒/);
+assert.equal(await page.locator("#new-sender-name").inputValue(), "王小姐");
+assert.equal(await page.locator("#new-sender-phone").inputValue(), "0912345678");
+await page.locator("#new-sender-name").fill("李小姐");
+assert.equal(await page.locator("#new-sender-name").inputValue(), "李小姐");
 
+assert.equal(await page.locator("#new-payment-method").isDisabled(), true);
+assert.match(await page.locator(".modal-spec-select").innerText(), /剩餘可分配 48 盒/);
+assert.equal(await page.locator(".modal-qty-input").getAttribute("max"), "48");
 await browser.close();
 console.log("group order mobile UI checks passed");
