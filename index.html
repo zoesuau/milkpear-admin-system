@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260922-group-order-filter-v1">
+<html lang="zh-Hant" data-release-version="20260922-batch-shipment-timing-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260922-group-order-filter-v1" />
+    <meta name="admin-release" content="20260922-batch-shipment-timing-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -21968,11 +21968,12 @@ ${adminNote}
         let batchStage = "WRITE_REQUEST", batchStartedAt = Date.now(), batchHttpStatus = null;
         try {
           const pending = { orderNos, startedAt: new Date().toISOString(),
+            requestId: createAdminDiagnosticRequestId("adminBatchMarkOrdersShipped"),
             operationId: `ship_${Date.now()}_${Math.random().toString(36).slice(2, 10)}` };
           sessionStorage.setItem(ADMIN_PENDING_SHIPMENT_KEY, JSON.stringify(pending));
           adminPendingShipmentMemory = pending;
           const { response, payload } = await sendAdminShipmentOnce({
-            action: "adminBatchMarkOrdersShipped", adminSessionToken, orderNos,
+            action: "adminBatchMarkOrdersShipped", adminSessionToken, orderNos, requestId: pending.requestId,
           });
           batchStage = "WRITE_RESPONSE";
           batchHttpStatus = response.status || null;
@@ -22272,6 +22273,7 @@ ${adminNote}
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({
               action: "adminSearchCustomers",
+              requestId: createAdminDiagnosticRequestId("adminSearchCustomers"),
               adminSessionToken,
               query: normalizedQuery,
             }),
@@ -22415,6 +22417,7 @@ ${adminNote}
               headers: { "Content-Type": "text/plain;charset=utf-8" },
               body: JSON.stringify({
                 action: "adminSearchCustomers",
+              requestId: createAdminDiagnosticRequestId("adminSearchCustomers"),
                 adminSessionToken,
                 query: buyerName,
               }),
