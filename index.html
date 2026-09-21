@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260922-group-order-workspace-v1">
+<html lang="zh-Hant" data-release-version="20260922-group-order-filter-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260922-group-order-workspace-v1" />
+    <meta name="admin-release" content="20260922-group-order-filter-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -5058,6 +5058,9 @@
           </button>
           <button onclick="filterByNotificationMode('phone', this)">
             管理員新增的訂單
+          </button>
+          <button id="groupOrdersFilterButton" onclick="filterByNotificationMode('group', this)" hidden>
+            團體訂單
           </button>
         </div>
 
@@ -12453,6 +12456,7 @@
         const dataset = {
           status,
           orderNo: String(order?.orderNo || "").trim(),
+          groupOrderId: String(order?.groupOrderId || "").trim(),
           canLineNotify: order?.canLineNotify === true ? "true" : "false",
           notificationStatus: String(order?.notificationStatus || "").trim(),
           lastNotificationType: String(order?.lastNotificationType || "").trim(),
@@ -19798,6 +19802,7 @@
           groupTabButton.hidden = false;
           document.getElementById("order-workspace-tabs").hidden = false;
           document.getElementById("new-group-selection").hidden = false;
+          document.getElementById("groupOrdersFilterButton").hidden = false;
         }
         initializeAdminCardViewMode();
         window.addEventListener("pageshow", (event) => {
@@ -20476,6 +20481,9 @@
 
       function isNotificationModeMatched(card) {
         if (currentNotificationFilter === "全部") return true;
+        if (currentNotificationFilter === "group") {
+          return GROUP_ORDERS_ENABLED && !!String(card.dataset.groupOrderId || "").trim();
+        }
         const canLineNotify = card.dataset.canLineNotify === "true";
         return currentNotificationFilter === "line"
           ? canLineNotify
