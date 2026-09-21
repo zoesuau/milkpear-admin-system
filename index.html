@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260921-product-media-packaging-v1">
+<html lang="zh-Hant" data-release-version="20260922-admin-cod-collection-v1">
   <head>
     <meta charset="UTF-8" />
     <meta name="admin-release" content="20260920-product-shipping-rules-v1" />
@@ -6424,6 +6424,14 @@
                 <option value="other_seasonal">其他－季結</option>
               </select>
             </div>
+            <div class="form-group" id="new-cod-amount-group" style="display:none;">
+              <label for="new-cod-amount">貨到付款代收金額</label>
+              <input type="number" id="new-cod-amount" class="form-control" min="0" step="1" disabled
+                oninput="document.getElementById('new-cod-amount-mode').value='manual'" />
+              <input type="hidden" id="new-cod-amount-mode" value="auto" />
+              <small>預設帶入訂單總額（含運費、手續費及優惠）。手動修改後不會自動覆蓋，僅調整宅配代收金額。</small>
+              <button type="button" class="btn btn-secondary" onclick="document.getElementById('new-cod-amount-mode').value='auto'; updateNewOrderAmountPreview();">恢復訂單金額</button>
+            </div>
             <div class="form-group">
               <label for="new-expected-shipping-date">確定出貨日期</label>
               <input
@@ -12750,6 +12758,7 @@
                     ? `<div class="original-amount">$${escapeHtml(originalAmount)}</div>`
                     : ""
                 }
+                ${order.paymentState === "cod" && order.codCollectionAmount !== undefined && order.codCollectionAmount !== null ? `<div class="cod-collection-amount">宅配代收 $${escapeHtml(formatAdminMoney(order.codCollectionAmount))}</div>` : ""}
                 <div class="payment-badge ${escapeHtml(paymentClass)}">${escapeHtml(paymentLabel)}</div>
               </div>
             </div>
@@ -13815,6 +13824,7 @@
           ITEMS_SUMMARY_NOT_EDITABLE:
             "此筆歷史商品格式無法安全轉換，商品內容已鎖定。",
           ITEMS_INVALID: "商品或數量不正確，請重新確認。",
+          COD_COLLECTION_AMOUNT_INVALID: "代收金額須為 0 或正整數，且僅適用貨到付款。",
           FINAL_AMOUNT_INVALID: "優惠金額不可大於原始應收金額。",
           ORDER_CONTENT_UPDATE_BUSY: "系統忙碌，請稍後再試。",
           GROUP_CHILD_ITEMS_LOCKED:
@@ -22588,9 +22598,23 @@ ${adminNote}
         };
       }
 
+      function updateNewOrderCodAmount(totals) {
+        const input = document.getElementById("new-cod-amount");
+        const group = document.getElementById("new-cod-amount-group");
+        const mode = document.getElementById("new-cod-amount-mode");
+        const isCod = document.getElementById("new-payment-method")?.value === "cod";
+        if (group) group.style.display = isCod ? "" : "none";
+        if (!input) return;
+        input.disabled = !isCod;
+        input.required = isCod;
+        if (isCod && mode?.value !== "manual" && totals?.valid) input.value = String(totals.finalTotal);
+      }
+
       function updateNewOrderAmountPreview() {
+        updateNewOrderCodAmount(null);
         if (!adminProductsReady) return;
         const totals = calculateNewOrderPreviewTotals();
+        updateNewOrderCodAmount(totals);
         if (!totals.valid) return;
         const setText = (id, value) => {
           const el = document.getElementById(id);
@@ -23184,6 +23208,16 @@ ${adminNote}
           items,
         };
 
+        if (payload.paymentState === "cod" && document.getElementById("new-cod-amount-mode")?.value === "manual") {
+          const raw = document.getElementById("new-cod-amount")?.value.trim() || "";
+          if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
+            feedback.className = "admin-content-feedback is-error";
+            feedback.innerText = "代收金額須為 0 或正整數。";
+            return;
+          }
+          payload.codCollectionAmount = Number(raw);
+        }
+
         ensureAdminCreateRequestContext(payload);
         payload.requestKey = adminCreateRequestContext.requestKey;
 
@@ -23288,6 +23322,8 @@ ${adminNote}
                 ? "確定出貨日期格式不正確，請重新選擇。"
               : error.message === "DELIVERY_TIME_SLOT_INVALID"
                 ? "黑貓配達時段不正確，請重新選擇。"
+              : error.message === "COD_COLLECTION_AMOUNT_INVALID"
+                ? "代收金額須為 0 或正整數，且僅適用貨到付款。"
               : error.message === "PRODUCT_STOCK_INSUFFICIENT"
                 ? `庫存不足，訂單尚未建立。${
                     Array.isArray(error.shortages) && error.shortages.length
