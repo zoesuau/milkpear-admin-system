@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260922-live-order-sync-v1">
+<html lang="zh-Hant" data-release-version="20260922-edit-catalog-sync-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260922-live-order-sync-v1" />
+    <meta name="admin-release" content="20260922-edit-catalog-sync-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20260922-live-order-sync-v1"></script>
-    <script src="./admin-diagnostics.js?v=20260922-live-order-sync-v1"></script>
+    <script src="./customer-config.js?v=20260922-edit-catalog-sync-v1"></script>
+    <script src="./admin-diagnostics.js?v=20260922-edit-catalog-sync-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -10098,6 +10098,7 @@
           status.className = `gas-test-status${isError ? " error" : ""}`;
           status.innerText = isError ? message : "";
         }
+        if (ready === true) refreshAdminContentProductOptions();
         if (isError) setAdminStatusPanelVisible(true);
       }
 
@@ -13714,6 +13715,77 @@
         `;
       }
 
+      let adminContentCatalogSyncRunning = false;
+      function getOpenAdminContentCards() {
+        return [...document.querySelectorAll('.card[data-content-editing="true"]')]
+          .filter(card => card.querySelector('.admin-content-editor')?.dataset.shippedOnly !== "true");
+      }
+
+      function setAdminContentCatalogFeedback(card, message) {
+        const editor = card.querySelector('.admin-content-editor');
+        const status = editor?.querySelector('.admin-content-catalog-status');
+        if (status) status.textContent = message;
+      }
+
+      function refreshAdminContentProductOptions() {
+        for (const card of getOpenAdminContentCards()) {
+          const editor = card.querySelector('.admin-content-editor');
+          // Hydrate only the initially unavailable product fields; never replace
+          // recipient, notes, quantities or an already edited product list.
+          if (editor.dataset.catalogPending === "true") {
+            const order = getLatestAdminOrder(card.dataset.orderNo);
+            const items = parseAdminEditableItemsSummary(order?.itemsSummary);
+            if (Array.isArray(items)) {
+              editor.querySelector('.admin-content-product-fields').innerHTML =
+                '<div class="admin-content-product-list">' + items.map(item => buildAdminContentProductRow(item)).join('') + '</div>' +
+                `<button type="button" class="admin-content-add-item" onclick="addAdminContentProductRow(this.closest('.card'))">＋新增品項</button>`;
+              editor.dataset.productsEditable = "true";
+            }
+            if (!Array.isArray(items)) {
+              editor.querySelector('.admin-content-product-fields').innerHTML = '<div class="admin-content-lock-message">此筆歷史商品格式無法安全轉換，商品內容已鎖定；仍可修改其他允許欄位。</div>';
+            }
+            editor.dataset.catalogPending = "false";
+          }
+          for (const select of editor.querySelectorAll('.admin-content-product-code:not(:disabled)')) {
+            const code = select.value;
+            const html = buildAdminProductOptionsHtml(code);
+            if (select.dataset.catalogOptions === html) continue;
+            select.innerHTML = html;
+            select.dataset.catalogOptions = html;
+            if ([...select.options].some(option => option.value === code)) select.value = code;
+            else {
+              const option = document.createElement('option');
+              option.value = ''; option.textContent = '原商品已不存在，請重新選擇';
+              option.disabled = true; option.selected = true;
+              select.prepend(option);
+            }
+          }
+          setAdminContentCatalogFeedback(card, '');
+          updateAdminContentPreview(card);
+        }
+      }
+
+      async function startAdminContentCatalogSync() {
+        if (adminContentCatalogSyncRunning) return;
+        adminContentCatalogSyncRunning = true;
+        try {
+          if (!getOpenAdminContentCards().length) return;
+          if (!document.hidden && navigator.onLine !== false) {
+            const products = await fetchAdminProductCatalogFromGas({ includeOperations: false, preserveDraft: true });
+            for (const card of getOpenAdminContentCards()) {
+              setAdminContentCatalogFeedback(card, Array.isArray(products) ? '' : '商品更新失敗，稍後自動重試；已輸入資料會保留。');
+            }
+          }
+        } finally {
+          if (getOpenAdminContentCards().length) {
+            window.setTimeout(() => {
+              adminContentCatalogSyncRunning = false;
+              void startAdminContentCatalogSync();
+            }, adminProductCatalogReadFailed ? 15000 : 3000);
+          } else adminContentCatalogSyncRunning = false;
+        }
+      }
+
       async function enterAdminContentEdit(card) {
         if (!card || card.dataset.contentEditing === "true") return;
 
@@ -13725,22 +13797,8 @@
 
         if (!order || !host || status === "已取消") return;
         ensureAdminCardExpandedForEditing(card);
-        if (!shippedOnly && !adminProductsReady) {
-          const trigger = card.querySelector(".admin-content-edit-trigger");
-          trigger?.setAttribute("disabled", "disabled");
-          trigger?.setAttribute("aria-busy", "true");
-          const products = await fetchAdminProductCatalogFromGas();
-          trigger?.removeAttribute("aria-busy");
-          if (!Array.isArray(products)) {
-            trigger?.removeAttribute("disabled");
-            alert(
-              "商品目錄讀取失敗，暫時無法安全編輯訂單內容；請稍後再試。",
-            );
-            return;
-          }
-        }
 
-        const parsedItems = adminProductsReady
+        const parsedItems = adminProductCatalog.length
           ? parseAdminEditableItemsSummary(order.itemsSummary)
           : null;
         const lockedDisplayItems = parseAdminDisplayItemsSummary(
@@ -13753,7 +13811,7 @@
         const lockedAttribute = shippedOnly ? "disabled" : "";
 
         host.innerHTML = `
-          <div class="admin-content-editor" data-products-editable="${productsEditable ? "true" : "false"}" data-shipped-only="${shippedOnly ? "true" : "false"}">
+          <div class="admin-content-editor" data-catalog-pending="${!shippedOnly && !adminProductCatalog.length}" data-products-editable="${productsEditable ? "true" : "false"}" data-shipped-only="${shippedOnly ? "true" : "false"}">
             <div class="admin-content-section">
               <div class="admin-content-section-title">1. 收件資料</div>
               <div class="admin-content-grid">
@@ -13791,6 +13849,8 @@
             </div>
             <div class="admin-content-section">
               <div class="admin-content-section-title">4. 商品內容</div>
+              <div class="admin-content-catalog-status" aria-live="polite"></div>
+              <div class="admin-content-product-fields">
               ${
                 isGroupChildOrder && !shippedOnly
                   ? `<div class="admin-content-lock-message">修改團體子單商品或數量時，系統會同步更新母單的已分配與尚餘數量，不會再次扣除一般庫存。</div>`
@@ -13811,8 +13871,9 @@
                       </div>
                       <button type="button" class="admin-content-add-item" disabled>＋新增品項</button>
                     `
-                    : `<div class="admin-content-lock-message">此筆歷史商品格式無法安全轉換，商品內容已鎖定；仍可修改其他允許欄位。</div>`
+                    : `<div class="admin-content-lock-message">${!adminProductCatalog.length ? "商品讀取中，可先修改收件資料與備註。" : "此筆歷史商品格式無法安全轉換，商品內容已鎖定；仍可修改其他允許欄位。"}</div>`
               }
+            </div>
             </div>
             <div class="admin-content-section">
               <div class="admin-content-section-title">5. 金額預覽</div>
@@ -13832,11 +13893,15 @@
           ?.setAttribute("disabled", "disabled");
         updateAdminContentPreview(card);
         scrollAdminOrderCardIntoView(orderNo);
+        if (!shippedOnly) {
+          setAdminContentCatalogFeedback(card, "商品更新中…");
+          void startAdminContentCatalogSync();
+        }
       }
 
       function addAdminContentProductRow(card) {
         const list = card?.querySelector(".admin-content-product-list");
-        if (!list || !adminProductsReady) return;
+        if (!list || !adminProductCatalog.length) return;
         list.insertAdjacentHTML("beforeend", buildAdminContentProductRow());
         updateAdminContentPreview(card);
       }
@@ -14058,6 +14123,10 @@
         const order = getLatestAdminOrder(card?.dataset.orderNo);
         if (!editor || !saveButton || !feedback || !order) return;
         if (saveButton.disabled) return;
+        if (editor.dataset.catalogPending === "true") {
+          setAdminContentCatalogFeedback(card, "商品仍在讀取中，請稍候再儲存。");
+          return;
+        }
 
         const shippedOnly = editor.dataset.shippedOnly === "true";
         const discountAmount = Number(
