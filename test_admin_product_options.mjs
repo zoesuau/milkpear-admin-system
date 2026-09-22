@@ -44,8 +44,8 @@ assert.deepEqual(
   ["13A", "17A", "12A", "A18", "A14AA"],
   "order options should keep each variety together, then sort by status and grade",
 );
-assert.equal(context.stockLabel({ stock: 33 }), "剩餘 33 盒");
-assert.equal(context.stockLabel({ stock: 0 }), "剩餘 0 盒");
+assert.equal(context.stockLabel({ stock: 33 }), "可售 33 盒");
+assert.equal(context.stockLabel({ stock: 0 }), "可售 0 盒");
 assert.equal(context.stockLabel({ stock: null }), "庫存未控管");
 assert.equal(context.isAvailable({ status: "上架", stock: 0 }), false);
 assert.equal(context.isAvailable({ status: "上架", stock: 1 }), true);

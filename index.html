@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260922-reliable-save-auth-v1">
+<html lang="zh-Hant" data-release-version="20260922-admin-oversell-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260922-reliable-save-auth-v1" />
+    <meta name="admin-release" content="20260922-admin-oversell-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20260922-reliable-save-auth-v1"></script>
-    <script src="./admin-diagnostics.js?v=20260922-reliable-save-auth-v1"></script>
+    <script src="./customer-config.js?v=20260922-admin-oversell-v1"></script>
+    <script src="./admin-diagnostics.js?v=20260922-admin-oversell-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -8766,10 +8766,14 @@
           activeText === "上架"
             ? "product-status-active"
             : "product-status-inactive";
-        const stockText =
-          Number.isInteger(product.stock) && product.stock >= 0
-            ? `${product.stock}盒`
-            : "未控管";
+        const hasNumericStock = Number.isSafeInteger(product.stock);
+        const stockText = !hasNumericStock
+          ? "可售未控管"
+          : product.stock < 0
+            ? `超賣 ${Math.abs(product.stock)} 盒`
+            : `可售 ${product.stock} 盒`;
+        const stockColor = product.stock > 0 ? "#15803d"
+          : product.stock < 0 ? "#dc2626" : "#64748b";
         const reservedStock = Number.isInteger(product.adminReservedStock)
           ? product.adminReservedStock
           : 0;
@@ -8809,8 +8813,8 @@
                       <span>${escapeHtml(shippedText)}</span>
                     </button>
                     ${
-                      Number.isInteger(product.stock) && product.stock >= 0
-                        ? `<span class="product-chip" style="color:#ef4444;border-color:#fecaca;">可售 ${escapeHtml(product.stock)}</span>`
+                      hasNumericStock
+                        ? `<span class="product-chip" style="color:#fff;background:${stockColor};border-color:${stockColor};">${escapeHtml(stockText)}</span>`
                         : '<span class="product-chip">可售未控管</span>'
                     }
                     ${reservedStock > 0 ? `<span class="product-chip">後台保留 ${escapeHtml(reservedStock)}｜前台可售 ${escapeHtml(publicStock)}</span>` : ""}
@@ -9068,7 +9072,7 @@
           <div class="product-field">
             <label>可售庫存</label>
             <div class="product-inventory-control">
-              <input data-product-field="stock" type="number" min="0" step="1" placeholder="尚未設定" value="${Number.isInteger(product.stock) ? escapeHtml(product.stock) : ""}" readonly aria-readonly="true">
+              <input data-product-field="stock" type="number" step="1" placeholder="尚未設定" value="${Number.isInteger(product.stock) ? escapeHtml(product.stock) : ""}" readonly aria-readonly="true">
               <button type="button" class="product-action-btn secondary" onclick="openProductInventoryAdjustmentFromCard(this)" ${product.isNew ? "disabled" : ""}>${product.isNew ? "儲存後設定" : Number.isInteger(product.stock) ? "＋補貨" : "設定首批庫存"}</button>
             </div>
             ${!product.isNew && Number.isInteger(product.stock) ? '<button type="button" class="product-inventory-correction" onclick="openProductInventoryAdjustmentFromCard(this, \'reconcile\')">盤點修正</button>' : ""}
@@ -9081,7 +9085,7 @@
           <div class="product-field">
             <label>狀態</label>
             <select data-product-field="status">
-              ${renderSimpleOptions(["上架", "僅後台販售", "停售"], normalizeAdminProductStatus(product.status))}
+              ${renderSimpleOptions(["上架", "僅後台販售", "後台販售，允許超賣", "停售"], normalizeAdminProductStatus(product.status))}
             </select>
           </div>
           <div class="product-field">
@@ -9155,6 +9159,7 @@
 
       function normalizeAdminProductStatus(status) {
         const text = String(status || "").trim();
+        if (text === "後台販售，允許超賣") return text;
         if (["僅後台販售", "只開放後台", "僅後台"].includes(text)) {
           return "僅後台販售";
         }
@@ -9163,7 +9168,7 @@
       }
 
       function isAdminProductSellable(product) {
-        return ["上架", "僅後台販售"].includes(
+        return ["上架", "僅後台販售", "後台販售，允許超賣"].includes(
           normalizeAdminProductStatus(product?.status),
         );
       }
@@ -9195,7 +9200,7 @@
       }
 
       function compareAdminProductsForAutoSort(a, b) {
-        const statusRanks = { 上架: 1, 僅後台販售: 2, 停售: 3 };
+        const statusRanks = { 上架: 1, 僅後台販售: 2, "後台販售，允許超賣": 3, 停售: 4 };
         const statusDiff =
           statusRanks[normalizeAdminProductStatus(a.status)] -
           statusRanks[normalizeAdminProductStatus(b.status)];
@@ -9239,7 +9244,7 @@
           getAdminProductSeriesRank(a) - getAdminProductSeriesRank(b);
         if (seriesDiff !== 0) return seriesDiff;
 
-        const statusRanks = { 上架: 1, 僅後台販售: 2, 停售: 3 };
+        const statusRanks = { 上架: 1, 僅後台販售: 2, "後台販售，允許超賣": 3, 停售: 4 };
         const statusDiff =
           statusRanks[normalizeAdminProductStatus(a.status)] -
           statusRanks[normalizeAdminProductStatus(b.status)];
@@ -9257,15 +9262,16 @@
       }
 
       function getAdminProductOptionStockLabel(product) {
-        return Number.isInteger(product?.stock) && product.stock >= 0
-          ? `剩餘 ${product.stock} 盒`
-          : "庫存未控管";
+        const label = !Number.isSafeInteger(product?.stock) ? "庫存未控管"
+          : product.stock < 0 ? `超賣 ${Math.abs(product.stock)} 盒`
+          : `可售 ${product.stock} 盒`;
+        return label + (normalizeAdminProductStatus(product?.status) === "後台販售，允許超賣" ? "｜允許超賣" : "");
       }
 
       function isAdminProductAvailableForOrderOption(product) {
         return (
           isAdminProductSellable(product) &&
-          (!Number.isInteger(product?.stock) || product.stock > 0)
+          (normalizeAdminProductStatus(product?.status) === "後台販售，允許超賣" || !Number.isInteger(product?.stock) || product.stock > 0)
         );
       }
 
@@ -9670,6 +9676,7 @@
           }
           const serverStock = Number.isInteger(result.stock) ? result.stock : null;
           adminInventoryAdjustmentContext.stock = serverStock;
+          adminInventoryAdjustmentContext.allowsShortage = result.allowsShortage === true;
           adminInventoryAdjustmentContext.catalogVersion = result.catalogVersion || adminProductCatalogVersion;
           adminInventoryAdjustmentContext.pendingOrderQuantity = Math.max(
             0,
@@ -9767,13 +9774,13 @@
         if (mode === "initialize" || mode === "reconcile") {
           const pending = context.pendingOrderQuantity;
           const shortage = Math.max(0, pending - quantity);
-          const after = Math.max(0, quantity - pending);
-          if (submit) submit.disabled = shortage > 0;
+          const after = quantity - pending;
+          if (submit) submit.disabled = shortage > 0 && !context.allowsShortage;
           summary.innerHTML = `
             <div class="inventory-adjustment-summary-row"><span>現場實際總數</span><strong>${escapeHtml(quantity)} 盒</strong></div>
             <div class="inventory-adjustment-summary-row"><span>已訂未寄占用（含團購預留）</span><strong>− ${escapeHtml(pending)} 盒</strong></div>
-            ${shortage ? `<div class="inventory-adjustment-summary-row shortage"><span>尚缺（不足，無法儲存）</span><strong>${escapeHtml(shortage)} 盒</strong></div>` : ""}
-            <div class="inventory-adjustment-summary-row total"><span>${mode === "reconcile" ? "修正後可售庫存" : "設定後可售庫存"}</span><strong>${escapeHtml(after)} 盒</strong></div>
+            ${shortage ? `<div class="inventory-adjustment-summary-row shortage"><span>${context.allowsShortage ? "超賣缺口（可儲存）" : "尚缺（不足，無法儲存）"}</span><strong>${escapeHtml(shortage)} 盒</strong></div>` : ""}
+            <div class="inventory-adjustment-summary-row total"><span>${mode === "reconcile" ? "修正後" : "設定後"}${after < 0 ? "超賣" : "可售庫存"}</span><strong>${escapeHtml(Math.abs(after))} 盒</strong></div>
           `;
           return;
         }
@@ -9782,10 +9789,10 @@
         const before = Number(context.stock || 0);
         const after = mode === "restock" ? before + quantity : quantity;
         summary.innerHTML = `
-          <div class="inventory-adjustment-summary-row"><span>目前可售庫存</span><strong>${escapeHtml(before)} 盒</strong></div>
+          <div class="inventory-adjustment-summary-row"><span>${before < 0 ? "目前超賣" : "目前可售庫存"}</span><strong>${escapeHtml(Math.abs(before))} 盒</strong></div>
           <div class="inventory-adjustment-summary-row"><span>已訂未寄占用（含團購預留，不重複扣除）</span><strong>${escapeHtml(context.pendingOrderQuantity)} 盒</strong></div>
           ${mode === "restock" ? `<div class="inventory-adjustment-summary-row"><span>本次新增</span><strong>＋ ${escapeHtml(quantity)} 盒</strong></div>` : ""}
-          <div class="inventory-adjustment-summary-row total"><span>${mode === "reconcile" ? "修正後庫存" : "補貨後可售庫存"}</span><strong>${escapeHtml(after)} 盒</strong></div>
+          <div class="inventory-adjustment-summary-row total"><span>補貨後${after < 0 ? "超賣" : "可售庫存"}</span><strong>${escapeHtml(Math.abs(after))} 盒</strong></div>
         `;
       }
 
@@ -9880,7 +9887,7 @@
         }
         if (
           (context.mode === "initialize" || context.mode === "reconcile") &&
-          quantity < context.pendingOrderQuantity
+          quantity < context.pendingOrderQuantity && !context.allowsShortage
         ) {
           setProductInventoryAdjustmentFeedback(
             `現場數量不足，已訂未寄占用（含團購預留）尚缺 ${context.pendingOrderQuantity - quantity} 盒。`,
@@ -9926,11 +9933,12 @@
           updateNewOrderAmountPreview();
           const adjustment = result.adjustment || {};
           const currentStock = result.products.find(p=>p.id===adjustment.productId)?.stock;
+          const currentStockText = currentStock < 0 ? `超賣 ${Math.abs(currentStock)} 盒` : `可售庫存 ${currentStock} 盒`;
           const successText = adjustment.mode === "initialize"
-            ? `✅ 首批庫存已設定，可售庫存 ${currentStock} 盒`
+            ? `✅ 首批庫存已設定，${currentStockText}`
             : adjustment.mode === "reconcile"
-              ? `✅ 盤點完成，可售庫存修正為 ${currentStock} 盒`
-              : `✅ 已新增 ${adjustment.enteredQuantity} 盒，現在可售庫存 ${currentStock} 盒`;
+              ? `✅ 盤點完成，${currentStockText}`
+              : `✅ 已新增 ${adjustment.enteredQuantity} 盒，現在${currentStockText}`;
           setProductManagementFeedback(successText, "success");
         } catch (error) {
           console.error("商品庫存更新失敗", error);
@@ -10005,7 +10013,7 @@
         const stock =
           stockText === ""
             ? null
-            : Number.isInteger(Number(stockText)) && Number(stockText) >= 0
+            : Number.isSafeInteger(Number(stockText))
               ? Number(stockText)
               : NaN;
         const reservedStockText = getValue("adminReservedStock");
@@ -10061,9 +10069,9 @@
           }
           if (
             product.stock !== null &&
-            (!Number.isInteger(product.stock) || product.stock < 0)
+            !Number.isSafeInteger(product.stock)
           ) {
-            return "庫存需為 0 以上整數，或留空代表不限量。";
+            return "庫存需為整數；負數代表超賣，留空代表未控管。";
           }
           if (
             !Number.isInteger(product.adminReservedStock) ||
@@ -17843,7 +17851,7 @@
           ),
         );
         if (candidates.length > 1 && equivalentSignatures.size === 1) {
-          const statusRank = { 上架: 1, 僅後台販售: 2, 停售: 3 };
+          const statusRank = { 上架: 1, 僅後台販售: 2, "後台販售，允許超賣": 3, 停售: 4 };
           candidates.sort(
             (a, b) =>
               (statusRank[String(a?.status || "").trim()] || 9) -
