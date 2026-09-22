@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260922-batch-shipment-timing-v1">
+<html lang="zh-Hant" data-release-version="20260922-live-order-sync-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260922-batch-shipment-timing-v1" />
+    <meta name="admin-release" content="20260922-live-order-sync-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20260816-group-orders-1"></script>
-    <script src="./admin-diagnostics.js?v=20260919-request-correlation-v1"></script>
+    <script src="./customer-config.js?v=20260922-live-order-sync-v1"></script>
+    <script src="./admin-diagnostics.js?v=20260922-live-order-sync-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -7685,6 +7685,7 @@
       }
 
       function initializeAdminSessionRecovery() {
+        initializeAdminLiveOrderSync();
         const recover = async () => {
           if (document.visibilityState === "hidden" || !adminInitialOrdersReady) return;
           // Catalog/create requests already validate this session on the server.
@@ -11332,13 +11333,25 @@
       }
 
       function attachAdminOrderSnapshotReadMeta(orders, payload = {}) {
+        // Keep the published chunk cache unchanged. Durable server-side deltas
+        // are applied afresh on every read, including unchanged/base-cache hits.
+        const baseCount = orders.length;
+        const byOrderNo = new Map(orders.map(order => [String(order.orderNo || ""), order]));
+        for (const order of payload.pendingOrders || []) {
+          const orderNo = String(order?.orderNo || "").trim();
+          if (!orderNo) throw new Error("ADMIN_ORDER_SNAPSHOT_PENDING_INVALID");
+          byOrderNo.set(orderNo, order);
+        }
+        orders = [...byOrderNo.values()].sort(compareAdminOrdersByCreatedAtDesc);
         Object.defineProperty(orders, "adminReadMeta", {
           value: {
             searchMode: false,
             query: "",
             truncated: false,
             serverFiltered: false,
-            totalCount: Math.max(0, Number(payload.orderCount) || orders.length),
+            totalCount: Math.max(orders.length, Number(payload.orderCount) || 0),
+            snapshotBaseCount: baseCount,
+            snapshotLiveVersion: String(payload.liveVersion || payload.version || ""),
             page: 1,
             pageSize: Math.max(1, orders.length || ADMIN_ORDERS_PER_PAGE),
             totalPages: 1,
@@ -11584,6 +11597,11 @@
           if (payload?.error === "ADMIN_SESSION_REQUIRED") {
             throw new Error("ADMIN_SESSION_REQUIRED");
           }
+          if (payload?.error === "ADMIN_ORDER_SNAPSHOT_VERSION_NOT_READY" && !options.publicationRetry) {
+            // The prior read completed with an explicit publication-race result.
+            // Retry once against a fresh base; never replay a business mutation.
+            return performAdminOrderSnapshotFetchOnce({ ...options, publicationRetry: true, forceReload: true });
+          }
           if (
             payload?.ok !== true ||
             payload?.action !== "adminReadOrderSnapshot"
@@ -11613,7 +11631,7 @@
           clearAdminNetworkRecoveryPending("orders");
           if (
             payload.unchanged === true &&
-            orders.length !== Math.max(0, Number(payload.orderCount) || 0)
+            orders.adminReadMeta.snapshotBaseCount !== Math.max(0, Number(payload.orderCount) || 0)
           ) {
             throw new Error("ADMIN_ORDER_SNAPSHOT_COUNT_MISMATCH");
           }
@@ -11626,7 +11644,7 @@
               : "";
           }
           if (!payload.stale && !silent) setAdminStatusPanelVisible(false);
-          updateAdminRefreshMeta();
+          if (!options.liveSync) updateAdminRefreshMeta();
           recordAdminReadBreadcrumb("FETCH_SUCCESS", {
             requestId,
             elapsedMs: Date.now() - startedAt,
@@ -12046,6 +12064,7 @@
           );
           const readMeta = adminOrders.adminReadMeta || {};
           adminOrderReadMeta = {
+            snapshotLiveVersion: String(readMeta.snapshotLiveVersion || ""),
             serverFiltered: readMeta.serverFiltered === true,
             totalCount: Math.max(0, Number(readMeta.totalCount) || 0),
             page: Math.max(1, Number(readMeta.page) || 1),
@@ -12123,6 +12142,81 @@
         } catch (error) {
           return false;
         }
+      }
+
+      let adminLiveSyncTimer = null;
+      let adminLiveSyncRunning = false;
+      let adminLiveSyncInitialized = false;
+      let adminLiveSyncFailures = 0;
+      const ADMIN_LIVE_SYNC_INTERVAL_MS = 3000;
+
+      function canRunAdminLiveOrderSync() {
+        return ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED && adminInitialOrdersReady &&
+          !adminAuthBlocksDataLoad && document.visibilityState !== "hidden" &&
+          !adminBrowserIsOffline() && !adminOrderSnapshotReadPromise &&
+          !adminGroupOrderSubmitting && !adminAddOrderOpening &&
+          !hasBlockingAdminRefreshWork() &&
+          !document.querySelector('.modal-overlay.open, .card[data-content-editing="true"], .card[data-customer-editing="true"], .admin-workflow-save:not(:disabled), .admin-note-editor[data-open="true"], #cards-container input:checked, #cards-container input:focus, #cards-container select:focus, .btn-refresh-orders:disabled');
+      }
+
+      function scheduleAdminLiveOrderSync(delay = ADMIN_LIVE_SYNC_INTERVAL_MS) {
+        if (adminLiveSyncTimer !== null) window.clearTimeout(adminLiveSyncTimer);
+        adminLiveSyncTimer = null;
+        if (document.visibilityState === "hidden" || adminBrowserIsOffline()) return;
+        adminLiveSyncTimer = window.setTimeout(runAdminLiveOrderSync, delay);
+      }
+
+      async function runAdminLiveOrderSync() {
+        adminLiveSyncTimer = null;
+        if (adminLiveSyncRunning) return;
+        if (!canRunAdminLiveOrderSync()) {
+          scheduleAdminLiveOrderSync();
+          return;
+        }
+        adminLiveSyncRunning = true;
+        const queryRevision = adminOrderQueryRequestId;
+        try {
+          const orders = await fetchAdminOrdersFromGas({ silent: true, liveSync: true, networkRecovery: true });
+          if (!Array.isArray(orders) || orders.adminReadMeta?.snapshotStale) {
+            adminLiveSyncFailures++;
+            if (!adminAuthBlocksDataLoad && !hasBlockingAdminRefreshWork()) {
+              setAdminRefreshState(false, "自動同步暫時中斷，保留原訂單；稍後自動重試。");
+            }
+            return;
+          }
+          adminLiveSyncFailures = 0;
+          // Recheck after I/O: a user may have started editing or a foreground
+          // refresh may have overtaken this response. Never overwrite that work.
+          if (queryRevision !== adminOrderQueryRequestId || !canRunAdminLiveOrderSync()) return;
+          if (orders.adminReadMeta?.snapshotLiveVersion !== adminOrderReadMeta.snapshotLiveVersion) {
+            const page = adminCurrentPage;
+            if (!renderAdminOrders(orders)) throw new Error("ADMIN_LIVE_SYNC_RENDER_FAILED");
+            adminCurrentPage = page;
+            updateStatsCounters();
+            applyCurrentFilter();
+            syncAdminSearchMatches();
+            handleBatchCheckChange();
+            updateNotifyButton();
+            applyReadOnlyModeToRealOrders();
+          }
+          updateAdminRefreshMeta();
+        } catch (error) {
+          adminLiveSyncFailures++;
+          if (!adminAuthBlocksDataLoad) setAdminRefreshState(false, "自動同步暫時中斷，保留原訂單；稍後自動重試。");
+        } finally {
+          adminLiveSyncRunning = false;
+          scheduleAdminLiveOrderSync(Math.min(30000, ADMIN_LIVE_SYNC_INTERVAL_MS * Math.pow(2, adminLiveSyncFailures)));
+        }
+      }
+
+      function initializeAdminLiveOrderSync() {
+        if (adminLiveSyncInitialized) return;
+        adminLiveSyncInitialized = true;
+        document.addEventListener("visibilitychange", () => scheduleAdminLiveOrderSync(0));
+        window.addEventListener("online", () => scheduleAdminLiveOrderSync(0));
+        window.addEventListener("offline", () => scheduleAdminLiveOrderSync());
+        window.addEventListener("pageshow", () => scheduleAdminLiveOrderSync(0));
+        scheduleAdminLiveOrderSync();
       }
 
       function refreshAdminOrdersInBackground() {

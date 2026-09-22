@@ -129,7 +129,7 @@ for (const action of ['adminReadOrderSnapshot', 'adminReadProductCatalog']) {
     normalizeAdminReadErrorCode: value => String(value || 'REQUEST_FAILED'),
     isAdminNetworkRecoveryError: () => false, getAdminOrderReadFailureMessage: () => 'fixture failure',
     setAdminNetworkRecoveryPending() {}, clearAdminNetworkRecoveryPending() {},
-    getAdminOrderSnapshotKnownChunks: () => [], attachAdminOrderSnapshotReadMeta: orders => orders,
+    getAdminOrderSnapshotKnownChunks: () => [], attachAdminOrderSnapshotReadMeta: orders => Object.assign(orders, {adminReadMeta:{snapshotBaseCount:orders.length}}),
     adminOrderSnapshotManifest: [], flattenAdminOrderSnapshotChunks: () => [{ orderNo: 'fixture-order' }],
     setAdminStatusPanelVisible() {}, updateAdminRefreshMeta() {},
     setAdminProductCatalogState: (ready) => { status = ready; },

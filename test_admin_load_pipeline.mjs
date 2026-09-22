@@ -24,7 +24,7 @@ console.log('load pipeline: PASS authenticated first view, no catalog contention
 // Deferred catalog must still be loaded when dependent tabs are first used.
 let catalogModes=[],groups=0,manifests=0;
 const tabs={ADMIN_TAB_NAMES:new Set(['orders','products','shippingPrint','groupOrders']),GROUP_ORDERS_ENABLED:true,ADMIN_ACTIVE_TAB_KEY:'tab',
- sessionStorage:{setItem(){}},document:{getElementById:()=>({style:{}}),querySelectorAll:()=>[]},adminProductsReady:false,adminShippingBatchesLoaded:true,adminGroupOrdersLoaded:false,
+ sessionStorage:{setItem(){}},document:{getElementById:()=>({style:{},setAttribute(){}}),querySelectorAll:()=>[]},adminProductsReady:false,adminShippingBatchesLoaded:true,adminGroupOrdersLoaded:false,
  fetchAdminProductCatalogFromGas:opts=>catalogModes.push(opts?.includeOperations ?? true),renderProductManagement(){},renderShippingManifest(){},loadCompleteShippingManifestOrders:()=>manifests++,fetchAdminGroupOrders:()=>groups++};
 vm.createContext(tabs);vm.runInContext(part('      function switchAdminTab','      function restoreAdminTab'),tabs);
 tabs.switchAdminTab('orders');assert.equal(catalogModes.length,0);
