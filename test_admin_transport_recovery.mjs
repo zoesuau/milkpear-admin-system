@@ -48,7 +48,7 @@ for (const action of ['adminValidateSession', 'adminReadOrders', 'adminReadOrder
   await assert.rejects(f.call('adminAuth'), /HTTP_404/);
   assert.equal(f.requests.length, 1, 'one-time LINE code must not be replayed automatically');
 }
-for (const action of ['adminCreateOrder', 'adminBatchMarkOrdersShipped', 'adminMarkOrderShipped', 'adminUpdatePaymentStatus', 'adminSyncOrderSnapshot']) {
+for (const action of ['adminAdjustProductInventory', 'adminUpdateProductFields', 'adminCreateOrder', 'adminBatchMarkOrdersShipped', 'adminMarkOrderShipped', 'adminUpdatePaymentStatus', 'adminSyncOrderSnapshot']) {
   const f = fixture([]);
   await assert.rejects(f.call(action), /ADMIN_RECOVERY_ACTION_NOT_ALLOWED/);
   assert.equal(f.requests.length, 0);
@@ -132,6 +132,7 @@ for (const action of ['adminReadOrderSnapshot', 'adminReadProductCatalog']) {
     getAdminOrderSnapshotKnownChunks: () => [], attachAdminOrderSnapshotReadMeta: orders => Object.assign(orders, {adminReadMeta:{snapshotBaseCount:orders.length}}),
     adminOrderSnapshotManifest: [], flattenAdminOrderSnapshotChunks: () => [{ orderNo: 'fixture-order' }],
     setAdminStatusPanelVisible() {}, updateAdminRefreshMeta() {},
+    adminProductCatalogMutationEpoch:0, productManagementSaveInFlight:false,
     setAdminProductCatalogState: (ready) => { status = ready; },
     renderProductManagement() {}, renderShippingManifest() {}, resetModalProductRows() {},
     updateNewOrderAmountPreview() {}, console,
@@ -148,7 +149,7 @@ for (const action of ['adminReadOrderSnapshot', 'adminReadProductCatalog']) {
   }
   assert.equal(f.requests.length, 2);
 }
-assert.equal([...html.matchAll(/await fetchAdminRecoverableResponse\(/g)].length, 7, 'only the seven reviewed read/auth callers use recovery, including the lightweight bootstrap');
+assert.equal([...html.matchAll(/await fetchAdminRecoverableResponse\(/g)].length, 9, 'only the nine reviewed read/auth callers use recovery, including product and inventory receipts');
 console.log('snapshot and catalog recovery integration: PASS');
 {
   const f=fixture([new Response('busy',{status:503})]);

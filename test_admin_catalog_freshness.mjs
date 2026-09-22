@@ -12,7 +12,7 @@ const qty={value:'3'},draft={recipient:'fixture recipient',note:'keep note'};
 const row={querySelector:q=>q==='.modal-spec-select'?select:qty};
 const modal={classList:{add(){open=true},contains(){return open}},querySelector:()=>({scrollTop:0})};
 const trigger={disabled:false,setAttribute(){}};
-const c={getNewOrderGroupId:()=>'',loadPendingAdminGroupCreateRequest:()=>null,renderNewOrderGroupChoices(){},syncNewOrderGroupContext(){},refreshNewOrderGroups:async()=>true,restorePendingGroupChildForm(){},buildNewOrderProductOptionsHtml:()=>c.buildAdminProductOptionsHtml(),adminProductCatalogLoadPromise:null,adminProductsReady:true,GAS_ORDERS_API_URL:'mock',ADMIN_LINE_SESSION_TOKEN_KEY:'token',ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS:60000,
+const c={adminProductCatalogMutationEpoch:0,productManagementSaveInFlight:false,getNewOrderGroupId:()=>'',loadPendingAdminGroupCreateRequest:()=>null,renderNewOrderGroupChoices(){},syncNewOrderGroupContext(){},refreshNewOrderGroups:async()=>true,restorePendingGroupChildForm(){},buildNewOrderProductOptionsHtml:()=>c.buildAdminProductOptionsHtml(),adminProductCatalogLoadPromise:null,adminProductsReady:true,GAS_ORDERS_API_URL:'mock',ADMIN_LINE_SESSION_TOKEN_KEY:'token',ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS:60000,
  adminProductCatalog:catalog,adminSiteSettings:{},adminProductOperations:{byCode:{A:{bookedQty:9}}},
  document:{querySelectorAll:()=>[row],querySelector:q=>q==='.btn-add-order-trigger'?trigger:row,getElementById:()=>modal,body:{style:{}},createElement:()=>({})},
  sessionStorage:{getItem:()=> 'fixture'},window:{setTimeout:fn=>fn()},requestAnimationFrame:fn=>fn(),console:{error(){}},alert:m=>{c.alert=m},
@@ -38,3 +38,14 @@ assert.deepEqual(modes,[false,true]);assert.equal(c.adminProductOperations.byCod
 assert.match(html,/adminProductCatalogLoading\s*\?\s*"商品讀取中"\s*:\s*adminProductCatalogReadFailed\s*\?\s*"商品資料尚未成功讀取"\s*:\s*"目前沒有商品資料"/,'empty catalog must identify an active read instead of claiming no products');
 assert.match(html,/adminProductOperationsLoading[\s\S]*?"已訂 —統計讀取中"[\s\S]*?"已寄 —統計讀取中"/,'product operation chips must identify an active statistics read');
 console.log('catalog freshness: PASS repeat openings, external price/stock change, preserved quantity/selection, removed SKU, duplicate opening and failed refresh');
+
+// An older read must not overwrite a catalog confirmed by a newer mutation.
+let finishOldRead;
+c.fetchAdminRecoverableResponse=()=>new Promise(resolve=>finishOldRead=resolve);
+const oldRead=c.fetchAdminProductCatalogFromGas({includeOperations:false});
+c.adminProductCatalogMutationEpoch++;
+c.adminProductCatalog=[{code:'NEW',price:999,stock:3}];
+finishOldRead({ok:true,json:async()=>({ok:true,action:'adminReadProductCatalog',products:[{code:'OLD',price:1,stock:99}],catalogVersion:'old'})});
+await oldRead;
+assert.equal(c.adminProductCatalog[0].code,'NEW');
+console.log('PASS older catalog response cannot overwrite confirmed mutation');
