@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260922-admin-oversell-v1">
+<html lang="zh-Hant" data-release-version="20260922-partial-load-recovery-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260922-admin-oversell-v1" />
+    <meta name="admin-release" content="20260922-partial-load-recovery-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20260922-admin-oversell-v1"></script>
-    <script src="./admin-diagnostics.js?v=20260922-admin-oversell-v1"></script>
+    <script src="./customer-config.js?v=20260922-partial-load-recovery-v1"></script>
+    <script src="./admin-diagnostics.js?v=20260922-partial-load-recovery-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -4952,7 +4952,7 @@
           等待管理員完整訂單讀取…
         </div>
         <div class="gas-test-status" id="adminProductCatalogStatus">
-          等待管理員商品目錄讀取…
+          商品目錄將於需要時載入。
         </div>
       </div>
 
@@ -7280,7 +7280,8 @@
           code === "NETWORK_ERROR" ||
           code === "GAS_TIMEOUT" ||
           code === "REQUEST_TIMEOUT" ||
-          /^HTTP_(408|429|5\d\d)$/.test(code);
+          /^HTTP_(404|408|429|5\d\d)$/.test(code) ||
+          /GAS_NON_JSON_RESPONSE|GAS_AUTH_RESPONSE_INVALID/.test(code);
       }
 
       function getAdminOrderReadFailureMessage(error) {
@@ -7288,14 +7289,13 @@
         if (code === "ADMIN_NETWORK_OFFLINE") {
           return "⚠️ 網路已斷線，登入仍保留；連線恢復後會自動重新讀取訂單。";
         }
+        if (code === "HTTP_404") return "⚠️ 訂單服務回覆錯誤（404），登入與已載入資料仍保留；可稍後重新讀取。";
+        if (/JSON|PARSE|RESPONSE_INVALID|GATEWAY_HTML/.test(code)) return "⚠️ 訂單服務回覆格式異常，登入與已載入資料仍保留；可稍後重新讀取。";
         if (isAdminNetworkRecoveryError(error)) {
-          return "⚠️ 網路連線不穩或系統回應逾時，登入仍保留；連線恢復後可重新讀取訂單。";
+          return "⚠️ 訂單服務回覆逾時或傳輸失敗，登入與已載入資料仍保留；可稍後重新讀取。";
         }
         if (code === "HTTP_401" || code === "HTTP_403") {
           return "⚠️ Google 服務目前拒絕訂單讀取，請聯絡系統管理員確認授權。";
-        }
-        if (/JSON|PARSE|RESPONSE_INVALID|GATEWAY_HTML/.test(code)) {
-          return "⚠️ 訂單服務回傳格式異常，登入仍保留；請稍後重新讀取。";
         }
         return "⚠️ 管理員完整訂單讀取失敗，請稍後再試。";
       }
@@ -7608,6 +7608,8 @@
       let adminSessionCheckPromise = null;
       let adminSessionValidationFlight = null;
       let adminInitialOrdersReady = false;
+      let adminInitialOrderLoadSettled = false;
+      let adminLastOrderReadFailureMessage = "";
       let adminResumeNeedsCheck = false;
       let adminSessionVerificationRevision = 0;
       let adminBackgroundSessionPromise = null;
@@ -11413,9 +11415,12 @@
 
           if (isAdminNetworkRecoveryError(error)) {
             setAdminNetworkRecoveryPending("orders");
+          } else {
+            clearAdminNetworkRecoveryPending("orders");
           }
 
           const failureMessage = getAdminOrderReadFailureMessage(error);
+          adminLastOrderReadFailureMessage = failureMessage;
 
           if (adminReadStatusEl && !silent) {
             setAdminStatusPanelVisible(true);
@@ -11953,8 +11958,11 @@
           }
           if (isAdminNetworkRecoveryError(error)) {
             setAdminNetworkRecoveryPending("orders");
+          } else {
+            clearAdminNetworkRecoveryPending("orders");
           }
           const failureMessage = getAdminOrderReadFailureMessage(error);
+          adminLastOrderReadFailureMessage = failureMessage;
           if (adminReadStatusEl && !silent) {
             setAdminStatusPanelVisible(true);
             adminReadStatusEl.className = "gas-test-status error";
@@ -12165,25 +12173,28 @@
         adminOverlayRefreshPending = true;
         try {
         setAdminRefreshState(true, "正在重新讀取訂單...");
-        showAdminAuthOverlay("正在重新讀取訂單...", false, true, true);
+        if (!options.background) showAdminAuthOverlay("正在重新讀取訂單...", false, true, true);
         const requestId = ++adminOrderQueryRequestId;
         const adminOrders = await fetchAdminOrdersFromGas({
           networkRecovery: options?.networkRecovery === true,
+          silent: options.background === true,
         });
         if (requestId !== adminOrderQueryRequestId) return false;
         if (adminAuthBlocksDataLoad) {
           setAdminRefreshState(false, "請先完成登入。");
           return false;
         }
+        if (options.background && (document.visibilityState === "hidden" || hasBlockingAdminRefreshWork() ||
+            document.querySelector('.modal-overlay.open, .card[data-customer-editing="true"], .admin-workflow-save:not(:disabled), .admin-note-editor[data-open="true"], #cards-container input:checked, #cards-container input:focus, #cards-container select:focus'))) {
+          setAdminRefreshState(false, "已保留目前畫面，稍後再同步。");
+          return false;
+        }
         if (!Array.isArray(adminOrders) || !renderAdminOrders(adminOrders)) {
-          setAdminRefreshState(false, "重新讀取失敗，請稍後再試。");
-          showAdminAuthOverlay(
-            adminNetworkRecoveryPending === "orders"
-              ? "⚠️ 網路連線不穩，登入仍保留；連線恢復後會自動重新讀取訂單。"
-              : "⚠️ 管理員完整訂單讀取失敗，請稍後再試。",
-            false,
-            true,
-          );
+          const message = adminLastOrderReadFailureMessage || "完整訂單尚未載入，已保留原畫面；稍後會自動重試。";
+          setAdminRefreshState(false, message);
+          const status = document.getElementById("adminReadStatus");
+          if (status) { status.innerText = message; status.className = "gas-test-status warning"; setAdminStatusPanelVisible(true); }
+          if (!options.background) showAdminAuthOverlay(message, false, true);
           return false;
         }
 
@@ -12195,6 +12206,9 @@
         applyReadOnlyModeToRealOrders();
         updateAdminRefreshMeta();
         clearAdminNetworkRecoveryPending("orders");
+        adminLastOrderReadFailureMessage = "";
+        const status = document.getElementById("adminReadStatus");
+        if (status) { status.innerText = ""; setAdminStatusPanelVisible(false); }
         adminInitialOrdersReady = true;
         const addTrigger = document.querySelector(".btn-add-order-trigger");
         if (addTrigger) { addTrigger.disabled = false; addTrigger.setAttribute("aria-disabled", "false"); }
@@ -12428,7 +12442,7 @@
       const ADMIN_LIVE_SYNC_INTERVAL_MS = 3000;
 
       function canRunAdminLiveOrderSync() {
-        return ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED && adminInitialOrdersReady &&
+        return ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED && (adminInitialOrdersReady || (adminInitialOrderLoadSettled && adminNetworkRecoveryPending === "orders")) &&
           !adminAuthBlocksDataLoad && document.visibilityState !== "hidden" &&
           !adminBrowserIsOffline() && !adminOrderSnapshotReadPromise &&
           !adminGroupOrderSubmitting && !adminAddOrderOpening &&
@@ -12453,6 +12467,11 @@
         adminLiveSyncRunning = true;
         const queryRevision = adminOrderQueryRequestId;
         try {
+          if (!adminInitialOrdersReady) {
+            const recovered = await refreshAdminOrdersFromOverlay({ networkRecovery: true, background: true });
+            adminLiveSyncFailures = recovered ? 0 : adminLiveSyncFailures + 1;
+            return;
+          }
           const orders = await fetchAdminOrdersFromGas({ silent: true, liveSync: true, networkRecovery: true });
           if (!Array.isArray(orders) || orders.adminReadMeta?.snapshotStale) {
             adminLiveSyncFailures++;
@@ -20359,6 +20378,7 @@
         initializeAdminSessionRecovery();
 
         let initialLoadFinished = false;
+        let initialCatalogStarted = false;
         const initialLoadTimer = window.setTimeout(() => {
           if (initialLoadFinished) return;
           showAdminAuthOverlay(
@@ -20393,6 +20413,8 @@
             window.clearTimeout(initialLoadTimer);
             if (!adminAuthBlocksDataLoad) hideAdminAuthOverlay();
             restoreAdminTab();
+            initialCatalogStarted = true;
+            void fetchAdminProductCatalogFromGas({ includeOperations: false });
 
             if (bootstrap.fullSnapshot === true) {
               adminOrders = bootstrap.orders;
@@ -20412,7 +20434,7 @@
               if (!Array.isArray(adminOrders)) {
                 if (status) {
                   status.className = "gas-test-status warning";
-                  status.innerText = "目前先顯示最新 20 筆；完整訂單尚未同步，網路恢復後可按「同步最新訂單」。";
+                  status.innerText = `目前僅載入 ${bootstrap.orders.length} 筆，篩選與筆數尚不完整；保留現有資料，稍後自動重試。`;
                 }
                 return;
               }
@@ -20460,6 +20482,11 @@
         } finally {
           initialLoadFinished = true;
           window.clearTimeout(initialLoadTimer);
+          adminInitialOrderLoadSettled = true;
+          if (!adminInitialOrdersReady && !adminAuthBlocksDataLoad) scheduleAdminLiveOrderSync(15000);
+          // Catalog reads remain available even if the complete order list failed.
+          if (!initialCatalogStarted && !adminProductsReady && !adminProductCatalogLoadPromise && !adminAuthBlocksDataLoad)
+            void fetchAdminProductCatalogFromGas({ includeOperations: false });
         }
 
       });

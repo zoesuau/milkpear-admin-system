@@ -7,7 +7,7 @@ assert.ok(code.includes('runAdminLiveOrderSync'));
 function fixture(){
   const timers=new Map(),events={},log=[];let timer=0,blocked=false,offline=false,fetches=0;
   const orders=Object.assign([{orderNo:'NEW'}],{adminReadMeta:{snapshotLiveVersion:'v1:pending'}});
-  const c={console,ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED:true,adminInitialOrdersReady:true,adminAuthBlocksDataLoad:false,adminOrderSnapshotReadPromise:null,adminGroupOrderSubmitting:false,adminAddOrderOpening:false,adminOrderQueryRequestId:1,adminCurrentPage:3,adminOrderReadMeta:{snapshotLiveVersion:'v1:empty'},
+  const c={console,ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED:true,adminInitialOrdersReady:true,adminInitialOrderLoadSettled:false,adminNetworkRecoveryPending:"orders",adminAuthBlocksDataLoad:false,adminOrderSnapshotReadPromise:null,adminGroupOrderSubmitting:false,adminAddOrderOpening:false,adminOrderQueryRequestId:1,adminCurrentPage:3,adminOrderReadMeta:{snapshotLiveVersion:'v1:empty'},
     document:{visibilityState:'visible',querySelector:()=>blocked?{}:null,addEventListener:(n,f)=>events[n]=f},window:{setTimeout:(f,ms)=>{timers.set(++timer,{f,ms});return timer},clearTimeout:id=>timers.delete(id),addEventListener:(n,f)=>events[n]=f},adminBrowserIsOffline:()=>offline,hasBlockingAdminRefreshWork:()=>blocked,
     fetchAdminOrdersFromGas:async opts=>{fetches++;assert.equal(opts.liveSync,true);assert.equal(opts.silent,true);return orders},
     renderAdminOrders:o=>{log.push('render');c.adminCurrentPage=1;c.adminOrderReadMeta=o.adminReadMeta;return true},updateStatsCounters(){},applyCurrentFilter(){},syncAdminSearchMatches(){log.push('search')},handleBatchCheckChange(){},updateNotifyButton(){},applyReadOnlyModeToRealOrders(){},updateAdminRefreshMeta:()=>log.push('updated'),setAdminRefreshState:()=>log.push('failure')};
@@ -28,6 +28,14 @@ f=fixture();f.c.fetchAdminOrdersFromGas=async()=>Object.assign([],{adminReadMeta
 f=fixture();f.c.initializeAdminLiveOrderSync();f.c.document.visibilityState='hidden';f.events.visibilitychange();assert.equal(f.timers.size,0);f.c.document.visibilityState='visible';f.events.visibilitychange();assert.equal([...f.timers.values()][0].ms,0);
 assert.match(code,/admin-workflow-save:not\(:disabled\)/);assert.match(code,/admin-note-editor\[data-open="true"\]/);
 console.log('PASS live polling: seconds cadence, single flight, unchanged DOM, paging, hidden/offline/auth/edit guards, in-flight edits, superseded reads and failure backoff');
+f=fixture();f.c.adminInitialOrdersReady=false;let recoveryCalls=0;
+f.c.refreshAdminOrdersFromOverlay=async opts=>{recoveryCalls++;assert.equal(opts.background,true);assert.equal(opts.networkRecovery,true);return false;};
+await f.c.runAdminLiveOrderSync();assert.equal(recoveryCalls,0,'do not overlap initial startup');
+f.c.adminInitialOrderLoadSettled=true;await f.c.runAdminLiveOrderSync();assert.equal(recoveryCalls,1);assert.equal([...f.timers.values()].at(-1).ms,6000);
+f.offline(true);await f.c.runAdminLiveOrderSync();assert.equal(recoveryCalls,1,'pause partial recovery offline');f.offline(false);
+f.c.refreshAdminOrdersFromOverlay=async()=>{recoveryCalls++;f.c.adminInitialOrdersReady=true;return true;};
+await f.c.runAdminLiveOrderSync();assert.equal(f.c.adminInitialOrdersReady,true);assert.equal([...f.timers.values()].at(-1).ms,3000);
+console.log('PASS partial-load recovery joins existing single-flight poll and respects startup/offline guards');
 
 // Publication changes are an explicit completed read, not an unknown mutation.
 // Exercise the real consumer to verify exactly one sequential fresh-base retry.

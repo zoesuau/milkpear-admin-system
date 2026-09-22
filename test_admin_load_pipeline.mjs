@@ -8,7 +8,7 @@ const part=(a,b)=>html.slice(html.indexOf(a),html.indexOf(b,html.indexOf(a)));
 const startup=part('        const isAdminAllowed = await initAdminAuth(', '      // ==========================================');
 const runSource='async function start(){'+startup.slice(0,startup.lastIndexOf('      });'))+'}';
 let orderResolve,events=[];
-const c={Date,ADMIN_INITIAL_LOAD_SLOW_MS:12000,adminAuthBlocksDataLoad:false,document:{querySelector:()=>({setAttribute(){}}),getElementById:()=>null},window:{setTimeout,clearTimeout},
+const c={Date,ADMIN_INITIAL_LOAD_SLOW_MS:12000,adminAuthBlocksDataLoad:false,adminProductsReady:true,adminProductCatalogLoadPromise:null,document:{querySelector:()=>({setAttribute(){}}),getElementById:()=>null},window:{setTimeout,clearTimeout},
  initAdminAuth:async opts=>{assert.equal(opts.validateWithOrders,true);events.push('auth-deferred');return true},initializeAdminSessionRecovery(){},
  fetchAdminOrderBootstrapFromGas:async()=>null,
  fetchInitialAdminOrdersWithRecovery:()=>new Promise(r=>orderResolve=r),fetchAdminOrdersFromGas:()=>{throw Error('startup must use bounded initial recovery')},renderAdminOrders:()=>{events.push('render');return true},updateStatsCounters(){},handleBatchCheckChange(){},updateNotifyButton(){},applyReadOnlyModeToRealOrders(){},markAdminSessionVerified(){},recordAdminReadBreadcrumb(){},showAdminAuthOverlay(){},hideAdminAuthOverlay:()=>events.push('usable'),restoreAdminTab:()=>events.push('restore-tab'),reconcilePendingAdminShipment:async()=>events.push('readback'),loadPendingAdminCreateRequest:()=>null,readAdminCreateDraft:()=>null,recoverPendingAdminCreateOrderOnLoad:async()=>{},fetchAdminProductCatalogFromGas:()=>{throw Error('catalog must not run on the initial orders critical path')}};

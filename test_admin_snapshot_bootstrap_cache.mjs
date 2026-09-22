@@ -187,6 +187,7 @@ async function runStartup(useCache) {
   updateStatsCounters(){},handleBatchCheckChange(){},updateNotifyButton(){},applyReadOnlyModeToRealOrders(){},
   markAdminSessionVerified(){},recordAdminReadBreadcrumb(){},restoreAdminTab(){},setAdminStatusPanelVisible(){},
   document:{getElementById:()=>element,querySelector:()=>element,querySelectorAll:()=>[]},
+  adminProductsReady:false,adminProductCatalogLoadPromise:null,fetchAdminProductCatalogFromGas:async()=>[],scheduleAdminLiveOrderSync(){},
   adminInitialOrdersReady:false,reconcilePendingAdminShipment:async()=>{},recoverPendingAdminCreateOrderOnLoad:async()=>{},
   loadPendingAdminCreateRequest:()=>null,readAdminCreateDraft:()=>null,Date,
  };
