@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260922-partial-load-recovery-v1">
+<html lang="zh-Hant" data-release-version="20260926-order-read-single-pass-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260922-partial-load-recovery-v1" />
+    <meta name="admin-release" content="20260926-order-read-single-pass-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20260922-partial-load-recovery-v1"></script>
-    <script src="./admin-diagnostics.js?v=20260922-partial-load-recovery-v1"></script>
+    <script src="./customer-config.js?v=20260926-order-read-single-pass-v1"></script>
+    <script src="./admin-diagnostics.js?v=20260926-order-read-single-pass-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -7698,6 +7698,14 @@
             await reconcilePendingAdminShipment();
             return;
           }
+          // The order endpoint validates the session itself. On an idle resumed
+          // page let that read do both jobs; retain standalone validation when
+          // editing prevents polling, and retain write-time authorization.
+          if (ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED && !adminAuthBlocksDataLoad && !adminBrowserIsOffline() &&
+              (adminOrderSnapshotReadPromise || canRunAdminLiveOrderSync())) {
+            scheduleAdminLiveOrderSync(0);
+            return;
+          }
           if (adminBackgroundSessionPromise || adminSessionCheckPromise || Date.now() - adminBackgroundSessionAttemptAt < 60000) return;
           const token = sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY);
           if (!token) return;
@@ -12103,56 +12111,67 @@
         }
       }
 
+      let adminManualOrderRefreshPending = false;
       async function refreshAdminOrdersManually() {
-        if (hasBlockingAdminRefreshWork()) {
-          alert("目前有訂單正在編輯或處理中，請先儲存或取消後再重新整理。");
-          return;
-        }
-
-        setAdminRefreshState(true, "正在同步最新訂單...");
-        const syncResult = await syncLatestAdminOrdersToSnapshot();
-        if (!syncResult) {
-          setAdminRefreshState(false, "同步失敗，原本畫面已保留；請稍後再試。");
-          return;
-        }
-        const requestId = ++adminOrderQueryRequestId;
-        const requiredVersion = String(syncResult.version || "").trim();
-        const adminOrders = await fetchAdminOrdersFromGas({
-          forceReload: true,
-          requiredVersion: String(syncResult.version || "").trim(),
-        });
-        if (requestId !== adminOrderQueryRequestId) return;
-        if (!Array.isArray(adminOrders)) {
-          setAdminRefreshState(false, "重新整理失敗，請稍後再試。");
-          return;
-        }
-        if (
-          requiredVersion &&
-          String(adminOrders.adminReadMeta?.snapshotVersion || "") !==
-            String(syncResult.version || "")
-        ) {
-          setAdminRefreshState(
-            false,
-            "同步版本尚未生效，原本畫面已保留；請稍後再試。",
-          );
-          return;
-        }
-
-        if (!renderAdminOrders(adminOrders)) {
-          setAdminRefreshState(false, "重新整理失敗，請稍後再試。");
-          return;
-        }
-
-        updateStatsCounters();
-        syncAdminSearchMatches();
-        applyCurrentFilter();
-        handleBatchCheckChange();
-        updateNotifyButton();
-        applyReadOnlyModeToRealOrders();
-        updateAdminRefreshMeta(
-          new Date(),
-          Math.max(0, Number(syncResult.syncedCount) || 0),
+        if (adminManualOrderRefreshPending || adminAuthBlocksDataLoad) return false;
+        const editing = () => hasBlockingAdminRefreshWork() || !!document.querySelector(
+          '.modal-overlay.open, .card[data-customer-editing="true"], .admin-workflow-save:not(:disabled), .admin-note-editor[data-open="true"], #cards-container input:checked, #cards-container input:focus, #cards-container select:focus',
         );
+        if (editing()) {
+          alert("目前有訂單正在編輯或處理中，請先儲存或取消後再重新整理。");
+          return false;
+        }
+        adminManualOrderRefreshPending = true;
+        const requestId = ++adminOrderQueryRequestId;
+        setAdminRefreshState(true, "正在同步最新訂單...");
+        try {
+          // Authenticated reads include durable pending mutations even when the
+          // base version is unchanged. Compaction is not a prerequisite to read.
+          // Reuse checked chunks and join an existing read instead of queuing
+          // a second full download behind it.
+          const adminOrders = await fetchAdminOrdersFromGas({ silent: true, networkRecovery: true });
+          if (requestId !== adminOrderQueryRequestId) return false;
+          if (adminAuthBlocksDataLoad) {
+            setAdminRefreshState(false, "請先完成登入。");
+            return false;
+          }
+          if (editing()) {
+            setAdminRefreshState(false, "已保留目前編輯內容，稍後再同步。");
+            return false;
+          }
+          if (!Array.isArray(adminOrders) || adminOrders.adminReadMeta?.snapshotStale) {
+            setAdminRefreshState(false, adminLastOrderReadFailureMessage || "同步失敗，原本畫面已保留；請稍後再試。");
+            return false;
+          }
+          const liveVersion = adminOrders.adminReadMeta?.snapshotLiveVersion;
+          if (!adminInitialOrdersReady || !liveVersion || liveVersion !== adminOrderReadMeta.snapshotLiveVersion) {
+            if (!renderAdminOrders(adminOrders)) {
+              setAdminRefreshState(false, "重新整理失敗，原本畫面已保留；請稍後再試。");
+              return false;
+            }
+            updateStatsCounters();
+            syncAdminSearchMatches();
+            applyCurrentFilter();
+            handleBatchCheckChange();
+            updateNotifyButton();
+            applyReadOnlyModeToRealOrders();
+          }
+          adminInitialOrdersReady = true;
+          clearAdminNetworkRecoveryPending("orders");
+          adminLastOrderReadFailureMessage = "";
+          const status = document.getElementById("adminReadStatus");
+          if (status) { status.innerText = ""; setAdminStatusPanelVisible(false); }
+          const addTrigger = document.querySelector(".btn-add-order-trigger");
+          if (addTrigger) { addTrigger.disabled = false; addTrigger.setAttribute("aria-disabled", "false"); }
+          hideAdminAuthOverlay();
+          updateAdminRefreshMeta();
+          return true;
+        } catch (error) {
+          if (requestId === adminOrderQueryRequestId) setAdminRefreshState(false, "同步失敗，原本畫面已保留；請稍後再試。");
+          return false;
+        } finally {
+          adminManualOrderRefreshPending = false;
+        }
       }
 
       function reloadAdminPage() {
@@ -12465,6 +12484,7 @@
           return;
         }
         adminLiveSyncRunning = true;
+        const reconcileOnResume = adminResumeNeedsCheck;
         const queryRevision = adminOrderQueryRequestId;
         try {
           if (!adminInitialOrdersReady) {
@@ -12496,6 +12516,7 @@
             applyReadOnlyModeToRealOrders();
           }
           updateAdminRefreshMeta();
+          if (reconcileOnResume) await reconcilePendingAdminShipment();
         } catch (error) {
           adminLiveSyncFailures++;
           if (!adminAuthBlocksDataLoad) setAdminRefreshState(false, "自動同步暫時中斷，保留原訂單；稍後自動重試。");

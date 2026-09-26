@@ -10,7 +10,7 @@ function fixture(){
  const events={},storage=new Map([['token','fixture']]);
  const nodes=Object.fromEntries(['adminAuthOverlay','adminAuthMessage','adminAuthRetryBtn','adminAuthRefreshBtn','adminAuthCloseBtn','adminSessionStatus'].map(id=>{const classes=new Set();return [id,{dataset:{},innerText:'',classList:{toggle:(name,hidden)=>hidden?classes.add(name):classes.delete(name),add:name=>classes.add(name),remove:name=>classes.delete(name),contains:name=>classes.has(name)}}]}));
  const node=nodes.adminAuthRetryBtn;
- const c={initializeAdminLiveOrderSync(){},adminCreateOrderSubmitting:false,adminCreateProductsRefreshing:false,adminAddOrderOpening:false,Date,URLSearchParams,ADMIN_LINE_SESSION_TOKEN_KEY:'token',ADMIN_LINE_STATE_KEY:'state',ADMIN_AUTH_TIMEOUT_MS:60000,GAS_ORDERS_API_URL:'mock',adminAuthBlocksDataLoad:false,
+ const c={ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED:false,initializeAdminLiveOrderSync(){},adminCreateOrderSubmitting:false,adminCreateProductsRefreshing:false,adminAddOrderOpening:false,Date,URLSearchParams,ADMIN_LINE_SESSION_TOKEN_KEY:'token',ADMIN_LINE_STATE_KEY:'state',ADMIN_AUTH_TIMEOUT_MS:60000,GAS_ORDERS_API_URL:'mock',adminAuthBlocksDataLoad:false,
  shouldOfferAdminRefreshFromMessage:()=>false,document:{visibilityState:'visible',getElementById:id=>nodes[id],addEventListener:(n,f)=>events[n]=f},window:{location:{search:'',reload:()=>{reloads++}},addEventListener:(n,f)=>events[n]=f},sessionStorage:{getItem:k=>storage.get(k)||null,removeItem:k=>storage.delete(k)},setAdminAuthRetryButtonMode(){},createAdminDiagnosticRequestId:()=> 'fixture',publishAdminAuthDiagnostic(){},reconcilePendingAdminShipment:async()=>{reads++},startAdminAuth:async()=>{navigations++},fetchAdminRecoverableResponse:async()=>{checks++;return {ok:true,json:async()=>({ok:true,action:'adminValidateSession',allowed:true})}}};
  vm.createContext(c);vm.runInContext(source,c);
  return {c,events,storage,node,nodes,stats:()=>({checks,reads,navigations,reloads})};
@@ -110,3 +110,17 @@ flights[0]({ok:true,json:async()=>({ok:true,allowed:true,action:'adminValidateSe
 const joined=f.c.validateExistingAdminSession('new',{background:true});assert.equal(flights.length,2);
 flights[1]({ok:true,json:async()=>({ok:true,allowed:true,action:'adminValidateSession'})});assert.equal(await nextToken,true);assert.equal(await joined,true);
 console.log('session flight lifecycle PASS: reverse sharing, manual retry, separate tokens and old cleanup');
+
+// Idle resume uses the protected order endpoint; editing still gets a session check.
+for (const mode of ['idle','reading','editing','offline']) {
+ f=fixture();vm.runInContext('adminInitialOrdersReady=true',f.c);
+ let scheduled=0;f.c.ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED=true;
+ f.c.adminOrderSnapshotReadPromise=mode==='reading'?Promise.resolve():null;
+ f.c.canRunAdminLiveOrderSync=()=>mode==='idle';
+ f.c.scheduleAdminLiveOrderSync=delay=>{assert.equal(delay,0);scheduled++};
+ f.c.navigator={onLine:mode!=='offline'};
+ f.c.initializeAdminSessionRecovery();f.events.visibilitychange();await tick();
+ assert.equal(f.stats().checks,mode==='editing'||mode==='offline'?1:0,mode);
+ assert.equal(scheduled,mode==='idle'||mode==='reading'?1:0,mode);
+}
+console.log('PASS idle resume removes redundant validation; busy editing retains validation');

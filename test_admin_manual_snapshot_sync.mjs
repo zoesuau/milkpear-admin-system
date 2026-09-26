@@ -53,19 +53,11 @@ const manualRefreshSource = sourceBetween(
   "      async function refreshAdminOrdersManually",
   "      function reloadAdminPage",
 );
-const syncCallIndex = manualRefreshSource.indexOf(
-  "await syncLatestAdminOrdersToSnapshot()",
-);
-const readCallIndex = manualRefreshSource.indexOf("await fetchAdminOrdersFromGas");
-assert.ok(syncCallIndex >= 0, "manual refresh should synchronize pending mutations");
-assert.ok(readCallIndex > syncCallIndex, "snapshot read must happen after synchronization");
-assert.match(manualRefreshSource, /forceReload:\s*true/);
-assert.match(manualRefreshSource, /requiredVersion:\s*String\(syncResult\.version/);
-assert.match(
-  manualRefreshSource,
-  /adminOrders\.adminReadMeta\?\.snapshotVersion[\s\S]*?syncResult\.version/,
-  "manual refresh must verify that the read returned the version published by sync",
-);
+assert.doesNotMatch(manualRefreshSource, /await syncLatestAdminOrdersToSnapshot/);
+assert.match(manualRefreshSource, /await fetchAdminOrdersFromGas/);
+assert.doesNotMatch(manualRefreshSource, /forceReload:\s*true/);
+assert.match(manualRefreshSource, /networkRecovery:\s*true/);
+assert.match(manualRefreshSource, /snapshotStale/);
 assert.match(manualRefreshSource, /同步失敗，原本畫面已保留/);
 
 assert.match(

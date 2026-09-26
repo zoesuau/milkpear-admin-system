@@ -7,7 +7,7 @@ assert.ok(code.includes('runAdminLiveOrderSync'));
 function fixture(){
   const timers=new Map(),events={},log=[];let timer=0,blocked=false,offline=false,fetches=0;
   const orders=Object.assign([{orderNo:'NEW'}],{adminReadMeta:{snapshotLiveVersion:'v1:pending'}});
-  const c={console,ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED:true,adminInitialOrdersReady:true,adminInitialOrderLoadSettled:false,adminNetworkRecoveryPending:"orders",adminAuthBlocksDataLoad:false,adminOrderSnapshotReadPromise:null,adminGroupOrderSubmitting:false,adminAddOrderOpening:false,adminOrderQueryRequestId:1,adminCurrentPage:3,adminOrderReadMeta:{snapshotLiveVersion:'v1:empty'},
+  const c={adminResumeNeedsCheck:false,reconcilePendingAdminShipment:async()=>{},console,ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED:true,adminInitialOrdersReady:true,adminInitialOrderLoadSettled:false,adminNetworkRecoveryPending:"orders",adminAuthBlocksDataLoad:false,adminOrderSnapshotReadPromise:null,adminGroupOrderSubmitting:false,adminAddOrderOpening:false,adminOrderQueryRequestId:1,adminCurrentPage:3,adminOrderReadMeta:{snapshotLiveVersion:'v1:empty'},
     document:{visibilityState:'visible',querySelector:()=>blocked?{}:null,addEventListener:(n,f)=>events[n]=f},window:{setTimeout:(f,ms)=>{timers.set(++timer,{f,ms});return timer},clearTimeout:id=>timers.delete(id),addEventListener:(n,f)=>events[n]=f},adminBrowserIsOffline:()=>offline,hasBlockingAdminRefreshWork:()=>blocked,
     fetchAdminOrdersFromGas:async opts=>{fetches++;assert.equal(opts.liveSync,true);assert.equal(opts.silent,true);return orders},
     renderAdminOrders:o=>{log.push('render');c.adminCurrentPage=1;c.adminOrderReadMeta=o.adminReadMeta;return true},updateStatsCounters(){},applyCurrentFilter(){},syncAdminSearchMatches(){log.push('search')},handleBatchCheckChange(){},updateNotifyButton(){},applyReadOnlyModeToRealOrders(){},updateAdminRefreshMeta:()=>log.push('updated'),setAdminRefreshState:()=>log.push('failure')};
@@ -51,3 +51,7 @@ for (const succeeds of [true,false]) {
   if(succeeds)assert.equal(result[0].orderNo,'NEW');else assert.equal(result,null);
 }
 console.log('PASS publication-race read retry is fresh, sequential and bounded to two reads');
+
+f=fixture();let reconciled=0;f.c.reconcilePendingAdminShipment=async()=>{reconciled++};
+f.c.adminResumeNeedsCheck=true;await f.c.runAdminLiveOrderSync();assert.equal(reconciled,1,'successful resumed order read retains pending shipment readback');
+f.c.adminResumeNeedsCheck=false;await f.c.runAdminLiveOrderSync();assert.equal(reconciled,1,'ordinary polling must not repeatedly query shipment results');
