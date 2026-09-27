@@ -1231,8 +1231,37 @@
       .shipping-manifest-table {
         min-width: 980px;
         width: 100%;
+        table-layout: fixed;
         border-collapse: collapse;
         background: #ffffff;
+      }
+
+      /* Shared column proportions fit the 190mm printable width of portrait A4. */
+      .shipping-manifest-table th:nth-child(1),
+      .shipping-manifest-table td:nth-child(1) {
+        width: calc(100% * 9 / 190);
+      }
+      .shipping-manifest-table th:nth-child(2),
+      .shipping-manifest-table td:nth-child(2),
+      .shipping-manifest-table th:nth-child(5),
+      .shipping-manifest-table td:nth-child(5) {
+        width: calc(100% * 22 / 190);
+      }
+      .shipping-manifest-table th:nth-child(3),
+      .shipping-manifest-table td:nth-child(3) {
+        width: calc(100% * 45 / 190);
+      }
+      .shipping-manifest-table th:nth-child(4),
+      .shipping-manifest-table td:nth-child(4) {
+        width: calc(100% * 18 / 190);
+      }
+      .shipping-manifest-table th:nth-child(6),
+      .shipping-manifest-table td:nth-child(6) {
+        width: calc(100% * 28 / 190);
+      }
+      .shipping-manifest-table th:nth-child(7),
+      .shipping-manifest-table td:nth-child(7) {
+        width: calc(100% * 46 / 190);
       }
 
       .shipping-manifest-table th,
@@ -1268,36 +1297,17 @@
 
       .shipping-manifest-table .cell-address,
       .shipping-manifest-table .cell-items,
-      .shipping-manifest-table .cell-sender,
       .shipping-manifest-table .cell-note {
         white-space: pre-line;
-        word-break: break-word;
+        overflow-wrap: anywhere;
       }
 
-      .shipping-manifest-table .cell-note {
-        min-width: 220px;
-      }
-
-      @media screen {
-        .shipping-manifest-table {
-          width: max-content;
-          min-width: 100%;
-        }
-
-        .shipping-manifest-table th,
-        .shipping-manifest-table td:not(.cell-note) {
-          white-space: nowrap;
-          word-break: normal;
-          overflow-wrap: normal;
-        }
-
-        .shipping-manifest-table .cell-note {
-          width: 170px;
-          min-width: 170px;
-          max-width: 170px;
-          white-space: pre-line;
-          overflow-wrap: anywhere;
-        }
+      .shipping-manifest-name {
+        display: block;
+        width: 6em;
+        max-width: 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
       }
 
       .shipping-manifest-row-date {
@@ -1315,6 +1325,7 @@
 
       .shipping-tracking-list {
         display: grid;
+        grid-template-columns: minmax(0, 1fr);
         gap: 10px;
         min-width: 0;
       }
@@ -1332,6 +1343,9 @@
 
       .shipping-tracking-segment {
         display: inline-block;
+        flex: 1 1 0;
+        min-width: 0;
+        max-width: 58px;
         width: 58px;
         height: 1.1em;
         border-bottom: 1px solid #0f172a;
@@ -3820,7 +3834,7 @@
 
         .shipping-manifest-summary {
           display: grid !important;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 2mm;
           margin-bottom: 3mm;
         }
@@ -3918,34 +3932,6 @@
           font-weight: 900;
         }
 
-        .shipping-manifest-table th:nth-child(1),
-        .shipping-manifest-table td:nth-child(1) {
-          width: 9mm;
-        }
-        .shipping-manifest-table th:nth-child(2),
-        .shipping-manifest-table td:nth-child(2) {
-          width: 20mm;
-        }
-        .shipping-manifest-table th:nth-child(3),
-        .shipping-manifest-table td:nth-child(3) {
-          width: 38mm;
-        }
-        .shipping-manifest-table th:nth-child(4),
-        .shipping-manifest-table td:nth-child(4) {
-          width: 18mm;
-        }
-        .shipping-manifest-table th:nth-child(5),
-        .shipping-manifest-table td:nth-child(5) {
-          width: 20mm;
-        }
-        .shipping-manifest-table th:nth-child(6),
-        .shipping-manifest-table td:nth-child(6) {
-          width: 40mm;
-        }
-        .shipping-manifest-table th:nth-child(7),
-        .shipping-manifest-table td:nth-child(7) {
-          width: 45mm;
-        }
         .shipping-manifest-blank-row {
           display: table-row !important;
           height: 12mm;
@@ -3963,6 +3949,7 @@
         }
         .shipping-tracking-segment {
           width: 8mm;
+          max-width: 8mm;
           border-bottom: 1px solid #000000 !important;
         }
         .shipping-manifest-row-date {
@@ -18430,10 +18417,10 @@
                     ? `<span class="shipping-manifest-row-date">${escapeHtml(formatShippingManifestRowDate(order?.expectedShippingDate || ""))}</span>`
                     : ""
                 }</td>
-                <td>${escapeHtml(order?.recipientName || "—")}</td>
+                <td><span class="shipping-manifest-name">${escapeHtml(order?.recipientName || "—")}</span></td>
                 <td class="cell-items">${formatMultilineHtml(order?.itemsSummary || "—")}</td>
                 <td class="cell-money">$${escapeHtml(formatAdminMoney(order?.finalAmount || 0))}</td>
-                <td class="cell-sender">${escapeHtml(senderName || "—")}</td>
+                <td class="cell-sender"><span class="shipping-manifest-name">${escapeHtml(senderName || "—")}</span></td>
                 <td class="cell-note">${formatMultilineHtml(note || "—")}</td>
                 <td>${buildShippingTrackingNumberSlotsHtml(order)}</td>
               </tr>
