@@ -1223,6 +1223,7 @@
       }
 
       .shipping-manifest-table-wrap {
+        container-type: inline-size;
         overflow-x: auto;
         border: 1px solid #e2e8f0;
         border-radius: 10px;
@@ -1230,6 +1231,9 @@
 
       .shipping-manifest-table {
         --manifest-cell-padding-x: 4px;
+        --manifest-table-width: max(980px, 100cqw);
+        --manifest-leading-columns: calc(35.6em + 10 * var(--manifest-cell-padding-x) + 5px);
+        --manifest-tracking-base: calc(16.5em + 2 * var(--manifest-cell-padding-x) + 1px);
         min-width: 980px;
         width: 100%;
         table-layout: fixed;
@@ -1237,7 +1241,7 @@
         background: #ffffff;
       }
 
-      /* Size the outer cells to their text; the note column receives the remainder. */
+      /* Keep compact text columns; give 20% of the note's former space to handwriting. */
       .shipping-manifest-table th:nth-child(1),
       .shipping-manifest-table td:nth-child(1) {
         width: calc(2.5em + 2 * var(--manifest-cell-padding-x) + 1px);
@@ -1262,7 +1266,7 @@
       }
       .shipping-manifest-table th:nth-child(7),
       .shipping-manifest-table td:nth-child(7) {
-        width: calc(16.5em + 2 * var(--manifest-cell-padding-x) + 1px);
+        width: calc(var(--manifest-tracking-base) + (var(--manifest-table-width) - 1px - var(--manifest-leading-columns) - var(--manifest-tracking-base)) * 0.2);
       }
 
       .shipping-manifest-table th,
@@ -1344,8 +1348,7 @@
         display: inline-block;
         flex: 1 1 0;
         min-width: 0;
-        max-width: 58px;
-        width: 58px;
+        max-width: none;
         height: 1.1em;
         border-bottom: 1px solid #0f172a;
       }
@@ -3905,6 +3908,8 @@
 
         .shipping-manifest-table {
           --manifest-cell-padding-x: 0.8mm;
+          --manifest-table-width: 100cqw;
+          --manifest-tracking-base: calc(14em + 2 * var(--manifest-cell-padding-x) + 1px);
           min-width: 0 !important;
           width: 100% !important;
           table-layout: fixed;
@@ -3937,11 +3942,6 @@
           font-weight: 900;
         }
 
-        .shipping-manifest-table th:nth-child(7),
-        .shipping-manifest-table td:nth-child(7) {
-          width: calc(14em + 2 * var(--manifest-cell-padding-x) + 1px);
-        }
-
         .shipping-manifest-blank-row {
           display: table-row !important;
           height: 12mm;
@@ -3958,8 +3958,6 @@
           white-space: nowrap;
         }
         .shipping-tracking-segment {
-          width: 8mm;
-          max-width: 8mm;
           border-bottom: 1px solid #000000 !important;
         }
         .shipping-manifest-row-date {
