@@ -1229,6 +1229,7 @@
       }
 
       .shipping-manifest-table {
+        --manifest-cell-padding-x: 4px;
         min-width: 980px;
         width: 100%;
         table-layout: fixed;
@@ -1236,38 +1237,38 @@
         background: #ffffff;
       }
 
-      /* Shared column proportions fit the 190mm printable width of portrait A4. */
+      /* Size the outer cells to their text; the note column receives the remainder. */
       .shipping-manifest-table th:nth-child(1),
       .shipping-manifest-table td:nth-child(1) {
-        width: calc(100% * 9 / 190);
+        width: calc(2.5em + 2 * var(--manifest-cell-padding-x) + 1px);
       }
       .shipping-manifest-table th:nth-child(2),
       .shipping-manifest-table td:nth-child(2),
       .shipping-manifest-table th:nth-child(5),
       .shipping-manifest-table td:nth-child(5) {
-        width: calc(100% * 22 / 190);
+        width: calc(6em + 2 * var(--manifest-cell-padding-x) + 1px);
       }
       .shipping-manifest-table th:nth-child(3),
       .shipping-manifest-table td:nth-child(3) {
-        width: calc(100% * 45 / 190);
+        width: calc(16.5em + 2 * var(--manifest-cell-padding-x) + 1px);
       }
       .shipping-manifest-table th:nth-child(4),
       .shipping-manifest-table td:nth-child(4) {
-        width: calc(100% * 18 / 190);
+        width: calc(4.6em + 2 * var(--manifest-cell-padding-x) + 1px);
       }
       .shipping-manifest-table th:nth-child(6),
       .shipping-manifest-table td:nth-child(6) {
-        width: calc(100% * 28 / 190);
+        width: auto;
       }
       .shipping-manifest-table th:nth-child(7),
       .shipping-manifest-table td:nth-child(7) {
-        width: calc(100% * 46 / 190);
+        width: calc(16.5em + 2 * var(--manifest-cell-padding-x) + 1px);
       }
 
       .shipping-manifest-table th,
       .shipping-manifest-table td {
         border: 1px solid #e2e8f0;
-        padding: 8px;
+        padding: 8px var(--manifest-cell-padding-x);
         text-align: left;
         vertical-align: top;
         color: #1f2937;
@@ -1302,10 +1303,8 @@
         overflow-wrap: anywhere;
       }
 
-      .shipping-manifest-name {
-        display: block;
-        width: 6em;
-        max-width: 100%;
+      .shipping-manifest-table .cell-recipient,
+      .shipping-manifest-table .cell-sender {
         white-space: normal;
         overflow-wrap: anywhere;
       }
@@ -1349,6 +1348,11 @@
         width: 58px;
         height: 1.1em;
         border-bottom: 1px solid #0f172a;
+      }
+
+      .shipping-tracking-line > span:first-child {
+        white-space: normal;
+        overflow-wrap: anywhere;
       }
 
       .shipping-tracking-number {
@@ -3900,6 +3904,7 @@
         }
 
         .shipping-manifest-table {
+          --manifest-cell-padding-x: 0.8mm;
           min-width: 0 !important;
           width: 100% !important;
           table-layout: fixed;
@@ -3922,7 +3927,7 @@
           background: #ffffff !important;
           color: #000000 !important;
           box-sizing: border-box !important;
-          padding: 1.6mm;
+          padding: 1.6mm var(--manifest-cell-padding-x);
           font-size: 8pt;
           line-height: 1.35;
           overflow-wrap: anywhere;
@@ -3932,13 +3937,18 @@
           font-weight: 900;
         }
 
+        .shipping-manifest-table th:nth-child(7),
+        .shipping-manifest-table td:nth-child(7) {
+          width: calc(14em + 2 * var(--manifest-cell-padding-x) + 1px);
+        }
+
         .shipping-manifest-blank-row {
           display: table-row !important;
           height: 12mm;
         }
         .shipping-manifest-blank-row td {
           height: 12mm;
-          padding: 1mm 1.6mm;
+          padding: 1mm var(--manifest-cell-padding-x);
         }
         .shipping-tracking-line {
           color: #000000 !important;
@@ -18417,10 +18427,10 @@
                     ? `<span class="shipping-manifest-row-date">${escapeHtml(formatShippingManifestRowDate(order?.expectedShippingDate || ""))}</span>`
                     : ""
                 }</td>
-                <td><span class="shipping-manifest-name">${escapeHtml(order?.recipientName || "—")}</span></td>
+                <td class="cell-recipient">${escapeHtml(order?.recipientName || "—")}</td>
                 <td class="cell-items">${formatMultilineHtml(order?.itemsSummary || "—")}</td>
                 <td class="cell-money">$${escapeHtml(formatAdminMoney(order?.finalAmount || 0))}</td>
-                <td class="cell-sender"><span class="shipping-manifest-name">${escapeHtml(senderName || "—")}</span></td>
+                <td class="cell-sender">${escapeHtml(senderName || "—")}</td>
                 <td class="cell-note">${formatMultilineHtml(note || "—")}</td>
                 <td>${buildShippingTrackingNumberSlotsHtml(order)}</td>
               </tr>
