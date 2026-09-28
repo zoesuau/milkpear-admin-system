@@ -115,7 +115,7 @@
   const requestGroups = new Map();
   window.fetch = async function(input, options) {
     const url=typeof input==='string'?input:input?.url;let action, requestKey;
-    try {if(url===config.gasApiUrl && typeof options?.body==='string'){const body=JSON.parse(options.body);action=body.action;requestKey=body.diagnosticRequestId||body.requestId;}}catch{}
+    try {if(url===config.gasApiUrl && typeof options?.body==='string'){const body=JSON.parse(options.body);action=body.action==='adminExecuteOrderMutation'?body.mutation?.action:body.action==='adminReadOrderMutationResult'?body.mutationAction:body.action;requestKey=body.diagnosticRequestId||body.requestId;}}catch{}
     if(!actions.has(action))return rawFetch(input,options);
     let operationId=requestKey && requestGroups.get(action+'|'+requestKey);
     if(!operationId){operationId=uuid();if(requestKey){requestGroups.set(action+'|'+requestKey,operationId);if(requestGroups.size>200)requestGroups.delete(requestGroups.keys().next().value);}}
@@ -127,7 +127,7 @@
       record({...metadata,operationId,action,stage:'RESPONSE',outcome:response.ok?'success':'failure',code:response.ok?'OK':'HTTP_'+response.status,httpStatus:response.status,elapsedMs:Date.now()-start});
       // Observe a copy asynchronously; never await telemetry or alter a business response.
       try {void response.clone().json().then(body=>{
-        const ok=response.ok && body?.ok===true && (action!=='adminUpdateProductFields' || body.state==='committed');
+        const ok=response.ok && body?.ok===true && (body.action!=='adminReadOrderMutationResult' || body.state==='completed') && (action!=='adminUpdateProductFields' || body.state==='committed');
         record({...metadata,snapshotTiming:action==='adminReadOrderSnapshot' && body?.action===action ? sanitizeSnapshotTiming({...body.timing,...(body.timing ? {} : body.diagnostic),serverElapsedMs:body.elapsedMs}) : null,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start});
       },error=>record({...metadata,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':error?.name==='SyntaxError'?'GAS_NON_JSON_RESPONSE':'NETWORK_ERROR',httpStatus:response.status,elapsedMs:Date.now()-start}));}catch{}
       return response;

@@ -1,15 +1,16 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260926-order-read-single-pass-v1">
+<html lang="zh-Hant" data-release-version="20260928-order-mutation-recovery-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260926-order-read-single-pass-v1" />
+    <meta name="admin-release" content="20260928-order-mutation-recovery-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20260926-order-read-single-pass-v1"></script>
-    <script src="./admin-diagnostics.js?v=20260926-order-read-single-pass-v1"></script>
+    <script src="./customer-config.js?v=20260928-order-mutation-recovery-v1"></script>
+    <script src="./admin-diagnostics.js?v=20260928-order-mutation-recovery-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20260928-order-mutation-recovery-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -6833,7 +6834,55 @@
         if (overlay) overlay.classList.add("hidden");
       }
 
+      let adminMutationClient = null;
+      function getAdminMutationClient() {
+        if (typeof window.createAdminMutationClient !== "function") throw new Error("ADMIN_MUTATION_CLIENT_UNAVAILABLE");
+        if (!adminMutationClient) adminMutationClient = window.createAdminMutationClient({
+          url: GAS_ORDERS_API_URL, fetch: window.fetch.bind(window), storage: sessionStorage,
+          storageKey: `${ADMIN_STORAGE_NAMESPACE}:pending-order-mutation-v1`,
+          onState: (state) => {
+            let banner = document.getElementById("adminMutationResultStatus");
+            if (!banner) {
+              banner = document.createElement("div");
+              banner.id = "adminMutationResultStatus";
+              banner.setAttribute("role", "status");
+              banner.style.cssText = "padding:12px;margin:12px;border:1px solid #dbe4df;border-radius:12px;background:white";
+              (document.querySelector("main") || document.body).prepend(banner);
+            }
+            const messages = {
+              saving: "正在儲存…",
+              checking: "回覆尚未確認，正在查證儲存結果；請勿重複送出。",
+              unknown: "儲存結果尚未確認，已保留操作紀錄。再次按原操作會先查證結果，不會直接重做。",
+              resolved: "已取得上次操作結果。",
+            };
+            banner.textContent = messages[state] || "";
+            banner.hidden = state === "resolved";
+          },
+        });
+        return adminMutationClient;
+      }
+      function adminMutationErrorMessage(code) {
+        return ({
+          ADMIN_MUTATION_UNCONFIRMED: "儲存結果尚未確認，請保留目前內容，再按原操作查證；請勿改用其他方式重送。",
+          ADMIN_MUTATION_BUSY: "另一筆儲存或結果查證尚未完成，請稍候。",
+          ADMIN_MUTATION_PREVIOUS_RESOLVED: "上一筆操作結果已確認；本次不同的修改尚未送出，請確認後再儲存。",
+          ADMIN_MUTATION_CLIENT_UNAVAILABLE: "儲存元件未載入，本次尚未送出，請重新整理頁面。",
+          ADMIN_MUTATION_STORAGE_INVALID: "無法讀取待確認的操作紀錄，已停止送出，請聯絡管理員。",
+          ADMIN_NOTIFICATION_WORKER_NOT_READY: "通知背景服務尚未就緒，本次未儲存，請聯絡管理員。",
+          ADMIN_MUTATION_KEY_CONFLICT: "操作編號與原修改不一致，已停止送出，請聯絡管理員。",
+        })[code] || "";
+      }
+      async function fetchAdminMutationResponse(url, options) {
+        return getAdminMutationClient().fetch(url, options);
+      }
+
       async function fetchWithTimeout(url, options = {}, timeoutMs = 15000, fullBody = false) {
+        let mutationAction;
+        try { mutationAction = JSON.parse(options.body).action; } catch {}
+        if (url === GAS_ORDERS_API_URL && options.method === "POST" &&
+            ["adminCancelOrder", "adminUpdateGroupOrder", "adminBatchMarkGroupOrderPaid", "adminSetGroupCodAmount", "adminCloseGroupOrder"].includes(mutationAction)) {
+          return fetchAdminMutationResponse(url, options);
+        }
         const controller = typeof AbortController === "undefined" ? null : new AbortController();
         let timer;
         try {
@@ -12618,6 +12667,8 @@
         if (!sourceOrder || !pendingOrder) return false;
         return getAdminSnapshotOverlayComparableFields().every((field) => {
           const pendingValue = String(pendingOrder?.[field] ?? "").trim();
+          if (field === "notificationStatus" && pendingValue === "pending_send" &&
+              ["sent", "failed", "review_required", "manual_required", "skipped"].includes(sourceOrder[field])) return true;
           if (!pendingValue) return true;
           return String(sourceOrder?.[field] ?? "").trim() === pendingValue;
         });
@@ -13599,6 +13650,7 @@
       }
 
       function adminCancelOrderGetErrorMessage(errorCode) {
+        if (adminMutationErrorMessage(errorCode)) return adminMutationErrorMessage(errorCode);
         const messages = {
           INVALID_ADMIN_CANCEL_REQUEST:
             "取消請求格式不正確，請重新整理後再試。",
@@ -14398,6 +14450,7 @@
       }
 
       function adminContentErrorMessage(errorCode, shortages = []) {
+        if (adminMutationErrorMessage(errorCode)) return adminMutationErrorMessage(errorCode);
         if (
           [
             "PRODUCT_STOCK_INSUFFICIENT",
@@ -14569,7 +14622,7 @@
         feedback.innerText = "";
 
         try {
-          const response = await fetch(GAS_ORDERS_API_URL, {
+          const response = await fetchAdminMutationResponse(GAS_ORDERS_API_URL, {
             method: "POST",
             headers: {
               "Content-Type": "text/plain;charset=utf-8",
@@ -14850,6 +14903,7 @@
       }
 
       function adminNoteGetErrorMessage(errorCode) {
+        if (adminMutationErrorMessage(errorCode)) return adminMutationErrorMessage(errorCode);
         const messages = {
           ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入 LINE。",
           REQUEST_KEYS_INVALID: "送出資料格式不正確。",
@@ -14927,7 +14981,7 @@
         let actionSucceeded = false;
 
         try {
-          const response = await fetch(GAS_ORDERS_API_URL, {
+          const response = await fetchAdminMutationResponse(GAS_ORDERS_API_URL, {
             method: "POST",
             headers: {
               "Content-Type": "text/plain;charset=utf-8",
@@ -14999,9 +15053,9 @@
           adminNoteSetSaving(card, editor, false);
           adminNoteSetFeedback(
             editor,
-            actionSucceeded
+            adminMutationErrorMessage(error.message) || (actionSucceeded
               ? "管理員備註可能已寫入，但重新讀取失敗。請重新整理後確認。"
-              : "儲存失敗，請重新讀取後再試。",
+              : "儲存結果尚未確認，請重新讀取確認。"),
             true,
           );
         }
@@ -15799,6 +15853,7 @@
       }
 
       function adminWorkflowGetErrorMessage(errorCode) {
+        if (adminMutationErrorMessage(errorCode)) return adminMutationErrorMessage(errorCode);
         const messages = {
           INVALID_EXPECTED_SHIPPING_DATE: "日期格式不正確。",
           DELIVERY_TIME_SLOT_INVALID: "黑貓配達時段不正確。",
@@ -15938,7 +15993,7 @@
         adminWorkflowSetFeedback(editor, "儲存中…");
 
         try {
-          const response = await fetch(GAS_ORDERS_API_URL, {
+          const response = await fetchAdminMutationResponse(GAS_ORDERS_API_URL, {
             method: "POST",
             headers: {
               "Content-Type": "text/plain;charset=utf-8",
@@ -15990,7 +16045,7 @@
 
           if (payload.order) {
             adminWorkflowSetFeedback(editor, "已儲存，正在背景同步…");
-            if (!applySingleOrderResponse(payload.order, restoreState)) {
+            if (!applySingleOrderResponse(payload.order, restoreState, { preserveUntilSnapshot: true })) {
               throw new Error("ADMIN_WORKFLOW_LOCAL_UPDATE_FAILED");
             }
             return;
@@ -16002,9 +16057,9 @@
           adminWorkflowSetSaving(editor, false);
           adminWorkflowSetFeedback(
             editor,
-            error.message === "ADMIN_WORKFLOW_LOCAL_UPDATE_FAILED"
+            adminMutationErrorMessage(error.message) || (error.message === "ADMIN_WORKFLOW_LOCAL_UPDATE_FAILED"
               ? "訂單已儲存，但畫面更新失敗，請重新整理確認最新資料。"
-              : "儲存失敗，請重新讀取後再試。",
+              : "儲存結果尚未確認，請重新讀取確認。"),
             true,
           );
         }
@@ -19724,7 +19779,7 @@
         importButton.disabled = true;
         setShippingTrackingImportFeedback("正在安全寫入託運單號...");
         try {
-          const response = await fetch(GAS_ORDERS_API_URL, {
+          const response = await fetchAdminMutationResponse(GAS_ORDERS_API_URL, {
             method: "POST",
             headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({
@@ -19801,7 +19856,7 @@
             String(error?.message || "") === "ADMIN_SESSION_REQUIRED"
               ? "登入已過期，請重新登入 LINE。"
               : "託運單號寫入失敗，後台資料未確認更新；請重新整理後再試。";
-          setShippingTrackingImportFeedback(message, true);
+          setShippingTrackingImportFeedback(adminMutationErrorMessage(error.message) || message, true);
         } finally {
           shippingTrackingImportSubmitting = false;
           importButton.disabled = !shippingTrackingImportPreview?.entries?.length;
@@ -20108,7 +20163,7 @@
             GROUP_ORDER_VERSION_CONFLICT: "母單資料已更新，請重新整理後再修改。",
             GROUP_ORDER_CLOSED: "母單已結束，無法修改。",
           };
-          setGroupOrderFeedback(errorMessages[error?.message] || "母單修改失敗，資料與庫存未確認變更。", true, "group-edit-modal-feedback");
+          setGroupOrderFeedback(adminMutationErrorMessage(error?.message) || errorMessages[error?.message] || "母單修改失敗，資料與庫存未確認變更。", true, "group-edit-modal-feedback");
         } finally {
           adminGroupOrderSubmitting = false;
         }
@@ -20257,7 +20312,7 @@
           renderAdminGroupOrders();
           setGroupOrderFeedback(`已更新 ${result.updatedCount} 筆付款狀態。`);
           refreshAdminOrdersInBackground();
-        } catch (error) { setGroupOrderFeedback("批次付款更新失敗，原資料已保留。", true); }
+        } catch (error) { setGroupOrderFeedback(adminMutationErrorMessage(error.message) || "批次付款更新失敗，原資料已保留。", true); }
       }
 
       async function setGroupCodAmount(groupOrderId, orderNo, currentAmount) {
@@ -20270,7 +20325,7 @@
           adminGroupOrders = result.groups || [];
           renderAdminGroupOrders();
           setGroupOrderFeedback(amount > 0 ? `黑貓匯出將由 ${orderNo} 代收 $${formatAdminMoney(amount)}。` : "已清除團體代收總額。");
-        } catch (error) { setGroupOrderFeedback("團體代收設定失敗；僅能指定一筆有效的貨到付款子單。", true); }
+        } catch (error) { setGroupOrderFeedback(adminMutationErrorMessage(error.message) || "團體代收設定失敗；僅能指定一筆有效的貨到付款子單。", true); }
       }
 
       async function closeGroupOrder(groupOrderId, remaining) {
@@ -20280,7 +20335,7 @@
           adminGroupOrders = result.groups || [];
           renderAdminGroupOrders();
           setGroupOrderFeedback("母單已結束，未分配數量已釋放回庫存。");
-        } catch (error) { setGroupOrderFeedback("母單結束失敗，庫存與狀態未確認變更。", true); }
+        } catch (error) { setGroupOrderFeedback(adminMutationErrorMessage(error.message) || "母單結束失敗，庫存與狀態未確認變更。", true); }
       }
 
       // 頁面初始化
