@@ -11,6 +11,7 @@ function fixture(){
     document:{visibilityState:'visible',querySelector:()=>blocked?{}:null,addEventListener:(n,f)=>events[n]=f},window:{setTimeout:(f,ms)=>{timers.set(++timer,{f,ms});return timer},clearTimeout:id=>timers.delete(id),addEventListener:(n,f)=>events[n]=f},adminBrowserIsOffline:()=>offline,hasBlockingAdminRefreshWork:()=>blocked,
     fetchAdminOrdersFromGas:async opts=>{fetches++;assert.equal(opts.liveSync,true);assert.equal(opts.silent,true);return orders},
     renderAdminOrders:o=>{log.push('render');c.adminCurrentPage=1;c.adminOrderReadMeta=o.adminReadMeta;return true},updateStatsCounters(){},applyCurrentFilter(){},syncAdminSearchMatches(){log.push('search')},handleBatchCheckChange(){},updateNotifyButton(){},applyReadOnlyModeToRealOrders(){},updateAdminRefreshMeta:()=>log.push('updated'),setAdminRefreshState:()=>log.push('failure')};
+  Object.assign(c,{adminOrderMutationRevision:0,adminOrderPageViewChanged:()=>false,adminOrderWorkspaceComplete:true,adminOrderPageNeedsRefresh:false,hasAdminOrderPageRequestForCurrentSession:()=>false,applyPendingAdminCompleteWorkspace(){},queueAdminCompleteWorkspaceLoad(){}});
   vm.createContext(c);vm.runInContext(code,c);
   return {c,timers,events,log,orders,blocked:v=>blocked=v,offline:v=>offline=v,fetches:()=>fetches};
 }
@@ -45,7 +46,7 @@ for (const succeeds of [true,false]) {
     document:{getElementById:()=>null},sessionStorage:{getItem:()=> 'fixture',setItem(){},removeItem(){}},createAdminDiagnosticRequestId:()=> 'read',recordAdminReadBreadcrumb(){},getAdminOrderSnapshotKnownChunks:()=>[],markAdminSessionVerified(){},clearAdminNetworkRecoveryPending(){},setAdminStatusPanelVisible(){},updateAdminRefreshMeta(){},
     fetchAdminRecoverableResponse:async(_,options)=>{requests.push(JSON.parse(options.body));return {ok:true,json:async()=>requests.length===1||!succeeds?{ok:false,error:'ADMIN_ORDER_SNAPSHOT_VERSION_NOT_READY'}:{ok:true,action:'adminReadOrderSnapshot',version:'v2'}}},
     mergeAdminOrderSnapshotPayload:async()=>[{orderNo:'NEW'}],classifyAdminReadFrontendError:()=>({event:'BACKEND_ERROR'}),normalizeAdminReadErrorCode:x=>x,isAdminNetworkRecoveryError:()=>false,getAdminOrderReadFailureMessage:()=> 'retry',showAdminAuthOverlay(){}};
-  vm.createContext(c);vm.runInContext(html.slice(html.indexOf('      let adminOrderSnapshotReadPromise'),html.indexOf('      async function fetchAdminOrdersFromGas')),c);
+  c.window={};c.adminOrderMutationRevision=0;vm.createContext(c);vm.runInContext(html.slice(html.indexOf('      let adminOrderSnapshotReadPromise'),html.indexOf('      async function fetchAdminOrdersFromGas')),c);
   const result=await c.performAdminOrderSnapshotFetch({silent:true,liveSync:true});
   assert.equal(requests.length,2);assert.equal(requests[0].knownVersion,'v1');assert.equal(requests[1].knownVersion,'');assert.deepEqual(requests[1].knownChunks,[]);
   if(succeeds)assert.equal(result[0].orderNo,'NEW');else assert.equal(result,null);

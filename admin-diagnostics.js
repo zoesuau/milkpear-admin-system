@@ -8,9 +8,13 @@
   const prefix = 'sanheyuan:diagnostics:v2:';
   const MAX_QUEUE = 500, MAX_HISTORY = 100, MAX_AGE = 7 * 86400000;
   const actions = new Set(['adminAuth','adminValidateSession','adminReadOrders','adminReadOrderSnapshot','adminReadProductCatalog','adminReadShipmentResults','adminCreateOrder','adminCheckCreateOrderResult','adminUpdateOrderContent','adminUpdateOrderWorkflow','adminUpdateOrderAdminNote','adminCancelOrder','adminMarkOrderShipped','adminBatchMarkOrdersShipped','adminAdjustProductInventory','adminReadInventoryAdjustmentResult','adminBatchMarkGroupOrderPaid','adminCloseGroupOrder','adminCloseShippingBatch','adminCreateEzcatExportBatch','adminCreateGroupOrder','adminCreateGroupOrderChild','adminDownloadEzcatExportBatch','adminImportTrackingNumbers','adminReadEzcatExportCandidates','adminReadGroupOrders','adminReadProductInventoryContext','adminReadShippingBatches','adminSearchCustomers','adminSetGroupCodAmount','adminSyncOrderSnapshot','adminUpdateGroupOrder','adminUpdateProductManagement','adminUpdateProductFields','adminReadProductSaveResult','adminUploadBannerImage','adminUpsertShippingBatch']);
-  const stages = new Set(['REQUEST','RESPONSE','RESULT','RENDER','RECONCILE','PAGE','NETWORK','AUTH']);
+  const stages = new Set(['REQUEST','RESPONSE','RESULT','RENDER','RECONCILE','PAGE','NETWORK','AUTH','FLOW']);
+  const flowNames = new Set(['startup','auth','save','query','workspace']);
+  const flowPhases = new Set(['start','auth_complete','first_usable','full_data','save_confirmed','ui_updated','complete']);
+  const MAX_FLOW_AGE = 30 * 60000, MAX_FLOWS = 100, MAX_FLOW_REQUESTS = 200;
+  const flows = new Map(), requestFlows = new Map();
   const outcomes = new Set(['started','success','failure','interrupted','online','offline','visible','hidden']);
-  const codes = new Set(['OK','UNKNOWN_ERROR','AUTH_START_FAILED','AUTH_PROVIDER_CALLBACK_ERROR','AUTH_CALLBACK_CONTEXT_MISSING','AUTH_CALLBACK_STATE_MISMATCH','AUTH_CALLBACK_PARAMETER_MISSING','ADMIN_AUTH_PENDING','ADMIN_AUTH_RESULT_NOT_FOUND','ADMIN_AUTH_RESTART_REQUIRED','GOOGLE_AUTH_REQUIRED','GAS_SERVER_ERROR','GAS_AUTH_REQUEST_FAILED','LINE_TOKEN_EXCHANGE_FAILED','INVENTORY_RESULT_UNCONFIRMED','INVENTORY_REVIEW_REQUIRED','INVENTORY_UPDATE_INDETERMINATE','INVENTORY_PENDING_CHANGED','INVENTORY_STOCK_CHANGED','INVENTORY_UPDATE_BUSY','INVENTORY_REQUEST_KEY_CONFLICT','PRODUCT_SAVE_UNCONFIRMED','PRODUCT_SAVE_REVIEW_REQUIRED','PRODUCT_FIELD_CONFLICT','PRODUCT_SAVE_REQUEST_CONFLICT','PRODUCT_SAVE_RECEIPT_INVALID','PRODUCT_CATALOG_STALE','PRODUCT_CATALOG_INVALID','PRODUCT_CATALOG_HEADER_MISMATCH','PRODUCT_CATALOG_VERSION_REQUIRED','PRODUCT_MANAGEMENT_UPDATE_BUSY','PRODUCT_MANAGEMENT_UPDATE_FAILED','PRODUCT_MANAGEMENT_SAVE_FAILED','PRODUCT_ID_CODE_IMMUTABLE','PRODUCT_SPEC_IMMUTABLE','PRODUCT_SHIPPING_RULE_INVALID','PRODUCT_STOCK_SEPARATE_ACTION_REQUIRED','SITE_SETTINGS_INVALID','SITE_SETTINGS_HEADER_MISMATCH','NETWORK_ERROR','GAS_TIMEOUT','GAS_NON_JSON_RESPONSE','ADMIN_NETWORK_OFFLINE','ADMIN_SESSION_REQUIRED','ADMIN_SESSION_VALIDATION_FAILED','GAS_AUTH_RESPONSE_INVALID','LINE_AUTH_MISSING_FIELD','LINE_AUTH_FAILED','AUTH_GOOGLE_403','SHIPMENT_RESPONSE_TIMEOUT','SHIPMENT_READBACK_FAILED','SHIPMENT_READBACK_INVALID','SHIPMENT_RESPONSE_INVALID','SHIPMENT_RENDER_FAILED','SHIPMENT_STATE_PENDING','SHIPMENT_PAUSED','SHIPMENT_BUDGET_EXHAUSTED','SHIPMENT_NOT_COMMITTED','ORDER_CREATE_FAILED','ORDER_CREATE_INDETERMINATE','ORDER_CREATE_LOCAL_UPDATE_FAILED','PRODUCT_STOCK_INSUFFICIENT','ADMIN_ORDERS_READ_FAILED','ABORTED','UNCONFIRMED']);
+  const codes = new Set(['OK','UNKNOWN_ERROR','AUTH_START_FAILED','AUTH_PROVIDER_CALLBACK_ERROR','AUTH_CALLBACK_CONTEXT_MISSING','AUTH_CALLBACK_STATE_MISMATCH','AUTH_CALLBACK_PARAMETER_MISSING','ADMIN_AUTH_PENDING','ADMIN_AUTH_RESULT_NOT_FOUND','ADMIN_AUTH_RESTART_REQUIRED','ADMIN_AUTH_RECOVERY_EXPIRED','ADMIN_AUTH_RECOVERY_CONTEXT_INVALID','ADMIN_AUTH_RESULT_UNAVAILABLE','ADMIN_AUTH_CONTEXT_INVALID','ADMIN_SESSION_STORE_FAILED','LINE_ADMIN_AUTH_FAILED','LINE_NONCE_MISMATCH','LINE_AUTH_CONFIG_MISSING','LINE_ID_TOKEN_VERIFY_FAILED','LINE_ID_TOKEN_MISSING','INVALID_REDIRECT_URI','GOOGLE_AUTH_REQUIRED','GAS_SERVER_ERROR','GAS_AUTH_REQUEST_FAILED','LINE_TOKEN_EXCHANGE_FAILED','INVENTORY_RESULT_UNCONFIRMED','INVENTORY_REVIEW_REQUIRED','INVENTORY_UPDATE_INDETERMINATE','INVENTORY_PENDING_CHANGED','INVENTORY_STOCK_CHANGED','INVENTORY_UPDATE_BUSY','INVENTORY_REQUEST_KEY_CONFLICT','PRODUCT_SAVE_UNCONFIRMED','PRODUCT_SAVE_REVIEW_REQUIRED','PRODUCT_FIELD_CONFLICT','PRODUCT_SAVE_REQUEST_CONFLICT','PRODUCT_SAVE_RECEIPT_INVALID','PRODUCT_CATALOG_STALE','PRODUCT_CATALOG_INVALID','PRODUCT_CATALOG_HEADER_MISMATCH','PRODUCT_CATALOG_VERSION_REQUIRED','PRODUCT_MANAGEMENT_UPDATE_BUSY','PRODUCT_MANAGEMENT_UPDATE_FAILED','PRODUCT_MANAGEMENT_SAVE_FAILED','PRODUCT_ID_CODE_IMMUTABLE','PRODUCT_SPEC_IMMUTABLE','PRODUCT_SHIPPING_RULE_INVALID','PRODUCT_STOCK_SEPARATE_ACTION_REQUIRED','SITE_SETTINGS_INVALID','SITE_SETTINGS_HEADER_MISMATCH','NETWORK_ERROR','GAS_TIMEOUT','GAS_NON_JSON_RESPONSE','ADMIN_NETWORK_OFFLINE','ADMIN_SESSION_REQUIRED','ADMIN_SESSION_VALIDATION_FAILED','GAS_AUTH_RESPONSE_INVALID','LINE_AUTH_MISSING_FIELD','LINE_AUTH_FAILED','AUTH_GOOGLE_403','SHIPMENT_RESPONSE_TIMEOUT','SHIPMENT_READBACK_FAILED','SHIPMENT_READBACK_INVALID','SHIPMENT_RESPONSE_INVALID','SHIPMENT_RENDER_FAILED','SHIPMENT_STATE_PENDING','SHIPMENT_PAUSED','SHIPMENT_BUDGET_EXHAUSTED','SHIPMENT_NOT_COMMITTED','SAVE_UI_UPDATE_FAILED','ADMIN_MUTATION_UNCONFIRMED','ADMIN_MUTATION_BUSY','ADMIN_MUTATION_PREVIOUS_RESOLVED','ADMIN_MUTATION_STORAGE_INVALID','ORDER_CREATE_FAILED','ORDER_CREATE_INDETERMINATE','ORDER_CREATE_LOCAL_UPDATE_FAILED','PRODUCT_STOCK_INSUFFICIENT','ADMIN_ORDERS_READ_FAILED','ABORTED','UNCONFIRMED']);
   let storageOK = true, pending = new Map(), history = [], dropped = 0, timer, uploading = false, retry = 0, lastUpload = '', uploadState = '';
   const uuid = () => crypto.randomUUID();
   function read(key, fallback) { try { return JSON.parse(localStorage.getItem(prefix + key)) ?? fallback; } catch { storageOK = false; return fallback; } }
@@ -38,14 +42,24 @@
   function safeRequestId(value) {
     if (typeof value !== 'string') return '';
     const match = /^(admin[A-Za-z0-9]{1,60})[|_](?:([a-f0-9]{32})|([0-9]{13}[a-z0-9]{1,20}))$/.exec(value);
-    if (!match || !(actions.has(match[1]) || match[1] === 'adminReadOrderSnapshotBootstrap')) return '';
+    if (!match || !(actions.has(match[1]) || ['adminReadOrderSnapshotBootstrap','adminReadOrderPage'].includes(match[1]))) return '';
     return value.replace('|', '_');
+  }
+
+  function sanitizeFlow(value) {
+    const valid = typeof value.flowId === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(value.flowId)
+      && flowNames.has(value.flowName) && flowPhases.has(value.phase)
+      && Number.isFinite(value.flowStartedAt) && value.flowStartedAt <= value.at + 300000
+      && value.flowStartedAt >= value.at - MAX_FLOW_AGE
+      && Number.isFinite(value.flowElapsedMs) && value.flowElapsedMs >= 0 && value.flowElapsedMs <= MAX_FLOW_AGE;
+    return valid ? {flowId:value.flowId,flowName:value.flowName,phase:value.phase,flowStartedAt:value.flowStartedAt,flowElapsedMs:value.flowElapsedMs}
+      : {flowId:'',flowName:'',phase:'',flowStartedAt:null,flowElapsedMs:null};
   }
 
   function clean(value) {
     if (!value || !isId(value.id) || !isId(value.operationId) || !isId(value.deviceId) || !isId(value.pageId)) return null;
     if (!Number.isFinite(value.at) || value.at < Date.now() - MAX_AGE || value.at > Date.now() + 300000) return null;
-    return {requestId:safeRequestId(value.requestId), id:value.id, operationId:value.operationId, deviceId:value.deviceId, pageId:value.pageId, at:value.at,
+    return {...sanitizeFlow(value),requestId:safeRequestId(value.requestId), id:value.id, operationId:value.operationId, deviceId:value.deviceId, pageId:value.pageId, at:value.at,
       action:actions.has(value.action) ? value.action : 'client', stage:stages.has(value.stage) ? value.stage : 'RESULT',
       outcome:outcomes.has(value.outcome) ? value.outcome : 'failure',
       code:codes.has(value.code) || /^HTTP_[45]\d\d$/.test(value.code) ? value.code : 'UNKNOWN_ERROR',
@@ -83,6 +97,66 @@
       write('history',history);syncQueue();render();schedule();
     } catch { /* Must not affect application control flow. */ }
   }
+  const flowClock = () => typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
+  function pruneFlows() {
+    for (const [id,state] of flows) if (flowClock() - state.startedClock > MAX_FLOW_AGE) flows.delete(id);
+    while (flows.size > MAX_FLOWS) flows.delete(flows.keys().next().value);
+    for (const [id,state] of requestFlows) if (!flows.has(state.handle.flowId)) requestFlows.delete(id);
+    while (requestFlows.size > MAX_FLOW_REQUESTS) requestFlows.delete(requestFlows.keys().next().value);
+  }
+  function activeFlow(handle) {
+    pruneFlows();
+    const state = handle && flows.get(handle.flowId);
+    return state && state.handle === handle ? state : null;
+  }
+  function flowMetadata(state) {
+    if (!state) return {};
+    return {flowId:state.handle.flowId,flowName:state.handle.flowName,flowStartedAt:state.handle.startedAt,
+      phase:state.phase,flowElapsedMs:Math.max(0,flowClock()-state.startedClock)};
+  }
+  function beginFlow(name,options={}) {
+    try {
+      // A callback reload may restore only this safe identity/timestamp pair.
+      // Runtime handles remain opaque, so arbitrary objects cannot mark a flow.
+      if (!flowNames.has(name) || !options || typeof options!=='object' || Array.isArray(options)) return null;
+      const now=Date.now(),restoring=options.flowId!==undefined||options.startedAt!==undefined;
+      let flowId=options.flowId,startedAt=options.startedAt;
+      if (restoring) {
+        // The first callback already has a validated start time but no flow ID.
+        // Generate its identity once; later reloads pass the complete pair.
+        if (flowId===undefined && Number.isFinite(startedAt)) flowId=uuid();
+        if (typeof flowId!=='string' || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(flowId)
+          || !Number.isFinite(startedAt) || startedAt>now || startedAt<now-MAX_FLOW_AGE) return null;
+        pruneFlows();const existing=flows.get(flowId);
+        if (existing) return existing.handle.flowName===name&&existing.handle.startedAt===startedAt ? existing.handle : null;
+      } else {flowId=uuid();startedAt=now;}
+      const handle = Object.freeze({flowId,flowName:name,startedAt});
+      const state = {handle,startedClock:flowClock()-(now-startedAt),operationId:uuid(),phase:'start',marked:new Set(['start'])};
+      flows.set(handle.flowId,state);pruneFlows();
+      record({...flowMetadata(state),operationId:state.operationId,stage:'FLOW',outcome:'started',code:'OK'});
+      return handle;
+    } catch { return null; }
+  }
+  function bindRequestToFlow(value,handle) {
+    try {
+      const id=safeRequestId(value),state=activeFlow(handle);
+      // A retained startup handle must not claim later polling requests. Requests
+      // already sent keep their captured state for late responses in fetch below.
+      if (!id || !state || state.marked.has('complete') || (requestFlows.has(id) && requestFlows.get(id)!==state)) return false;
+      requestFlows.set(id,state);pruneFlows();return true;
+    } catch { return false; }
+  }
+  function markFlow(handle,phase,options={}) {
+    try {
+      const state=activeFlow(handle);
+      if (!state || !flowPhases.has(phase) || state.marked.has(phase)) return false;
+      state.phase=phase;state.marked.add(phase);
+      record({...flowMetadata(state),operationId:state.operationId,stage:'FLOW',outcome:options?.outcome||'success',code:options?.code||'OK',requestId:options?.requestId});
+      if (phase==='complete') {flows.delete(handle.flowId);pruneFlows();}
+      return true;
+    } catch { return false; }
+  }
+  function finishFlow(handle,options={}) { return markFlow(handle,'complete',options); }
   async function flush() {
     if(uploading || !endpoint || navigator.onLine === false)return;
     syncQueue(); if(!pending.size){render();return;}
@@ -97,7 +171,9 @@
     } catch {retry++;uploadState='上傳暫未成功，紀錄已保留，會自動再試';}
     finally {clearTimeout(timeout);uploading=false;render();if(pending.size)schedule(Math.min(60000,3000 * 2 ** Math.min(retry,5)));}
   }
-  const labels={REQUEST:'請求開始',RESPONSE:'伺服器回覆',RESULT:'處理結果',RENDER:'畫面更新',RECONCILE:'查回結果',PAGE:'頁面狀態',NETWORK:'網路狀態',AUTH:'登入流程'};
+  const labels={REQUEST:'請求開始',RESPONSE:'伺服器回覆',RESULT:'處理結果',RENDER:'畫面更新',RECONCILE:'查回結果',PAGE:'頁面狀態',NETWORK:'網路狀態',AUTH:'登入流程',FLOW:'整段操作'};
+  const flowLabels={startup:'開啟後台',auth:'登入',save:'儲存',query:'查詢',workspace:'背景完整資料'};
+  const phaseLabels={start:'開始',auth_complete:'登入完成',first_usable:'第一頁可操作',full_data:'完整資料已載入',save_confirmed:'儲存已確認',ui_updated:'畫面已更新',complete:'結束'};
   function responseMetadata(response) {
     let responseHost='unknown';
     try {const host=new URL(response.url).hostname;
@@ -105,7 +181,7 @@
     } catch {}
     return {responseHost,redirected:typeof response.redirected==='boolean'?response.redirected:null};
   }
-  function format(e){return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}${e.headersMs!==null&&e.headersMs!==undefined?'｜回應標頭 '+(e.headersMs/1000).toFixed(2)+' 秒':''}${e.bodyMs!==null&&e.bodyMs!==undefined?'｜資料讀取 '+(e.bodyMs/1000).toFixed(2)+' 秒':''}${e.responseHost&&e.responseHost!=='unknown'?'｜'+e.responseHost:''}${e.redirected===true?'｜已轉址':''}${e.snapshotTiming?'｜快取讀取 '+e.snapshotTiming.cacheReadReason+'｜快取存入 '+e.snapshotTiming.cacheWriteReason+(e.snapshotTiming.serverElapsedMs!==null?'｜後端 '+(e.snapshotTiming.serverElapsedMs/1000).toFixed(2)+' 秒':''):''}\n操作 ${e.operationId}${e.requestId ? "｜請求 " + e.requestId : ""}｜${e.deviceType}｜${e.version}`;}
+  function format(e){const flow=sanitizeFlow(e);return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}${flow.flowId?'｜'+flowLabels[flow.flowName]+'・'+phaseLabels[flow.phase]+'｜整段 '+Math.round(flow.flowElapsedMs)+' 毫秒':''}${e.headersMs!==null&&e.headersMs!==undefined?'｜回應標頭 '+(e.headersMs/1000).toFixed(2)+' 秒':''}${e.bodyMs!==null&&e.bodyMs!==undefined?'｜資料讀取 '+(e.bodyMs/1000).toFixed(2)+' 秒':''}${e.responseHost&&e.responseHost!=='unknown'?'｜'+e.responseHost:''}${e.redirected===true?'｜已轉址':''}${e.snapshotTiming?'｜快取讀取 '+e.snapshotTiming.cacheReadReason+'｜快取存入 '+e.snapshotTiming.cacheWriteReason+(e.snapshotTiming.serverElapsedMs!==null?'｜後端 '+(e.snapshotTiming.serverElapsedMs/1000).toFixed(2)+' 秒':''):''}\n操作 ${e.operationId}${e.requestId ? "｜請求 " + e.requestId : ""}${flow.flowId?'｜流程 '+flow.flowId:''}｜${e.deviceType}｜${e.version}`;}
   function render(){try{
     const el=document.getElementById('adminDiagnosticsText'); if(el)el.textContent=history.length?history.slice().reverse().map(format).join('\n\n'):'目前這個瀏覽器沒有診斷紀錄。';
     const status=document.getElementById('adminDiagnosticsStatus');if(status)status.textContent=`本機 ${history.length} 筆｜待上傳 ${pending.size} 筆${dropped?'｜超過保存上限／期限 '+dropped+' 筆':''}。${!storageOK?'瀏覽器無法持久保存，關閉後尚未上傳的紀錄可能遺失。':''}${navigator.onLine===false?'目前離線，恢復連線後自動補傳。':uploadState}${lastUpload?' 最近上傳：'+lastUpload:''}`;
@@ -120,21 +196,25 @@
     let operationId=requestKey && requestGroups.get(action+'|'+requestKey);
     if(!operationId){operationId=uuid();if(requestKey){requestGroups.set(action+'|'+requestKey,operationId);if(requestGroups.size>200)requestGroups.delete(requestGroups.keys().next().value);}}
     const requestId=safeRequestId(requestKey);
-    const start=Date.now();record({requestId,operationId,action,stage:'REQUEST',outcome:'started',code:'OK'});
+    // Capture the binding: completion/eviction must not attach a late response
+    // to a newer operation or lose its original flow association.
+    pruneFlows();const flowState=requestFlows.get(requestId);
+    const recordRequest = event => record({...event,...flowMetadata(flowState)});
+    const start=Date.now();recordRequest({requestId,operationId,action,stage:'REQUEST',outcome:'started',code:'OK'});
     try {
       const response=await rawFetch(input,options);
       const headersAt=Date.now(), metadata={requestId,...responseMetadata(response),headersMs:headersAt-start};
-      record({...metadata,operationId,action,stage:'RESPONSE',outcome:response.ok?'success':'failure',code:response.ok?'OK':'HTTP_'+response.status,httpStatus:response.status,elapsedMs:Date.now()-start});
+      recordRequest({...metadata,operationId,action,stage:'RESPONSE',outcome:response.ok?'success':'failure',code:response.ok?'OK':'HTTP_'+response.status,httpStatus:response.status,elapsedMs:Date.now()-start});
       // Observe a copy asynchronously; never await telemetry or alter a business response.
       try {void response.clone().json().then(body=>{
         const ok=response.ok && body?.ok===true && (body.action!=='adminReadOrderMutationResult' || body.state==='completed') && (action!=='adminUpdateProductFields' || body.state==='committed');
-        record({...metadata,snapshotTiming:action==='adminReadOrderSnapshot' && body?.action===action ? sanitizeSnapshotTiming({...body.timing,...(body.timing ? {} : body.diagnostic),serverElapsedMs:body.elapsedMs}) : null,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start});
-      },error=>record({...metadata,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':error?.name==='SyntaxError'?'GAS_NON_JSON_RESPONSE':'NETWORK_ERROR',httpStatus:response.status,elapsedMs:Date.now()-start}));}catch{}
+        recordRequest({...metadata,snapshotTiming:action==='adminReadOrderSnapshot' && body?.action===action ? sanitizeSnapshotTiming({...body.timing,...(body.timing ? {} : body.diagnostic),serverElapsedMs:body.elapsedMs}) : null,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start});
+      },error=>recordRequest({...metadata,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':error?.name==='SyntaxError'?'GAS_NON_JSON_RESPONSE':'NETWORK_ERROR',httpStatus:response.status,elapsedMs:Date.now()-start}));}catch{}
       return response;
-    } catch(error) {record({requestId,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':'NETWORK_ERROR',elapsedMs:Date.now()-start});throw error;}
+    } catch(error) {recordRequest({requestId,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':'NETWORK_ERROR',elapsedMs:Date.now()-start});throw error;}
   };
   const shipIds=new Map();
-  window.AdminDiagnostics={record,flush,render, async query(token) {
+  window.AdminDiagnostics={record,flush,render,beginFlow,bindRequestToFlow,markFlow,finishFlow, async query(token) {
     if(!token)throw new Error('請先完成管理員登入。');
     const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);
     try {const response=await rawFetch(endpoint+'/query',{method:'POST',headers:{'content-type':'application/json'},signal:controller.signal,body:JSON.stringify({adminSessionToken:token})});const result=await response.json();if(!response.ok||!result.ok)throw new Error('暫時無法讀取集中紀錄，請確認登入或服務狀態。');return result.events.map(format).join('\n\n')||'集中紀錄目前沒有資料。';}finally{clearTimeout(timeout);}

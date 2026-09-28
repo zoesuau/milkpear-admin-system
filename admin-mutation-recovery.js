@@ -26,7 +26,9 @@
     const supported = (url,options) => {
       try { return url === config.url && options?.method === 'POST' && actions.has(JSON.parse(options.body).action); } catch { return false; }
     };
-    const response = result => ({ok:true,status:200,json:async()=>result,text:async()=>JSON.stringify(result)});
+    const diagnosticRequestId = entry => entry.action+'_'+entry.requestKey.slice(9).replace(/-/g,'');
+    const bindFlow = (entry,flow) => { try { config.diagnostics?.bindRequestToFlow?.(diagnosticRequestId(entry),flow); } catch {} };
+    const response = (result,entry,flow) => ({ok:true,status:200,json:async()=>result,text:async()=>JSON.stringify(result),diagnosticFlow:flow,diagnosticRequestId:diagnosticRequestId(entry)});
     async function request(body, timeoutMs) {
       const controller = new AbortController(); let timer;
       try {
@@ -41,11 +43,12 @@
         ]);
       } finally {clearTimeout(timer);}
     }
-    async function read(entry,token) {
+    async function read(entry,token,flow) {
       notify('checking');
+      bindFlow(entry,flow);
       for(let attempt=0;attempt<2;attempt++) {
         try {
-          const result=await request({action:'adminReadOrderMutationResult',requestKey:entry.requestKey,mutationAction:entry.action,requestId:entry.action+'_'+entry.requestKey.slice(9).replace(/-/g,''),adminSessionToken:token},8000);
+          const result=await request({action:'adminReadOrderMutationResult',requestKey:entry.requestKey,mutationAction:entry.action,requestId:diagnosticRequestId(entry),adminSessionToken:token},8000);
           if(result?.errorCode==='ADMIN_SESSION_REQUIRED') throw Error('ADMIN_SESSION_REQUIRED');
           if(result?.ok===true && result.action==='adminReadOrderMutationResult' && result.requestKey===entry.requestKey) {
             if(result.state==='completed' && result.result?.action===entry.action && typeof result.result.ok==='boolean') return result.result;
@@ -57,7 +60,7 @@
       notify('unknown'); throw Error('ADMIN_MUTATION_UNCONFIRMED');
     }
     async function execute(options) {
-      const payload=JSON.parse(options.body),token=payload.adminSessionToken;
+      const payload=JSON.parse(options.body),token=payload.adminSessionToken,flow=options.diagnosticFlow;
       delete payload.adminSessionToken;
       const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(canonical(payload))));
       const fingerprint=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
@@ -66,10 +69,10 @@
         // A different draft can query the previous operation but cannot be
         // labelled saved by a result belonging to that previous draft.
         if(entry.fingerprint!==fingerprint || !entry.notFound) {
-          const result=await read(entry,token);
+          const result=await read(entry,token,flow);
           config.storage.removeItem(key);notify('resolved');
           if(entry.fingerprint!==fingerprint) throw Error('ADMIN_MUTATION_PREVIOUS_RESOLVED');
-          return response(result);
+          return response(result,entry,flow);
         }
       } else {
         entry={requestKey:'mutation_'+crypto.randomUUID(),action:payload.action,fingerprint,notFound:false};
@@ -77,15 +80,16 @@
       entry.notFound=false;
       store(entry); // Fail closed before the write if browser storage is unavailable.
       notify('saving');
+      bindFlow(entry,flow);
       try {
-        const result=await request({action:'adminExecuteOrderMutation',requestKey:entry.requestKey,requestId:entry.action+'_'+entry.requestKey.slice(9).replace(/-/g,''),mutation:payload,adminSessionToken:token},15000);
+        const result=await request({action:'adminExecuteOrderMutation',requestKey:entry.requestKey,requestId:diagnosticRequestId(entry),mutation:payload,adminSessionToken:token},15000);
         if(result?.action===entry.action && typeof result.ok==='boolean' && result.errorCode!=='ADMIN_MUTATION_UNCONFIRMED') {
           if(result.ok && result.requestKey!==entry.requestKey) throw Error('RESULT_KEY_MISMATCH');
-          config.storage.removeItem(key);notify('resolved');return response(result);
+          config.storage.removeItem(key);notify('resolved');return response(result,entry,flow);
         }
       } catch { /* Transport failure is not a business failure. Read, do not resend. */ }
-      const result=await read(entry,token);
-      config.storage.removeItem(key);notify('resolved');return response(result);
+      const result=await read(entry,token,flow);
+      config.storage.removeItem(key);notify('resolved');return response(result,entry,flow);
     }
     return {
       supported,

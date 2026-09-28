@@ -30,6 +30,7 @@ async function run({ orders = shipped, snapshot = old, ok = true, lostResponse =
     ensureAdminSessionReady: async () => true, markAdminSessionVerified() {}, setAdminAuthRetryButtonMode() {}, showAdminAuthOverlay() {},
     document: { visibilityState: "visible", getElementById: node },
     pendingAdminSnapshotOrderOverlays: new Map(),
+    adminOrderMutationRevision:0,adminPendingCompleteWorkspace:null,adminOrderPageNeedsRefresh:false,refreshAdminOrdersInBackground(){},
     adminBatchProcessing: false, selectedOrderNos: new Set(["A", "B"]),
     unconfirmedNotificationOrderNos: new Set(),
     getSelectedAdminOrders: () => old.slice(0, 2), isBatchShippableOrder: () => true,
@@ -88,6 +89,15 @@ assert.ok(uncertain.c.loadPendingAdminShipment());
 assert.equal(uncertain.c.latestAdminOrders[0].orderStatus,"已安排出貨");
 await uncertain.c.batchUpdateStatusToShipped();
 assert.equal(uncertain.writes,1);
+const offPage=await run({lostResponse:true});
+offPage.c.latestAdminOrders=[{orderNo:'C',orderStatus:'已安排出貨'}];
+offPage.c.adminOrderReadMeta={serverFiltered:true,totalCount:41,page:3,pageSize:20,totalPages:3};
+offPage.c.fetchAdminRecoverableResponse=async()=>({ok:true,json:async()=>({ok:true,action:'adminReadShipmentResults',orders:shipped,unresolved:[]})});
+assert.equal(await offPage.c.reconcilePendingAdminShipment(),true,'confirmed receipt outside current page is still successful');
+assert.deepEqual(Array.from(offPage.c.latestAdminOrders,o=>o.orderNo),['C'],'page must not acquire unrelated recovered orders');
+assert.equal(offPage.c.pendingAdminSnapshotOrderOverlays.size,2);
+assert.equal(offPage.c.loadPendingAdminShipment(),null,'off-page successful recovery clears pending request without resend');
+assert.equal(offPage.writes,1);
 const expired=await run({expired:true});
 assert.match(expired.c.feedback.message,/登入已過期/);
 assert.equal(expired.reads,0);

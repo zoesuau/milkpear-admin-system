@@ -109,15 +109,15 @@ const startup = between(
   '      // ==========================================',
 );
 assert.ok(
-  startup.indexOf('fetchAdminOrderBootstrapFromGas()') <
-    startup.indexOf('fetchInitialAdminOrdersWithRecovery({ silent: true })'),
-  'first page must render from bootstrap before the full background read',
+  !startup.includes('fetchAdminOrderBootstrapFromGas()') && startup.includes('fetchInitialAdminOrdersWithRecovery({ page: 1 })'),
+  'startup must use a formal authorized page, not unlock a bootstrap preview',
 );
 
-console.log('snapshot bootstrap cache: PASS no full chunk read, multi-chunk cache, session reuse, bootstrap-first startup');
+console.log('snapshot bootstrap cache: PASS no full chunk read, multi-chunk cache, session reuse, formal-page startup');
 
 const bootstrapSource = between(html, '      async function fetchAdminOrderBootstrapFromGas()', '      let adminOrderSnapshotReadPromise');
 Object.assign(context, {
+ window:{},
  GAS_ORDERS_API_URL: 'https://example.invalid', ADMIN_LINE_SESSION_TOKEN_KEY: 'token', ADMIN_READ_ORDERS_TIMEOUT_MS: 60000,
  ADMIN_ORDER_SNAPSHOT_ATTEMPT_TIMEOUT_MS: 20000,
  createAdminDiagnosticRequestId: () => 'fixture', markAdminSessionVerified() {}, recordAdminReadBreadcrumb() {}, showAdminAuthOverlay() {},
@@ -182,18 +182,19 @@ async function runStartup(useCache) {
   window:{setTimeout:()=>1,clearTimeout(){}},ADMIN_INITIAL_LOAD_SLOW_MS:10000,
   showAdminAuthOverlay(){}, hideAdminAuthOverlay(){},adminAuthBlocksDataLoad:false,
   fetchAdminOrderBootstrapFromGas:async()=>{bootstrapCalls++;return context.fetchAdminOrderBootstrapFromGas();},
-  fetchInitialAdminOrdersWithRecovery:async()=>{fullCalls++;return [{orderNo:'A'},{orderNo:'B'}];},
+  fetchInitialAdminOrdersWithRecovery:async()=>{fullCalls++;return Object.assign([{orderNo:'A'},{orderNo:'B'}],{adminReadMeta:{serverFiltered:true,pageComplete:true}});},
   renderAdminOrders:orders=>{rendered.push(orders.length);return true;},
   updateStatsCounters(){},handleBatchCheckChange(){},updateNotifyButton(){},applyReadOnlyModeToRealOrders(){},
-  markAdminSessionVerified(){},recordAdminReadBreadcrumb(){},restoreAdminTab(){},setAdminStatusPanelVisible(){},
+  markAdminSessionVerified(){},recordAdminReadBreadcrumb(){},restoreAdminTab(){},setAdminStatusPanelVisible(){},updateAdminRefreshMeta(){},queueAdminCompleteWorkspaceLoad(){},
   document:{getElementById:()=>element,querySelector:()=>element,querySelectorAll:()=>[]},
   adminProductsReady:false,adminProductCatalogLoadPromise:null,fetchAdminProductCatalogFromGas:async()=>[],scheduleAdminLiveOrderSync(){},
   adminInitialOrdersReady:false,reconcilePendingAdminShipment:async()=>{},recoverPendingAdminCreateOrderOnLoad:async()=>{},
   loadPendingAdminCreateRequest:()=>null,readAdminCreateDraft:()=>null,Date,
  };
  vm.createContext(c); await vm.runInContext('(async()=>{'+startupBody+'})()',c);
- assert.equal(bootstrapCalls,1); assert.equal(fullCalls,useCache?0:1);
+ assert.equal(bootstrapCalls,0); assert.equal(fullCalls,1);
  assert.equal(c.adminInitialOrdersReady,true); assert.equal(element.disabled,false);
+ assert.equal(c.adminOrderWorkspaceComplete,false);
  assert.equal(rendered.at(-1),2);
 }
 await runStartup(true); await runStartup(false);
@@ -202,4 +203,4 @@ assert.equal((await context.fetchAdminOrderBootstrapFromGas()).fullSnapshot,fals
 reset(); storage.delete('token'); let unauthFetches=0;
 context.fetchAdminRecoverableResponse=async()=>{unauthFetches++;throw Error('must not fetch');};
 assert.equal(await context.fetchAdminOrderBootstrapFromGas(),null);assert.equal(unauthFetches,0);
-console.log('PASS real startup uses one request for verified cache, two for cold load; readiness and auth guards');
+console.log('PASS real startup uses one formal page read regardless of cache, optional full workspace; readiness and auth guards');

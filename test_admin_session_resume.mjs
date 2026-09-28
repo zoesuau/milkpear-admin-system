@@ -12,6 +12,7 @@ function fixture(){
  const node=nodes.adminAuthRetryBtn;
  const c={ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED:false,initializeAdminLiveOrderSync(){},adminCreateOrderSubmitting:false,adminCreateProductsRefreshing:false,adminAddOrderOpening:false,Date,URLSearchParams,ADMIN_LINE_SESSION_TOKEN_KEY:'token',ADMIN_LINE_STATE_KEY:'state',ADMIN_AUTH_TIMEOUT_MS:60000,GAS_ORDERS_API_URL:'mock',adminAuthBlocksDataLoad:false,
  shouldOfferAdminRefreshFromMessage:()=>false,document:{visibilityState:'visible',getElementById:id=>nodes[id],addEventListener:(n,f)=>events[n]=f},window:{location:{search:'',reload:()=>{reloads++}},addEventListener:(n,f)=>events[n]=f},sessionStorage:{getItem:k=>storage.get(k)||null,removeItem:k=>storage.delete(k)},setAdminAuthRetryButtonMode(){},createAdminDiagnosticRequestId:()=> 'fixture',publishAdminAuthDiagnostic(){},reconcilePendingAdminShipment:async()=>{reads++},startAdminAuth:async()=>{navigations++},fetchAdminRecoverableResponse:async()=>{checks++;return {ok:true,json:async()=>({ok:true,action:'adminValidateSession',allowed:true})}}};
+ c.hasAdminOrderPageRequestForCurrentSession=()=>false;
  vm.createContext(c);vm.runInContext(source,c);
  return {c,events,storage,node,nodes,stats:()=>({checks,reads,navigations,reloads})};
 }
@@ -112,15 +113,16 @@ flights[1]({ok:true,json:async()=>({ok:true,allowed:true,action:'adminValidateSe
 console.log('session flight lifecycle PASS: reverse sharing, manual retry, separate tokens and old cleanup');
 
 // Idle resume uses the protected order endpoint; editing still gets a session check.
-for (const mode of ['idle','reading','editing','offline']) {
+for (const mode of ['idle','reading','page-reading','editing','offline']) {
  f=fixture();vm.runInContext('adminInitialOrdersReady=true',f.c);
  let scheduled=0;f.c.ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED=true;
  f.c.adminOrderSnapshotReadPromise=mode==='reading'?Promise.resolve():null;
+ f.c.hasAdminOrderPageRequestForCurrentSession=()=>mode==='page-reading';
  f.c.canRunAdminLiveOrderSync=()=>mode==='idle';
  f.c.scheduleAdminLiveOrderSync=delay=>{assert.equal(delay,0);scheduled++};
  f.c.navigator={onLine:mode!=='offline'};
  f.c.initializeAdminSessionRecovery();f.events.visibilitychange();await tick();
  assert.equal(f.stats().checks,mode==='editing'||mode==='offline'?1:0,mode);
- assert.equal(scheduled,mode==='idle'||mode==='reading'?1:0,mode);
+ assert.equal(scheduled,['idle','reading','page-reading'].includes(mode)?1:0,mode);
 }
 console.log('PASS idle resume removes redundant validation; busy editing retains validation');
