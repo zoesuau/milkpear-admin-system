@@ -9246,10 +9246,9 @@
                 <input type="hidden" data-product-field="imageUrl" value="${escapeHtml(product.imageUrl || "")}">
                 <input type="file" data-product-image-file accept="image/png,image/jpeg,image/webp,image/gif" onchange="previewSelectedProductImage(this)">
                 <div class="product-image-actions">
-                  <button type="button" class="product-action-btn secondary" onclick="uploadSelectedProductImage(this)">上傳照片</button>
                   <button type="button" class="product-action-btn danger" onclick="clearSelectedProductImage(this)">移除照片</button>
                 </div>
-                <small data-product-image-status style="color:#64748b;">支援 PNG、JPG、WEBP、GIF，5MB 以下。上傳後仍需儲存商品；前台目前不顯示。</small>
+                <small data-product-image-status style="color:#64748b;">支援 PNG、JPG、WEBP、GIF，5MB 以下。選好照片後按「儲存商品」即可；前台目前不顯示。</small>
               </div>
             </div>
           </div>
@@ -9581,7 +9580,7 @@
         }
         preview.src = URL.createObjectURL(file);
         preview.hidden = false;
-        if (status) status.textContent = "已選擇照片，請按「上傳照片」。";
+        if (status) status.textContent = "已選擇照片，按「儲存商品」會自動上傳。";
       }
 
       async function uploadSelectedProductImage(button) {
@@ -9596,17 +9595,18 @@
         ).trim();
         if (!adminSessionToken) {
           if (status) status.textContent = "登入已過期，請重新登入 LINE。";
-          return;
+          return false;
         }
         if (!file) {
           if (status) status.textContent = "請先選擇一張圖片。";
-          return;
+          return false;
         }
         if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type) || file.size > 5 * 1024 * 1024) {
           if (status) status.textContent = "請選擇支援格式且小於 5MB 的圖片。";
-          return;
+          return false;
         }
 
+        const wasDisabled = button.disabled;
         button.disabled = true;
         if (status) status.textContent = "照片上傳中...";
         try {
@@ -9632,12 +9632,14 @@
             preview.hidden = false;
           }
           if (input) input.value = "";
-          if (status) status.textContent = "✅ 照片已上傳，請再按「儲存商品」。";
+          if (status) status.textContent = "照片已上傳，正在儲存商品...";
+          return true;
         } catch (error) {
           console.error("商品照片上傳失敗", error);
-          if (status) status.textContent = "照片上傳失敗，請換一張較小的圖片再試。";
+          if (status) status.textContent = "照片上傳失敗，編輯內容已保留，請再按「儲存商品」重試。";
+          return false;
         } finally {
-          button.disabled = false;
+          button.disabled = wasDisabled;
         }
       }
 
@@ -10132,6 +10134,27 @@
         }
       }
 
+      let productImageSaveInFlight = false;
+      async function saveProductWithSelectedImage(container, save) {
+        if (productImageSaveInFlight || productManagementSaveInFlight) return false;
+        productImageSaveInFlight = true;
+        const controls = [...document.querySelectorAll(
+          '#product-page-section button, #product-page-section input, #product-page-section select, #product-page-section textarea, #productAddModal button, #productAddModal input, #productAddModal select, #productAddModal textarea'
+        )].map(element => ({ element, disabled: element.disabled }));
+        controls.forEach(({element}) => { element.disabled = true; });
+        try {
+          const input = container.querySelector('[data-product-image-file]');
+          if (input?.files?.length && !await uploadSelectedProductImage(input)) {
+            setProductManagementFeedback('照片未能上傳，商品尚未儲存；編輯內容已保留。', 'error');
+            return false;
+          }
+          return await save();
+        } finally {
+          controls.forEach(({element, disabled}) => { element.disabled = disabled; });
+          productImageSaveInFlight = false;
+        }
+      }
+
       async function saveProductAddModal() {
         const modal = document.getElementById("productAddModal");
         const fields = document.getElementById("productAddModalFields");
@@ -10139,9 +10162,6 @@
         if (!fields) return;
 
         const product = readProductManagementCard(fields);
-        const products = applyAdminProductAutoSort(
-          adminProductCatalog.concat(product),
-        );
         const validationMessage = validateProductManagementProducts(adminProductCatalog.concat(product), product);
         if (validationMessage) {
           if (feedback) {
@@ -10151,7 +10171,10 @@
           return;
         }
 
-        const saved = await saveProductManagementPayload({ products });
+        const saved = await saveProductWithSelectedImage(fields, () => {
+          product.imageUrl = readProductManagementCard(fields).imageUrl;
+          return saveProductManagementPayload({ products: applyAdminProductAutoSort(adminProductCatalog.concat(product)) });
+        });
         if (saved) modal?.classList.remove("open");
       }
 
@@ -10270,7 +10293,10 @@
 
         const before = card.productEditBase || adminProductCatalog.find(p => p.id === product.id);
         if (!before) return;
-        await saveProductManagementPayload({productId:product.id,changes:productManagementChanges(before, product)});
+        await saveProductWithSelectedImage(card, () => {
+          product.imageUrl = readProductManagementCard(card).imageUrl;
+          return saveProductManagementPayload({productId:product.id,changes:productManagementChanges(before, product)});
+        });
       }
 
       async function deactivateProductManagementCard(productId) {
