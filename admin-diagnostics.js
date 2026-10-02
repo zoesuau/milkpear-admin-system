@@ -14,7 +14,7 @@
   const MAX_FLOW_AGE = 30 * 60000, MAX_FLOWS = 100, MAX_FLOW_REQUESTS = 200;
   const flows = new Map(), requestFlows = new Map();
   const outcomes = new Set(['started','success','failure','interrupted','online','offline','visible','hidden']);
-  const codes = new Set(['OK','UNKNOWN_ERROR','AUTH_START_FAILED','AUTH_PROVIDER_CALLBACK_ERROR','AUTH_CALLBACK_CONTEXT_MISSING','AUTH_CALLBACK_STATE_MISMATCH','AUTH_CALLBACK_PARAMETER_MISSING','ADMIN_AUTH_PENDING','ADMIN_AUTH_RESULT_NOT_FOUND','ADMIN_AUTH_RESTART_REQUIRED','ADMIN_AUTH_RECOVERY_EXPIRED','ADMIN_AUTH_RECOVERY_CONTEXT_INVALID','ADMIN_AUTH_RESULT_UNAVAILABLE','ADMIN_AUTH_CONTEXT_INVALID','ADMIN_SESSION_STORE_FAILED','LINE_ADMIN_AUTH_FAILED','LINE_NONCE_MISMATCH','LINE_AUTH_CONFIG_MISSING','LINE_ID_TOKEN_VERIFY_FAILED','LINE_ID_TOKEN_MISSING','INVALID_REDIRECT_URI','GOOGLE_AUTH_REQUIRED','GAS_SERVER_ERROR','GAS_AUTH_REQUEST_FAILED','LINE_TOKEN_EXCHANGE_FAILED','INVENTORY_RESULT_UNCONFIRMED','INVENTORY_REVIEW_REQUIRED','INVENTORY_UPDATE_INDETERMINATE','INVENTORY_PENDING_CHANGED','INVENTORY_STOCK_CHANGED','INVENTORY_UPDATE_BUSY','INVENTORY_REQUEST_KEY_CONFLICT','PRODUCT_SAVE_UNCONFIRMED','PRODUCT_SAVE_REVIEW_REQUIRED','PRODUCT_FIELD_CONFLICT','PRODUCT_SAVE_REQUEST_CONFLICT','PRODUCT_SAVE_RECEIPT_INVALID','PRODUCT_CATALOG_STALE','PRODUCT_CATALOG_INVALID','PRODUCT_CATALOG_HEADER_MISMATCH','PRODUCT_CATALOG_VERSION_REQUIRED','PRODUCT_MANAGEMENT_UPDATE_BUSY','PRODUCT_MANAGEMENT_UPDATE_FAILED','PRODUCT_MANAGEMENT_SAVE_FAILED','PRODUCT_ID_CODE_IMMUTABLE','PRODUCT_SPEC_IMMUTABLE','PRODUCT_SHIPPING_RULE_INVALID','PRODUCT_STOCK_SEPARATE_ACTION_REQUIRED','SITE_SETTINGS_INVALID','SITE_SETTINGS_HEADER_MISMATCH','NETWORK_ERROR','GAS_TIMEOUT','GAS_NON_JSON_RESPONSE','ADMIN_NETWORK_OFFLINE','ADMIN_SESSION_REQUIRED','ADMIN_SESSION_VALIDATION_FAILED','GAS_AUTH_RESPONSE_INVALID','LINE_AUTH_MISSING_FIELD','LINE_AUTH_FAILED','AUTH_GOOGLE_403','SHIPMENT_RESPONSE_TIMEOUT','SHIPMENT_READBACK_FAILED','SHIPMENT_READBACK_INVALID','SHIPMENT_RESPONSE_INVALID','SHIPMENT_RENDER_FAILED','SHIPMENT_STATE_PENDING','SHIPMENT_PAUSED','SHIPMENT_BUDGET_EXHAUSTED','SHIPMENT_NOT_COMMITTED','SAVE_UI_UPDATE_FAILED','ADMIN_MUTATION_UNCONFIRMED','ADMIN_MUTATION_BUSY','ADMIN_MUTATION_PREVIOUS_RESOLVED','ADMIN_MUTATION_STORAGE_INVALID','ORDER_CREATE_FAILED','ORDER_CREATE_INDETERMINATE','ORDER_CREATE_LOCAL_UPDATE_FAILED','PRODUCT_STOCK_INSUFFICIENT','ADMIN_ORDERS_READ_FAILED','ABORTED','UNCONFIRMED']);
+  const codes = new Set(['OK','UNKNOWN_ERROR','AUTH_START_FAILED','AUTH_PROVIDER_CALLBACK_ERROR','AUTH_CALLBACK_CONTEXT_MISSING','AUTH_CALLBACK_STATE_MISMATCH','AUTH_CALLBACK_PARAMETER_MISSING','ADMIN_AUTH_PENDING','ADMIN_AUTH_RESULT_NOT_FOUND','ADMIN_AUTH_RESTART_REQUIRED','ADMIN_AUTH_RECOVERY_EXPIRED','ADMIN_AUTH_RECOVERY_CONTEXT_INVALID','ADMIN_AUTH_RESULT_UNAVAILABLE','ADMIN_AUTH_CONTEXT_INVALID','ADMIN_SESSION_STORE_FAILED','LINE_ADMIN_AUTH_FAILED','LINE_NONCE_MISMATCH','LINE_AUTH_CONFIG_MISSING','LINE_ID_TOKEN_VERIFY_FAILED','LINE_ID_TOKEN_MISSING','INVALID_REDIRECT_URI','GOOGLE_AUTH_REQUIRED','GAS_SERVER_ERROR','GAS_AUTH_REQUEST_FAILED','LINE_TOKEN_EXCHANGE_FAILED','INVENTORY_RESULT_UNCONFIRMED','INVENTORY_REVIEW_REQUIRED','INVENTORY_UPDATE_INDETERMINATE','INVENTORY_PENDING_CHANGED','INVENTORY_STOCK_CHANGED','INVENTORY_UPDATE_BUSY','INVENTORY_REQUEST_KEY_CONFLICT','PRODUCT_SAVE_UNCONFIRMED','PRODUCT_SAVE_REVIEW_REQUIRED','PRODUCT_FIELD_CONFLICT','PRODUCT_SAVE_REQUEST_CONFLICT','PRODUCT_SAVE_RECEIPT_INVALID','PRODUCT_CATALOG_STALE','PRODUCT_CATALOG_INVALID','PRODUCT_CATALOG_HEADER_MISMATCH','PRODUCT_CATALOG_VERSION_REQUIRED','PRODUCT_MANAGEMENT_UPDATE_BUSY','PRODUCT_MANAGEMENT_UPDATE_FAILED','PRODUCT_MANAGEMENT_SAVE_FAILED','PRODUCT_ID_CODE_IMMUTABLE','PRODUCT_SPEC_IMMUTABLE','PRODUCT_SHIPPING_RULE_INVALID','PRODUCT_STOCK_SEPARATE_ACTION_REQUIRED','SITE_SETTINGS_INVALID','SITE_SETTINGS_HEADER_MISMATCH','NETWORK_ERROR','GAS_TIMEOUT','GAS_NON_JSON_RESPONSE','ADMIN_NETWORK_OFFLINE','ADMIN_SESSION_REQUIRED','ADMIN_SESSION_VALIDATION_FAILED','GAS_AUTH_RESPONSE_INVALID','LINE_AUTH_MISSING_FIELD','LINE_AUTH_FAILED','AUTH_GOOGLE_403','SHIPMENT_RESPONSE_TIMEOUT','SHIPMENT_READBACK_FAILED','SHIPMENT_READBACK_INVALID','SHIPMENT_RESPONSE_INVALID','SHIPMENT_RENDER_FAILED','SHIPMENT_STATE_PENDING','SHIPMENT_PAUSED','SHIPMENT_BUDGET_EXHAUSTED','SHIPMENT_NOT_COMMITTED','SAVE_UI_UPDATE_FAILED','ADMIN_MUTATION_UNCONFIRMED','ADMIN_MUTATION_BUSY','ADMIN_MUTATION_PREVIOUS_RESOLVED','ADMIN_MUTATION_STORAGE_INVALID','ORDER_CREATE_FAILED','ORDER_CREATE_INDETERMINATE','ORDER_CREATE_LOCAL_UPDATE_FAILED','PRODUCT_STOCK_INSUFFICIENT','ADMIN_ORDERS_READ_FAILED','ADMIN_ORDER_FILTER_INVALID','ADMIN_ORDER_SEARCH_QUERY_INVALID','ADMIN_ORDER_SNAPSHOT_PAGE_UNAVAILABLE','ADMIN_ORDER_SNAPSHOT_PAGE_INVALID','ADMIN_ORDER_SNAPSHOT_VERSION_NOT_READY','ADMIN_ORDER_SNAPSHOT_UNAVAILABLE','ADMIN_ORDER_SNAPSHOT_PENDING_UNAVAILABLE','ADMIN_ORDER_SNAPSHOT_SYNC_FAILED','REQUEST_KEYS_INVALID','CUSTOMER_SEARCH_FAILED','ABORTED','UNCONFIRMED']);
   let storageOK = true, pending = new Map(), history = [], dropped = 0, timer, uploading = false, retry = 0, lastUpload = '', uploadState = '';
   const uuid = () => crypto.randomUUID();
   function read(key, fallback) { try { return JSON.parse(localStorage.getItem(prefix + key)) ?? fallback; } catch { storageOK = false; return fallback; } }
@@ -23,6 +23,25 @@
   let deviceId = read('device', ''); if (!isId(deviceId)) { deviceId = uuid(); write('device', deviceId); }
   const pageId = uuid();
   const version = document.documentElement.dataset.releaseVersion || 'unknown';
+  // Only fixed enums cross the diagnostic boundary. Never store response text,
+  // arbitrary error names, URLs, customer fields or credentials.
+  const responseContractFields = {
+    shape: ['OBJECT','ARRAY','NULL','PRIMITIVE'],
+    action: ['MATCH','MUTATION_ENVELOPE','MISSING','DIFFERENT','INVALID'],
+    ok: ['TRUE','FALSE','MISSING','INVALID'],
+    errorField: ['ERROR_CODE','ERROR','NONE'],
+    errorType: ['STRING','OBJECT','ARRAY','NUMBER','BOOLEAN','NONE'],
+    errorCode: ['ALLOWED','UNRECOGNIZED','ABSENT'],
+    stage: ['SESSION','SESSION_STORE_READ','SESSION_LOOKUP','ROUTING','LEGACY_SHEETS_READ','SNAPSHOT_CACHE_READ','SNAPSHOT_FIRESTORE_READ','SNAPSHOT_PAGE_READ','SNAPSHOT_VERSION_VERIFY','SNAPSHOT_DRIVE_FALLBACK','FILTER_VALIDATE','CUSTOMER_SEARCH_INDEX_READ','CUSTOMER_SEARCH_MATCH','SERIALIZE','RESPONSE'],
+    reason: ['GOOGLE_SERVICE_TRANSIENT','SHEET_READ_FAILED','REQUEST_VALIDATION_FAILED','DATA_READ_FAILED','SESSION_INVALID','CUSTOMER_SEARCH_INDEX_HEADER_MISMATCH','CUSTOMER_SEARCH_INDEX_BUSY'],
+  };
+  function sanitizeResponseContract(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const result = {};
+    for (const [key, allowed] of Object.entries(responseContractFields)) result[key] = allowed.includes(value[key]) ? value[key] : '';
+    return result;
+  }
+
   function sanitizeSnapshotTiming(value) {
     if (!value || typeof value !== 'object') return null;
     const readReasons = new Set(['NOT_ATTEMPTED','DISABLED','DIRTY','VERSION_MISSING','INDEX_MISSING','VERSION_MISMATCH','INDEX_INVALID','SEGMENT_MISSING','SEGMENT_INVALID','LENGTH_MISMATCH','CHECKSUM_MISMATCH','MANIFEST_INVALID','PUBLICATION_CHANGED','HIT','READ_EXCEPTION','REQUIRED_VERSION_MISMATCH']);
@@ -62,9 +81,10 @@
     return {...sanitizeFlow(value),requestId:safeRequestId(value.requestId), id:value.id, operationId:value.operationId, deviceId:value.deviceId, pageId:value.pageId, at:value.at,
       action:actions.has(value.action) ? value.action : 'client', stage:stages.has(value.stage) ? value.stage : 'RESULT',
       outcome:outcomes.has(value.outcome) ? value.outcome : 'failure',
-      code:codes.has(value.code) || /^HTTP_[45]\d\d$/.test(value.code) ? value.code : 'UNKNOWN_ERROR',
+      code:typeof value.code==='string' && (codes.has(value.code) || /^HTTP_[45]\d\d$/.test(value.code)) ? value.code : 'UNKNOWN_ERROR',
       elapsedMs:Math.min(600000, Math.max(0, Number(value.elapsedMs) || 0)),
       headersMs:Number.isFinite(value.headersMs) ? Math.min(600000,Math.max(0,value.headersMs)) : null,
+      responseContract:value.stage==='RESULT' ? sanitizeResponseContract(value.responseContract) : null,
       snapshotTiming:value.action==='adminReadOrderSnapshot' && value.stage==='RESULT' ? sanitizeSnapshotTiming(value.snapshotTiming) : null,
       bodyMs:Number.isFinite(value.bodyMs) ? Math.min(600000,Math.max(0,value.bodyMs)) : null,
       responseHost:['google-script','google-content','other','unknown'].includes(value.responseHost) ? value.responseHost : 'unknown',
@@ -181,7 +201,30 @@
     } catch {}
     return {responseHost,redirected:typeof response.redirected==='boolean'?response.redirected:null};
   }
-  function format(e){const flow=sanitizeFlow(e);return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}${flow.flowId?'｜'+flowLabels[flow.flowName]+'・'+phaseLabels[flow.phase]+'｜整段 '+Math.round(flow.flowElapsedMs)+' 毫秒':''}${e.headersMs!==null&&e.headersMs!==undefined?'｜回應標頭 '+(e.headersMs/1000).toFixed(2)+' 秒':''}${e.bodyMs!==null&&e.bodyMs!==undefined?'｜資料讀取 '+(e.bodyMs/1000).toFixed(2)+' 秒':''}${e.responseHost&&e.responseHost!=='unknown'?'｜'+e.responseHost:''}${e.redirected===true?'｜已轉址':''}${e.snapshotTiming?'｜快取讀取 '+e.snapshotTiming.cacheReadReason+'｜快取存入 '+e.snapshotTiming.cacheWriteReason+(e.snapshotTiming.serverElapsedMs!==null?'｜後端 '+(e.snapshotTiming.serverElapsedMs/1000).toFixed(2)+' 秒':''):''}\n操作 ${e.operationId}${e.requestId ? "｜請求 " + e.requestId : ""}${flow.flowId?'｜流程 '+flow.flowId:''}｜${e.deviceType}｜${e.version}`;}
+  function observeResponseContract(body, action) {
+    const object = body !== null && typeof body === 'object' && !Array.isArray(body);
+    const selectedError = object ? body.errorCode || body.error : undefined;
+    const hasError = !!selectedError;
+    return sanitizeResponseContract({
+      shape: body === null ? 'NULL' : Array.isArray(body) ? 'ARRAY' : object ? 'OBJECT' : 'PRIMITIVE',
+      action: !object || body.action === undefined ? 'MISSING'
+        : typeof body.action !== 'string' ? 'INVALID'
+        : body.action === action ? 'MATCH'
+        : body.action === 'adminReadOrderMutationResult' ? 'MUTATION_ENVELOPE' : 'DIFFERENT',
+      ok: !object || body.ok === undefined ? 'MISSING' : body.ok === true ? 'TRUE' : body.ok === false ? 'FALSE' : 'INVALID',
+      errorField: !hasError ? 'NONE' : body.errorCode ? 'ERROR_CODE' : 'ERROR',
+      errorType: !hasError ? 'NONE' : Array.isArray(selectedError) ? 'ARRAY' : typeof selectedError === 'object' ? 'OBJECT' : typeof selectedError === 'string' ? 'STRING' : typeof selectedError === 'number' ? 'NUMBER' : 'BOOLEAN',
+      errorCode: !hasError ? 'ABSENT' : typeof selectedError==='string' && (codes.has(selectedError) || /^HTTP_[45]\d\d$/.test(selectedError)) ? 'ALLOWED' : 'UNRECOGNIZED',
+      stage: object ? body.diagnostic?.stage || body.diagnostic?.step : '',
+      reason: object ? body.diagnostic?.reason : '',
+    });
+  }
+  function formatResponseContract(value) {
+    const c = sanitizeResponseContract(value);
+    if (!c) return '';
+    return `｜回覆格式 ${c.shape}｜動作 ${c.action}｜ok ${c.ok}｜錯誤欄位 ${c.errorField}/${c.errorType}/${c.errorCode}${c.stage ? '｜後端階段 '+c.stage : ''}${c.reason ? '｜後端原因 '+c.reason : ''}`;
+  }
+  function format(e){const flow=sanitizeFlow(e);return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}${flow.flowId?'｜'+flowLabels[flow.flowName]+'・'+phaseLabels[flow.phase]+'｜整段 '+Math.round(flow.flowElapsedMs)+' 毫秒':''}${e.headersMs!==null&&e.headersMs!==undefined?'｜回應標頭 '+(e.headersMs/1000).toFixed(2)+' 秒':''}${e.bodyMs!==null&&e.bodyMs!==undefined?'｜資料讀取 '+(e.bodyMs/1000).toFixed(2)+' 秒':''}${e.responseHost&&e.responseHost!=='unknown'?'｜'+e.responseHost:''}${e.redirected===true?'｜已轉址':''}${e.outcome==='failure'?formatResponseContract(e.responseContract):''}${e.snapshotTiming?'｜快取讀取 '+e.snapshotTiming.cacheReadReason+'｜快取存入 '+e.snapshotTiming.cacheWriteReason+(e.snapshotTiming.serverElapsedMs!==null?'｜後端 '+(e.snapshotTiming.serverElapsedMs/1000).toFixed(2)+' 秒':''):''}\n操作 ${e.operationId}${e.requestId ? "｜請求 " + e.requestId : ""}${flow.flowId?'｜流程 '+flow.flowId:''}｜${e.deviceType}｜${e.version}`;}
   function render(){try{
     const el=document.getElementById('adminDiagnosticsText'); if(el)el.textContent=history.length?history.slice().reverse().map(format).join('\n\n'):'目前這個瀏覽器沒有診斷紀錄。';
     const status=document.getElementById('adminDiagnosticsStatus');if(status)status.textContent=`本機 ${history.length} 筆｜待上傳 ${pending.size} 筆${dropped?'｜超過保存上限／期限 '+dropped+' 筆':''}。${!storageOK?'瀏覽器無法持久保存，關閉後尚未上傳的紀錄可能遺失。':''}${navigator.onLine===false?'目前離線，恢復連線後自動補傳。':uploadState}${lastUpload?' 最近上傳：'+lastUpload:''}`;
@@ -191,7 +234,7 @@
   const requestGroups = new Map();
   window.fetch = async function(input, options) {
     const url=typeof input==='string'?input:input?.url;let action, requestKey;
-    try {if(url===config.gasApiUrl && typeof options?.body==='string'){const body=JSON.parse(options.body);action=body.action==='adminExecuteOrderMutation'?body.mutation?.action:body.action==='adminReadOrderMutationResult'?body.mutationAction:body.action;requestKey=body.diagnosticRequestId||body.requestId;}}catch{}
+    try {if(url===config.gasApiUrl && typeof options?.body==='string'){const body=JSON.parse(options.body);action=body.action==='adminExecuteOrderMutation'?body.mutation?.action:body.action==='adminReadOrderMutationResult'?body.mutationAction:body.action;requestKey=safeRequestId(options?.diagnosticRequestId)||body.diagnosticRequestId||body.requestId;}}catch{}
     if(!actions.has(action))return rawFetch(input,options);
     let operationId=requestKey && requestGroups.get(action+'|'+requestKey);
     if(!operationId){operationId=uuid();if(requestKey){requestGroups.set(action+'|'+requestKey,operationId);if(requestGroups.size>200)requestGroups.delete(requestGroups.keys().next().value);}}
@@ -208,7 +251,7 @@
       // Observe a copy asynchronously; never await telemetry or alter a business response.
       try {void response.clone().json().then(body=>{
         const ok=response.ok && body?.ok===true && (body.action!=='adminReadOrderMutationResult' || body.state==='completed') && (action!=='adminUpdateProductFields' || body.state==='committed');
-        recordRequest({...metadata,snapshotTiming:action==='adminReadOrderSnapshot' && body?.action===action ? sanitizeSnapshotTiming({...body.timing,...(body.timing ? {} : body.diagnostic),serverElapsedMs:body.elapsedMs}) : null,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start});
+        recordRequest({...metadata,responseContract:observeResponseContract(body,action),snapshotTiming:action==='adminReadOrderSnapshot' && body?.action===action ? sanitizeSnapshotTiming({...body.timing,...(body.timing ? {} : body.diagnostic),serverElapsedMs:body.elapsedMs}) : null,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start});
       },error=>recordRequest({...metadata,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':error?.name==='SyntaxError'?'GAS_NON_JSON_RESPONSE':'NETWORK_ERROR',httpStatus:response.status,elapsedMs:Date.now()-start}));}catch{}
       return response;
     } catch(error) {recordRequest({requestId,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':'NETWORK_ERROR',elapsedMs:Date.now()-start});throw error;}

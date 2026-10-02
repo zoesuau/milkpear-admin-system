@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20260929-order-sync-selection-v1">
+<html lang="zh-Hant" data-release-version="20261002-read-reliability-candidate-v1">
   <head>
     <meta charset="UTF-8" />
     <meta name="admin-release" content="20260928-order-mutation-recovery-v1" />
@@ -8,9 +8,9 @@
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20260929-order-sync-selection-v1"></script>
-    <script src="./admin-diagnostics.js?v=20260929-order-sync-selection-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20260929-order-sync-selection-v1"></script>
+    <script src="./customer-config.js?v=20261002-read-reliability-candidate-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261002-read-reliability-candidate-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261002-read-reliability-candidate-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -12045,34 +12045,74 @@
             pending.queryRevision !== adminOrderQueryRequestId || pending.mutationRevision !== adminOrderMutationRevision ||
             pending.viewVersion !== adminOrderReadMeta.snapshotLiveVersion) {
           adminPendingCompleteWorkspace = null;
+          window.AdminDiagnostics?.finishFlow?.(pending.flow, { outcome: "failure", code: "UNCONFIRMED" });
           queueAdminCompleteWorkspaceLoad(1000);
           return false;
         }
         if (adminOrderViewHasDraft() || selectedOrderNos.size || document.visibilityState === "hidden") return false;
-        const page = adminCurrentPage;
-        const orders = pending.orders;
-        orders.adminReadMeta.page = page;
-        adminOrderWorkspaceComplete = true;
-        if (!renderAdminOrders(orders)) { adminOrderWorkspaceComplete = false; return false; }
-        adminPendingCompleteWorkspace = null;
-        adminOrderPageNeedsRefresh = false;
-        updateStatsCounters(); updateNotifyButton(); applyReadOnlyModeToRealOrders();
-        setAdminSearchStatus(String(document.getElementById("searchBar")?.value || "").trim()
-          ? `已從完整訂單中找到 ${getFilteredAdminCards().length} 筆。` : "");
-        return true;
+        try {
+          const page = adminCurrentPage;
+          const orders = pending.orders;
+          orders.adminReadMeta.page = page;
+          adminOrderWorkspaceComplete = true;
+          if (!renderAdminOrders(orders)) throw new Error("ADMIN_ORDER_WORKSPACE_RENDER_FAILED");
+          adminOrderPageNeedsRefresh = false;
+          updateStatsCounters(); updateNotifyButton(); applyReadOnlyModeToRealOrders();
+          setAdminSearchStatus(String(document.getElementById("searchBar")?.value || "").trim()
+            ? `已從完整訂單中找到 ${getFilteredAdminCards().length} 筆。` : "");
+          adminPendingCompleteWorkspace = null;
+          if (pending.token === adminCompleteWorkspaceRetry.token) {
+            adminCompleteWorkspaceRetry.failures = 0;
+            adminCompleteWorkspaceRetry.nextAttemptAt = 0;
+          }
+          window.AdminDiagnostics?.markFlow?.(pending.flow, "ui_updated");
+          window.AdminDiagnostics?.finishFlow?.(pending.flow, { outcome: "success", code: "OK" });
+          return true;
+        } catch (error) {
+          adminOrderWorkspaceComplete = false;
+          adminPendingCompleteWorkspace = null;
+          recordAdminCompleteWorkspaceFailure(pending.token);
+          window.AdminDiagnostics?.finishFlow?.(pending.flow, { outcome: "failure", code: "UNCONFIRMED" });
+          queueAdminCompleteWorkspaceLoad();
+          return false;
+        }
+      }
+
+      const ADMIN_COMPLETE_WORKSPACE_MAX_FAILURES = 3;
+      let adminCompleteWorkspaceRetry = { token: null, failures: 0, nextAttemptAt: 0 };
+
+      function resetAdminCompleteWorkspaceRetry() {
+        if (adminCompleteWorkspaceTimer !== null) window.clearTimeout(adminCompleteWorkspaceTimer);
+        adminCompleteWorkspaceTimer = null;
+        adminCompleteWorkspaceRetry = { token: sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY), failures: 0, nextAttemptAt: 0 };
+      }
+
+      function syncAdminCompleteWorkspaceRetrySession() {
+        if (adminCompleteWorkspaceRetry.token !== sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY)) resetAdminCompleteWorkspaceRetry();
+      }
+
+      function recordAdminCompleteWorkspaceFailure(token) {
+        if (token !== adminCompleteWorkspaceRetry.token) return;
+        adminCompleteWorkspaceRetry.failures++;
+        adminCompleteWorkspaceRetry.nextAttemptAt = Date.now() + 30000 * Math.pow(2, adminCompleteWorkspaceRetry.failures - 1);
       }
 
       function queueAdminCompleteWorkspaceLoad(delay = 0) {
+        syncAdminCompleteWorkspaceRetrySession();
+        if (!adminCompleteWorkspaceRetry.token || adminCompleteWorkspaceRetry.failures >= ADMIN_COMPLETE_WORKSPACE_MAX_FAILURES) return;
         if (adminOrderWorkspaceComplete || adminCompleteWorkspacePromise || adminPendingCompleteWorkspace || adminCompleteWorkspaceTimer !== null) return;
         adminCompleteWorkspaceTimer = window.setTimeout(() => {
           adminCompleteWorkspaceTimer = null;
           void loadAdminCompleteWorkspaceInBackground();
-        }, delay);
+        }, Math.max(delay, adminCompleteWorkspaceRetry.nextAttemptAt - Date.now()));
       }
 
       async function loadAdminCompleteWorkspaceInBackground() {
+        syncAdminCompleteWorkspaceRetrySession();
+        if (!adminCompleteWorkspaceRetry.token || adminCompleteWorkspaceRetry.failures >= ADMIN_COMPLETE_WORKSPACE_MAX_FAILURES) return false;
+        if (Date.now() < adminCompleteWorkspaceRetry.nextAttemptAt) { queueAdminCompleteWorkspaceLoad(); return false; }
         if (adminOrderWorkspaceComplete || adminCompleteWorkspacePromise || !adminInitialOrdersReady) return false;
-        if (hasAdminOrderPageRequestForCurrentSession()) { queueAdminCompleteWorkspaceLoad(1000); return false; }
+        if (hasAdminOrderPageRequestForCurrentSession() || adminOrderRefreshUiOwner) { queueAdminCompleteWorkspaceLoad(1000); return false; }
         if (adminOrderViewHasDraft() || adminBrowserIsOffline() || document.visibilityState === "hidden") {
           queueAdminCompleteWorkspaceLoad(15000); return false;
         }
@@ -12084,14 +12124,19 @@
           const orders = await fetchAdminOrdersFromGas({ completeWorkspace: true, silent: true, liveSync: true,
             networkRecovery: true, flow });
           if (!Array.isArray(orders) || orders.adminReadMeta?.snapshotStale) {
+            recordAdminCompleteWorkspaceFailure(context.token);
             window.AdminDiagnostics?.finishFlow?.(flow, { outcome: "failure", code: "UNCONFIRMED" });
             return false;
           }
           window.AdminDiagnostics?.markFlow?.(flow, "full_data");
-          window.AdminDiagnostics?.finishFlow?.(flow, { outcome: "success", code: "OK" });
-          adminPendingCompleteWorkspace = { ...context, orders };
+          adminPendingCompleteWorkspace = { ...context, orders, flow };
           return applyPendingAdminCompleteWorkspace();
-        })();
+        })().catch(() => {
+          recordAdminCompleteWorkspaceFailure(context.token);
+          if (adminPendingCompleteWorkspace?.flow === flow) adminPendingCompleteWorkspace = null;
+          window.AdminDiagnostics?.finishFlow?.(flow, { outcome: "failure", code: "UNCONFIRMED" });
+          return false;
+        });
         adminCompleteWorkspacePromise = work;
         try { return await work; }
         finally {
@@ -12444,6 +12489,9 @@
         }
         const page = Math.max(1, Number(options?.page ?? adminCurrentPage) || 1);
         const queryRevision = ++adminOrderQueryRequestId;
+        if (adminPendingCompleteWorkspace) {
+          window.AdminDiagnostics?.finishFlow?.(adminPendingCompleteWorkspace.flow, { outcome: "failure", code: "UNCONFIRMED" });
+        }
         adminPendingCompleteWorkspace = null;
         if (!adminOrderWorkspaceComplete) {
           adminOrderPageNeedsRefresh = true;
@@ -12544,6 +12592,7 @@
           return false;
         }
         adminManualOrderRefreshPending = true;
+        resetAdminCompleteWorkspaceRetry();
         const queryFlow = window.AdminDiagnostics?.beginFlow?.("query");
         let querySucceeded = false;
         const requestId = ++adminOrderQueryRequestId;
@@ -12632,6 +12681,7 @@
       async function refreshAdminOrdersFromOverlay(options = {}) {
         if (adminAuthBlocksDataLoad || adminOverlayRefreshPending) return false;
         if (adminInitialOrdersReady && adminOrderViewHasDraft()) return false;
+        if (options.background !== true) resetAdminCompleteWorkspaceRetry();
         adminOverlayRefreshPending = true;
         const queryFlow = window.AdminDiagnostics?.beginFlow?.("query");
         let querySucceeded = false;
@@ -12900,6 +12950,9 @@
 
         try {
           adminOrderMutationRevision++;
+          if (adminPendingCompleteWorkspace?.flow) {
+            window.AdminDiagnostics?.finishFlow?.(adminPendingCompleteWorkspace.flow, { outcome: "failure", code: "UNCONFIRMED" });
+          }
           adminPendingCompleteWorkspace = null;
           const nextOrders = latestAdminOrders.slice();
           Object.defineProperty(nextOrders, "adminReadMeta", { value: adminOrderReadMeta, configurable: true });
@@ -12944,7 +12997,7 @@
       function canRunAdminLiveOrderSync() {
         return ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED && (adminInitialOrdersReady || (adminInitialOrderLoadSettled && adminNetworkRecoveryPending === "orders")) &&
           !adminAuthBlocksDataLoad && document.visibilityState !== "hidden" &&
-          !adminBrowserIsOffline() && (!adminOrderSnapshotReadPromise || !adminOrderWorkspaceComplete) &&
+          !adminBrowserIsOffline() && !adminCompleteWorkspacePromise && (!adminOrderSnapshotReadPromise || !adminOrderWorkspaceComplete) &&
           !hasAdminOrderPageRequestForCurrentSession() &&
           !adminGroupOrderSubmitting && !adminAddOrderOpening &&
           !hasBlockingAdminRefreshWork() &&
@@ -13101,6 +13154,9 @@
         const orderNo = String(order?.orderNo || "").trim();
         if (!orderNo) return false;
         adminOrderMutationRevision++;
+        if (adminPendingCompleteWorkspace?.flow) {
+          window.AdminDiagnostics?.finishFlow?.(adminPendingCompleteWorkspace.flow, { outcome: "failure", code: "UNCONFIRMED" });
+        }
         adminPendingCompleteWorkspace = null;
         pendingAdminSnapshotOrderOverlays.set(orderNo, { ...order });
         return true;
@@ -23818,8 +23874,34 @@ ${adminNote}
         }`;
       }
 
-      function finishAdminCreateOrder(result, feedback, submitButton, verifiedToken) {
+      function beginAdminCreateMeasurement() {
+        return { flow: window.AdminDiagnostics?.beginFlow?.("save"), requestId: "", confirmed: false, uiUpdated: false, code: "UNCONFIRMED" };
+      }
+
+      function bindAdminCreateMeasurementRequest(action, measurement) {
+        const diagnosticRequestId = createAdminDiagnosticRequestId(action);
+        if (measurement) {
+          measurement.requestId = diagnosticRequestId;
+          window.AdminDiagnostics?.bindRequestToFlow?.(diagnosticRequestId, measurement.flow);
+        }
+        return diagnosticRequestId;
+      }
+
+      function finishAdminCreateMeasurement(measurement) {
+        if (!measurement) return;
+        window.AdminDiagnostics?.finishFlow?.(measurement.flow, {
+          outcome: measurement.uiUpdated ? "success" : "failure",
+          code: measurement.uiUpdated ? "OK" : measurement.confirmed ? "SAVE_UI_UPDATE_FAILED" : measurement.code,
+          requestId: measurement.requestId,
+        });
+      }
+
+      function finishAdminCreateOrder(result, feedback, submitButton, verifiedToken, measurement = null) {
         const createdOrderNo = String(result?.created?.orderNo || "").trim();
+        if (createdOrderNo && measurement) {
+          measurement.confirmed = true;
+          window.AdminDiagnostics?.markFlow?.(measurement.flow, "save_confirmed", { requestId: measurement.requestId });
+        }
         if (
           !createdOrderNo ||
           !result?.order ||
@@ -23857,6 +23939,10 @@ ${adminNote}
         const timingText = document.getElementById("adminCreateTimingText");
         if (timingText) timingText.textContent = timing;
         if (timingPanel) { timingPanel.classList.toggle("hidden", !timing); timingPanel.open = false; }
+        if (measurement) {
+          measurement.uiUpdated = true;
+          window.AdminDiagnostics?.markFlow?.(measurement.flow, "ui_updated", { requestId: measurement.requestId });
+        }
         return true;
       }
 
@@ -23963,6 +24049,7 @@ ${adminNote}
                 headers: {
                   "Content-Type": "text/plain;charset=utf-8",
                 },
+                diagnosticRequestId: bindAdminCreateMeasurementRequest("adminCheckCreateOrderResult", options.measurement),
                 body: JSON.stringify({
                   action: "adminCheckCreateOrderResult",
                   adminSessionToken: recoverySessionToken,
@@ -23999,7 +24086,7 @@ ${adminNote}
             }
             lastStatus = String(result.status || "");
             if (lastStatus === "completed") {
-              return finishAdminCreateOrder(result, feedback, submitButton, recoverySessionToken);
+              return finishAdminCreateOrder(result, feedback, submitButton, recoverySessionToken, options.measurement);
             }
             if (lastStatus === "indeterminate") break;
             if (lastStatus !== "not_found") {
@@ -24048,6 +24135,7 @@ ${adminNote}
                   headers: {
                     "Content-Type": "text/plain;charset=utf-8",
                   },
+                  diagnosticRequestId: bindAdminCreateMeasurementRequest("adminCreateOrder", options.measurement),
                   body: JSON.stringify(pendingPayload),
                 },
                 ADMIN_CREATE_ORDER_TIMEOUT_MS,
@@ -24065,6 +24153,7 @@ ${adminNote}
                   feedback,
                   submitButton,
                   pendingPayload.adminSessionToken,
+                  options.measurement,
                 );
               }
 
@@ -24136,10 +24225,12 @@ ${adminNote}
 
       async function checkPendingAdminCreateOrder(options = {}) {
         if (adminCreateRecoveryPromise) return adminCreateRecoveryPromise;
+        const measurement = options.measurement || beginAdminCreateMeasurement();
         adminCreateRecoveryPromise = performPendingAdminCreateOrderRecovery(
-          options,
+          { ...options, measurement },
         ).finally(() => {
           adminCreateRecoveryPromise = null;
+          if (!options.measurement) finishAdminCreateMeasurement(measurement);
         });
         return adminCreateRecoveryPromise;
       }
@@ -24398,6 +24489,7 @@ ${adminNote}
 
         adminCreateOrderSubmitting = true;
         adminCreateOrderChecking = false;
+        const createMeasurement = beginAdminCreateMeasurement();
         persistAdminCreateDraft();
         storePendingAdminCreateRequest(payload);
         submitButton.disabled = true;
@@ -24413,6 +24505,7 @@ ${adminNote}
               headers: {
                 "Content-Type": "text/plain;charset=utf-8",
               },
+              diagnosticRequestId: bindAdminCreateMeasurementRequest("adminCreateOrder", createMeasurement),
               body: JSON.stringify(payload),
             },
             ADMIN_CREATE_ORDER_TIMEOUT_MS,
@@ -24443,8 +24536,10 @@ ${adminNote}
             throw createError;
           }
 
-          finishAdminCreateOrder(result, feedback, submitButton, payload.adminSessionToken);
+          finishAdminCreateOrder(result, feedback, submitButton, payload.adminSessionToken, createMeasurement);
         } catch (error) {
+          createMeasurement.code = error?.name === "AbortError" ? "GAS_TIMEOUT"
+            : error?.name === "TypeError" ? "NETWORK_ERROR" : error?.message || "UNCONFIRMED";
           feedback.className = "admin-content-feedback is-error";
           if (error.message === "ORDER_CREATE_LOCAL_UPDATE_FAILED") {
             feedback.innerText =
@@ -24463,6 +24558,7 @@ ${adminNote}
               feedback,
               submitButton,
               automatic: true,
+              measurement: createMeasurement,
             });
             return;
           }
@@ -24493,6 +24589,8 @@ ${adminNote}
                       : ""
                   }`
               : "訂單建立失敗，請確認資料後再試。";
+        } finally {
+          finishAdminCreateMeasurement(createMeasurement);
         }
       }
     </script>

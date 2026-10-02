@@ -11,7 +11,7 @@ function fixture(){
     document:{visibilityState:'visible',querySelector:()=>blocked?{}:null,addEventListener:(n,f)=>events[n]=f},window:{setTimeout:(f,ms)=>{timers.set(++timer,{f,ms});return timer},clearTimeout:id=>timers.delete(id),addEventListener:(n,f)=>events[n]=f},adminBrowserIsOffline:()=>offline,hasBlockingAdminRefreshWork:()=>blocked,
     fetchAdminOrdersFromGas:async opts=>{fetches++;assert.equal(opts.liveSync,true);assert.equal(opts.silent,true);return orders},
     renderAdminOrders:o=>{log.push('render');c.adminCurrentPage=1;c.adminOrderReadMeta=o.adminReadMeta;return true},updateStatsCounters(){},applyCurrentFilter(){},syncAdminSearchMatches(){log.push('search')},handleBatchCheckChange(){},updateNotifyButton(){},applyReadOnlyModeToRealOrders(){},updateAdminRefreshMeta:()=>log.push('updated'),setAdminRefreshState:()=>log.push('failure')};
-  Object.assign(c,{adminOrderMutationRevision:0,adminOrderPageViewChanged:()=>false,adminOrderWorkspaceComplete:true,adminOrderPageNeedsRefresh:false,hasAdminOrderPageRequestForCurrentSession:()=>false,applyPendingAdminCompleteWorkspace(){},queueAdminCompleteWorkspaceLoad(){}});
+  Object.assign(c,{adminCompleteWorkspacePromise:null,adminOrderMutationRevision:0,adminOrderPageViewChanged:()=>false,adminOrderWorkspaceComplete:true,adminOrderPageNeedsRefresh:false,hasAdminOrderPageRequestForCurrentSession:()=>false,applyPendingAdminCompleteWorkspace(){},queueAdminCompleteWorkspaceLoad(){}});
   vm.createContext(c);vm.runInContext(code,c);
   return {c,timers,events,log,orders,blocked:v=>blocked=v,offline:v=>offline=v,fetches:()=>fetches};
 }
