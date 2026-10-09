@@ -4601,6 +4601,11 @@
         padding: 16px;
       }
 
+      .product-image-preview[hidden] + .product-image-controls {grid-column:1 / -1;}
+      .product-grade-family {border:1px solid #dbe7df;border-radius:14px;padding:14px;margin:12px 0;background:#f7faf8;}
+      .product-grade-family-heading {display:flex;gap:12px;justify-content:space-between;flex-wrap:wrap;color:#4f8063;}
+      .product-grade-variants {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px;margin-top:12px;align-items:start;}
+      .product-grade-variants .product-admin-card {margin:0;min-width:0;}
       .product-admin-card {
         border: 1px solid #e8e8e8;
         border-radius: 14px;
@@ -8876,12 +8881,15 @@
                   <span class="product-variety-count">${products.length} 項商品</span>
                 </summary>
                 <div class="product-variety-body">
-                  ${products.map((product) => renderProductManagementCard(product)).join("")}
+                  ${renderProductGradeFamilies(products)}
                 </div>
               </details>
             `;
           })
           .join("");
+        if (adminProductCatalog.some(p=>['牛奶梨','蔗香梨'].includes(p.variety) && p.inventoryUnit !== 'fruit')) {
+          list.insertAdjacentHTML('afterbegin', '<div class="product-card-empty"><p>切換後，同品種、同 A 數共用顆數庫存。現有盒數 × 每盒顆數，空白按 0 計算；系統會先備份商品表。</p><button class="product-action-btn" type="button" onclick="migrateSharedFruitInventory()">備份並切換共用顆數庫存</button></div>');
+        }
         for (const draft of draftCards) {
           const replacement = [...list.querySelectorAll('.product-admin-card')].find(card => card.dataset.productId === draft.dataset.productId);
           if (replacement) {
@@ -8902,18 +8910,88 @@
         }
       }
 
+      function getAdminInventoryUnitLabel(product) { return product?.inventoryUnit === 'fruit' ? '顆' : '盒'; }
+      function getAdminProductBoxStock(product) {
+        if (!Number.isSafeInteger(product?.stock)) return null;
+        const factor = product.inventoryUnit === 'fruit' ? Number(String(product.count).replace(/顆$/, '')) : 1;
+        return Number.isSafeInteger(factor) && factor > 0 ? Math.floor(product.stock / factor) : 0;
+      }
+      function getAdminGradeFamilyKey(product) {
+        return JSON.stringify([product.variety, String(product.grade).replace(/\s+/g, '').toUpperCase()]);
+      }
+      let sharedFruitMigrationInFlight = false;
+      async function migrateSharedFruitInventory() {
+        if (sharedFruitMigrationInFlight) return;
+        if (readPendingInventorySave() || readPendingProductSave() || document.querySelector('.product-admin-card.editing')) {
+          setProductManagementFeedback('請先完成或收合目前編輯，並核對待確認的儲存結果，再切換庫存。','error'); return;
+        }
+        const token = String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || '').trim();
+        if (!token) {setProductManagementFeedback('請先登入管理後台。','error');return;}
+        sharedFruitMigrationInFlight = true;
+        setProductManagementFeedback('正在備份並切換庫存，請勿重複操作…');
+        try {
+          const response = await fetchWithTimeout(GAS_ORDERS_API_URL, {
+            method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+            body:JSON.stringify({action:'adminMigrateSharedFruitInventory',adminSessionToken:token,catalogVersion:adminProductCatalogVersion,emptyStockAsZero:true})
+          },60000,true);
+          const result = await response.json();
+          if (!response.ok || result?.ok !== true || result.action !== 'adminMigrateSharedFruitInventory') throw new Error(result?.error || 'MIGRATION_UNCONFIRMED');
+          applyConfirmedProductCatalog(result); renderProductManagement();
+          setProductManagementFeedback('✅ 已切換為同品種、同級別共用顆數庫存；原商品資料已備份。','success');
+        } catch(error) {
+          // A lost reply is never treated as permission to replay a conversion.
+          await fetchAdminProductCatalogFromGas();
+          const pears=adminProductCatalog.filter(p=>['牛奶梨','蔗香梨'].includes(p.variety));
+          setProductManagementFeedback(pears.length && pears.every(p=>p.inventoryUnit==='fruit')
+            ? '讀回商品已是共用顆數；本次回覆未完整取得，請核對備份及庫存紀錄。'
+            : '尚未確認切換完成；已重讀商品，請勿連續重試。錯誤：'+String(error.message),'error');
+        } finally {sharedFruitMigrationInFlight=false;}
+      }
+
+      function renderProductGradeFamilies(products) {
+        const families = new Map();
+        products.forEach(product => {
+          const key = ['牛奶梨','蔗香梨'].includes(product.variety) ? getAdminGradeFamilyKey(product) : product.id;
+          if (!families.has(key)) families.set(key, []);
+          families.get(key).push(product);
+        });
+        return [...families.values()].map(items => {
+          const first = items[0];
+          if (!['牛奶梨','蔗香梨'].includes(first.variety)) return renderProductManagementCard(first);
+          const shared = first.inventoryUnit === 'fruit';
+          return `<section class="product-grade-family">
+            <div class="product-grade-family-heading"><strong>${escapeHtml(first.grade.replace(/\s+/g,''))} 級別</strong>
+            <span>${shared ? `共用可售 ${escapeHtml(first.stock)} 顆` : '庫存尚未切換為共用顆數'}</span></div>
+            <p class="product-inventory-hint">${shared ? '禮盒版、精裝版及不同顆數共用此級別庫存；每盒按顆數扣除。' : '切換前仍依各商品的盒數計算。'}</p>
+            <button type="button" class="product-action-btn secondary" onclick="addGradeProductVariant('${escapeHtml(first.id)}')">＋新增包裝／顆數</button>
+            <div class="product-grade-variants">${items.map(renderProductManagementCard).join('')}</div>
+          </section>`;
+        }).join('');
+      }
+      function addGradeProductVariant(productId) {
+        const product = adminProductCatalog.find(p => p.id === productId);
+        if (!product) return;
+        addProductManagementCard();
+        const draft = {...product,id:'',code:'',isNew:true,stock:null,adminReservedStock:0,price:null,status:'停售',active:false,imageUrl:'',productSeries:'精裝版'};
+        const fields = document.getElementById('productAddModalFields');
+        fields.innerHTML = renderProductManagementFields(draft);
+        fields.querySelector('[data-product-field="variety"]').disabled = true;
+        fields.querySelector('[data-product-field="grade"]').readOnly = true;
+      }
+
       function renderProductManagementCard(product) {
         const activeText = normalizeAdminProductStatus(product.status);
         const activeClass =
           activeText === "上架"
             ? "product-status-active"
             : "product-status-inactive";
+        const stockUnit = getAdminInventoryUnitLabel(product);
         const hasNumericStock = Number.isSafeInteger(product.stock);
         const stockText = !hasNumericStock
           ? "可售未控管"
           : product.stock < 0
-            ? `超賣 ${Math.abs(product.stock)} 盒`
-            : `可售 ${product.stock} 盒`;
+            ? `超賣 ${Math.abs(product.stock)} ${getAdminInventoryUnitLabel(product)}`
+            : `可售 ${product.stock} ${getAdminInventoryUnitLabel(product)}`;
         const stockColor = product.stock > 0 ? "#15803d"
           : product.stock < 0 ? "#dc2626" : "#64748b";
         const reservedStock = Number.isInteger(product.adminReservedStock)
@@ -8961,7 +9039,7 @@
                     }
                     ${reservedStock > 0 ? `<span class="product-chip">後台保留 ${escapeHtml(reservedStock)}｜前台可售 ${escapeHtml(publicStock)}</span>` : ""}
                     ${product.productSeries ? `<span class="product-chip">${escapeHtml(product.productSeries)}</span>` : ""}
-                    ${product.includesIndividualPackaging ? '<span class="product-chip" style="color:#166534;border-color:#86b89c;">含個別包裝</span>' : ""}
+
                   </div>
                   <div class="product-admin-card-actions">
                     <button type="button" class="product-edit-mini-btn" onclick="toggleProductManagementEdit(this)">✏️編輯</button>
@@ -9190,17 +9268,15 @@
                 ${product.productSeries && !["禮盒版", "精裝版"].includes(product.productSeries) ? `<option value="${escapeHtml(product.productSeries)}" selected>${escapeHtml(product.productSeries)}（既有值）</option>` : ""}
                 ${renderSimpleOptions(["禮盒版", "精裝版"], product.productSeries || "")}`}
             </select>
-            <small style="color:#64748b;">${isMikan ? "火燒柑可先保留；新建立的日本蜜柑請維持停售，確認前台後再上架。" : "同一 A 數的禮盒版、精裝版各建一筆商品，分別設定價格、庫存與照片；品種、A 數及分類相同時，前台會合併成包裝選單。"}</small>
+            <small style="color:#64748b;">${isMikan ? "火燒柑可先保留；新建立的日本蜜柑請維持停售，確認前台後再上架。" : "在同一級別設定各包裝與顆數的價格、照片；切換後共用此級別的顆數庫存。"}</small>
           </div>
           <div class="product-field" ${isMikan ? 'style="display:none;"' : ""}>
             <label>A數 / 等級</label>
-            <input data-product-field="grade" value="${escapeHtml(product.grade || "")}">
+            <input data-product-field="grade" value="${escapeHtml(product.grade || "")}" ${product.isNew ? "" : "readonly"}>
           </div>
           <div class="product-field">
             <label>${isMikan ? "包裝規格" : "顆數"}</label>
-            <select data-product-field="count" onchange="updateNewProductShippingDefault(this)">
-              ${renderSimpleOptions(isMikan ? ["5斤", "10斤"] : ["2顆", "5顆", "6顆", "8顆", "10顆", "12顆"], product.count)}
-            </select>
+            ${isMikan ? `<select data-product-field="count" onchange="updateNewProductShippingDefault(this)">${renderSimpleOptions(["5斤","10斤"],product.count)}</select>` : `<input data-product-field="count" data-count-unit="fruit" type="number" min="1" step="1" value="${escapeHtml(String(product.count || '').replace(/顆$/,''))}" ${product.isNew ? 'onchange="updateNewProductShippingDefault(this)"' : 'readonly'}>`}
           </div>
           <div class="product-field full">
             <label>運費規則</label>
@@ -9215,16 +9291,16 @@
             <input data-product-field="price" type="number" min="1" step="1" value="${escapeHtml(product.price || "")}">
           </div>
           <div class="product-field">
-            <label>可售庫存</label>
+            <label>${product.inventoryUnit === "fruit" ? "此級別共用庫存（顆）" : "可售庫存（盒）"}</label>
             <div class="product-inventory-control">
               <input data-product-field="stock" type="number" step="1" placeholder="尚未設定" value="${Number.isInteger(product.stock) ? escapeHtml(product.stock) : ""}" readonly aria-readonly="true">
               <button type="button" class="product-action-btn secondary" onclick="openProductInventoryAdjustmentFromCard(this)" ${product.isNew ? "disabled" : ""}>${product.isNew ? "儲存後設定" : Number.isInteger(product.stock) ? "＋補貨" : "設定首批庫存"}</button>
             </div>
             ${!product.isNew && Number.isInteger(product.stock) ? '<button type="button" class="product-inventory-correction" onclick="openProductInventoryAdjustmentFromCard(this, \'reconcile\')">盤點修正</button>' : ""}
-            <span class="product-inventory-hint">補貨與商品資料分開儲存，避免覆蓋目前庫存。</span>
+            <span class="product-inventory-hint">${product.isNew && product.inventoryUnit === "fruit" ? "儲存後自動沿用同級別庫存，不需再輸入。" : "補貨與商品資料分開儲存，避免覆蓋目前庫存。"}</span>
           </div>
           <div class="product-field">
-            <label>保留給後台（盒）</label>
+            <label>保留給後台（${getAdminInventoryUnitLabel(product)}）${product.inventoryUnit === "fruit" ? "・同級別共用" : ""}</label>
             <input data-product-field="adminReservedStock" type="number" min="0" step="1" value="${escapeHtml(Number.isInteger(product.adminReservedStock) ? product.adminReservedStock : 0)}">
           </div>
           <div class="product-field">
@@ -9232,14 +9308,6 @@
             <select data-product-field="status">
               ${renderSimpleOptions(["上架", "僅後台販售", "後台販售，允許超賣", "停售"], normalizeAdminProductStatus(product.status))}
             </select>
-          </div>
-          <div class="product-field">
-            <label>個別包裝</label>
-            <select data-product-field="includesIndividualPackaging">
-              <option value="false" ${product.includesIndividualPackaging ? "" : "selected"}>不提供</option>
-              <option value="true" ${product.includesIndividualPackaging ? "selected" : ""}>商品已包含</option>
-            </select>
-            <small style="color:#64748b;">指每顆水果是否另有包裝，與禮盒版／精裝版不同；不開放加購，前台不顯示。</small>
           </div>
           <div class="product-field full">
             <label>商品照片</label>
@@ -9251,7 +9319,7 @@
                 <div class="product-image-actions">
                   <button type="button" class="product-action-btn danger" onclick="clearSelectedProductImage(this)">移除照片</button>
                 </div>
-                <small data-product-image-status style="color:#64748b;">支援 PNG、JPG、WEBP、GIF，5MB 以下。選好照片後按「儲存商品」即可；此照片對應這一筆商品及包裝版本。</small>
+                <small data-product-image-status style="color:#64748b;">支援 PNG、JPG、WEBP、GIF，5MB 以下。選好照片後按「儲存商品」即可；此照片對應這個顆數與包裝版本。</small>
               </div>
             </div>
           </div>
@@ -9407,15 +9475,15 @@
 
       function getAdminProductOptionStockLabel(product) {
         const label = !Number.isSafeInteger(product?.stock) ? "庫存未控管"
-          : product.stock < 0 ? `超賣 ${Math.abs(product.stock)} 盒`
-          : `可售 ${product.stock} 盒`;
+          : product.stock < 0 ? `超賣 ${Math.abs(product.stock)} ${getAdminInventoryUnitLabel(product)}`
+          : `可售 ${product.stock} ${getAdminInventoryUnitLabel(product)}`;
         return label + (normalizeAdminProductStatus(product?.status) === "後台販售，允許超賣" ? "｜允許超賣" : "");
       }
 
       function isAdminProductAvailableForOrderOption(product) {
         return (
           isAdminProductSellable(product) &&
-          (normalizeAdminProductStatus(product?.status) === "後台販售，允許超賣" || !Number.isInteger(product?.stock) || product.stock > 0)
+          (normalizeAdminProductStatus(product?.status) === "後台販售，允許超賣" || !Number.isInteger(product?.stock) || getAdminProductBoxStock(product) > 0)
         );
       }
 
@@ -9684,7 +9752,7 @@
           category: "一般禮盒",
           grade: "",
           count: "8顆",
-          price: 1,
+          price: null,
           stock: null,
           adminReservedStock: 0,
           active: false,
@@ -9818,11 +9886,13 @@
           ) {
             return;
           }
-          if (result.inventoryPolicyVersion !== 2 || !Number.isSafeInteger(result.pendingOrderQuantity) || result.pendingOrderQuantity < 0) {
+          if (![2,3].includes(result.inventoryPolicyVersion) || !Number.isSafeInteger(result.pendingOrderQuantity) || result.pendingOrderQuantity < 0) {
             throw new Error("INVENTORY_CLIENT_REFRESH_REQUIRED");
           }
           const serverStock = Number.isInteger(result.stock) ? result.stock : null;
           adminInventoryAdjustmentContext.stock = serverStock;
+          adminInventoryAdjustmentContext.inventoryUnit = result.inventoryUnit || "box";
+          adminInventoryAdjustmentContext.inventoryPolicyVersion = result.inventoryPolicyVersion;
           adminInventoryAdjustmentContext.allowsShortage = result.allowsShortage === true;
           adminInventoryAdjustmentContext.catalogVersion = result.catalogVersion || adminProductCatalogVersion;
           adminInventoryAdjustmentContext.pendingOrderQuantity = Math.max(
@@ -9867,6 +9937,7 @@
 
       function renderProductInventoryAdjustmentPreview() {
         const context = adminInventoryAdjustmentContext;
+        const unit = getAdminInventoryUnitLabel(context);
         const title = document.getElementById("productInventoryAdjustmentTitle");
         const description = document.getElementById(
           "productInventoryAdjustmentDescription",
@@ -9891,7 +9962,7 @@
           ? `${context.productName}｜輸入現場確認的總數，系統會扣除尚未出貨的既有訂單。`
           : mode === "reconcile"
             ? `${context.productName}｜輸入現場實際總數（含已訂未寄），系統會扣除未寄訂單與團購預留。`
-            : `${context.productName}｜只輸入這一批新到貨的盒數；既有訂單已占用庫存，不會再次扣除。`;
+            : `${context.productName}｜只輸入這一批新到貨的${unit}數；既有訂單已占用庫存，不會再次扣除。`;
         label.innerText = mode === "initialize"
           ? "現場實際總數"
           : mode === "reconcile"
@@ -9911,8 +9982,8 @@
         if (!context.ready || quantity === null) {
           if (submit) submit.disabled = true;
           summary.innerHTML = context.ready
-            ? `<div class="inventory-adjustment-summary-row"><span>目前可售庫存</span><strong>${context.stock === null ? "未設定" : escapeHtml(context.stock) + " 盒"}</strong></div>
-               <div class="inventory-adjustment-summary-row"><span>已訂未寄占用（含團購預留）</span><strong>${escapeHtml(context.pendingOrderQuantity)} 盒</strong></div>
+            ? `<div class="inventory-adjustment-summary-row"><span>目前可售庫存</span><strong>${context.stock === null ? "未設定" : escapeHtml(context.stock) + " " + unit}</strong></div>
+               <div class="inventory-adjustment-summary-row"><span>已訂未寄占用（含團購預留）</span><strong>${escapeHtml(context.pendingOrderQuantity)} ${unit}</strong></div>
                <div class="inventory-adjustment-summary-row"><span>請輸入${mode === "restock" ? "本次新到貨數量" : "現場實際總數"}</span><strong>—</strong></div>`
             : '<div class="inventory-adjustment-summary-row"><span>讀取中</span><strong>—</strong></div>';
           return;
@@ -9924,10 +9995,10 @@
           const after = quantity - pending;
           if (submit) submit.disabled = shortage > 0 && !context.allowsShortage;
           summary.innerHTML = `
-            <div class="inventory-adjustment-summary-row"><span>現場實際總數</span><strong>${escapeHtml(quantity)} 盒</strong></div>
-            <div class="inventory-adjustment-summary-row"><span>已訂未寄占用（含團購預留）</span><strong>− ${escapeHtml(pending)} 盒</strong></div>
-            ${shortage ? `<div class="inventory-adjustment-summary-row shortage"><span>${context.allowsShortage ? "超賣缺口（可儲存）" : "尚缺（不足，無法儲存）"}</span><strong>${escapeHtml(shortage)} 盒</strong></div>` : ""}
-            <div class="inventory-adjustment-summary-row total"><span>${mode === "reconcile" ? "修正後" : "設定後"}${after < 0 ? "超賣" : "可售庫存"}</span><strong>${escapeHtml(Math.abs(after))} 盒</strong></div>
+            <div class="inventory-adjustment-summary-row"><span>現場實際總數</span><strong>${escapeHtml(quantity)} ${unit}</strong></div>
+            <div class="inventory-adjustment-summary-row"><span>已訂未寄占用（含團購預留）</span><strong>− ${escapeHtml(pending)} ${unit}</strong></div>
+            ${shortage ? `<div class="inventory-adjustment-summary-row shortage"><span>${context.allowsShortage ? "超賣缺口（可儲存）" : "尚缺（不足，無法儲存）"}</span><strong>${escapeHtml(shortage)} ${unit}</strong></div>` : ""}
+            <div class="inventory-adjustment-summary-row total"><span>${mode === "reconcile" ? "修正後" : "設定後"}${after < 0 ? "超賣" : "可售庫存"}</span><strong>${escapeHtml(Math.abs(after))} ${unit}</strong></div>
           `;
           return;
         }
@@ -9936,10 +10007,10 @@
         const before = Number(context.stock || 0);
         const after = mode === "restock" ? before + quantity : quantity;
         summary.innerHTML = `
-          <div class="inventory-adjustment-summary-row"><span>${before < 0 ? "目前超賣" : "目前可售庫存"}</span><strong>${escapeHtml(Math.abs(before))} 盒</strong></div>
-          <div class="inventory-adjustment-summary-row"><span>已訂未寄占用（含團購預留，不重複扣除）</span><strong>${escapeHtml(context.pendingOrderQuantity)} 盒</strong></div>
-          ${mode === "restock" ? `<div class="inventory-adjustment-summary-row"><span>本次新增</span><strong>＋ ${escapeHtml(quantity)} 盒</strong></div>` : ""}
-          <div class="inventory-adjustment-summary-row total"><span>補貨後${after < 0 ? "超賣" : "可售庫存"}</span><strong>${escapeHtml(Math.abs(after))} 盒</strong></div>
+          <div class="inventory-adjustment-summary-row"><span>${before < 0 ? "目前超賣" : "目前可售庫存"}</span><strong>${escapeHtml(Math.abs(before))} ${unit}</strong></div>
+          <div class="inventory-adjustment-summary-row"><span>已訂未寄占用（含團購預留，不重複扣除）</span><strong>${escapeHtml(context.pendingOrderQuantity)} ${unit}</strong></div>
+          ${mode === "restock" ? `<div class="inventory-adjustment-summary-row"><span>本次新增</span><strong>＋ ${escapeHtml(quantity)} ${unit}</strong></div>` : ""}
+          <div class="inventory-adjustment-summary-row total"><span>補貨後${after < 0 ? "超賣" : "可售庫存"}</span><strong>${escapeHtml(Math.abs(after))} ${unit}</strong></div>
         `;
       }
 
@@ -10029,7 +10100,7 @@
           return;
         }
         if (context.mode === "restock" && quantity < 1) {
-          setProductInventoryAdjustmentFeedback("補貨數量至少為1盒。", "error");
+          setProductInventoryAdjustmentFeedback(`補貨數量至少為 1 ${getAdminInventoryUnitLabel(context)}。`, "error");
           return;
         }
         if (
@@ -10037,7 +10108,7 @@
           quantity < context.pendingOrderQuantity && !context.allowsShortage
         ) {
           setProductInventoryAdjustmentFeedback(
-            `現場數量不足，已訂未寄占用（含團購預留）尚缺 ${context.pendingOrderQuantity - quantity} 盒。`,
+            `現場數量不足，已訂未寄占用（含團購預留）尚缺 ${context.pendingOrderQuantity - quantity} ${getAdminInventoryUnitLabel(context)}。`,
             "error",
           );
           return;
@@ -10064,7 +10135,7 @@
             action: "adminAdjustProductInventory", adminSessionToken,
             catalogVersion: context.catalogVersion || adminProductCatalogVersion, requestKey: context.requestKey,
             expectedStock: context.stock,
-            productId: context.productId, mode: context.mode, inventoryPolicyVersion: 2,
+            productId: context.productId, mode: context.mode, inventoryPolicyVersion: context.inventoryPolicyVersion,
             expectedPendingQuantity: context.pendingOrderQuantity, quantity, note: "",
           }, context, inventoryMeasurement);
           if (
@@ -10089,13 +10160,15 @@
           refreshNewOrderProductOptions();
           updateNewOrderAmountPreview();
           const adjustment = result.adjustment || {};
-          const currentStock = result.products.find(p=>p.id===adjustment.productId)?.stock;
-          const currentStockText = currentStock < 0 ? `超賣 ${Math.abs(currentStock)} 盒` : `可售庫存 ${currentStock} 盒`;
+          const adjustedProduct = result.products.find(p=>p.id===adjustment.productId);
+          const currentStock = adjustedProduct?.stock;
+          const unit = getAdminInventoryUnitLabel(adjustedProduct);
+          const currentStockText = currentStock < 0 ? `超賣 ${Math.abs(currentStock)} ${unit}` : `可售庫存 ${currentStock} ${unit}`;
           const successText = adjustment.mode === "initialize"
             ? `✅ 首批庫存已設定，${currentStockText}`
             : adjustment.mode === "reconcile"
               ? `✅ 盤點完成，${currentStockText}`
-              : `✅ 已新增 ${adjustment.enteredQuantity} 盒，現在${currentStockText}`;
+              : `✅ 已新增 ${adjustment.enteredQuantity} ${unit}，現在${currentStockText}`;
           setProductManagementFeedback(successText, "success");
           inventoryUiUpdated = true;
         } catch (error) {
@@ -10219,11 +10292,12 @@
           variety: getValue("variety"),
           category: normalizeAdminProductCategory(getValue("category")),
           grade: getValue("variety") === "日本蜜柑" ? getValue("count") : getValue("grade"),
-          count: getValue("count"),
+          count: card.querySelector('[data-product-field="count"]')?.dataset?.countUnit === "fruit" ? `${getValue("count")}顆` : getValue("count"),
           shippingRule: getValue("shippingRule"),
           productSeries: getValue("productSeries"),
           imageUrl: getValue("imageUrl"),
-          includesIndividualPackaging: getValue("includesIndividualPackaging") === "true",
+          includesIndividualPackaging: existingProduct?.includesIndividualPackaging === true,
+          inventoryUnit: existingProduct?.inventoryUnit || "box",
           price: Number(getValue("price")),
           stock,
           adminReservedStock,
@@ -10243,6 +10317,7 @@
             product.grade,
             product.count,
           ];
+          if (['牛奶梨','蔗香梨'].includes(product.variety) && (!/^\d+顆$/.test(product.count) || !Number.isSafeInteger(Number(product.count.slice(0,-1))) || Number(product.count.slice(0,-1)) < 1)) return '每盒顆數需為 1 以上的整數。';
           if (requiredStrings.some((value) => !String(value || "").trim())) {
             return "請填寫完整的商品規格。";
           }
@@ -10387,7 +10462,7 @@
             // key. If the delayed original arrives later, the server deduplicates.
           } else {
             if (!plan.changes.length) { setProductManagementFeedback('商品內容沒有變更。'); return false; }
-            pending = {...plan,requestKey:createAdminInventoryRequestKey().replace(/^inventory_/, 'product_')};
+            pending = {...plan,inventoryPolicyVersion:3,requestKey:createAdminInventoryRequestKey().replace(/^inventory_/, 'product_')};
             sessionStorage.setItem(PRODUCT_MANAGEMENT_PENDING_KEY, JSON.stringify(pending));
           }
           setProductManagementFeedback('儲存中…');
@@ -10399,7 +10474,7 @@
             },20000,true);
             result = await response.json();
             if (!response.ok || result?.ok !== true || result.action !== 'adminUpdateProductFields' || result.requestKey !== pending.requestKey) {
-              if (result?.action==='adminUpdateProductFields' && ['ADMIN_SESSION_REQUIRED','REQUEST_INVALID','PRODUCT_MANAGEMENT_UPDATE_BUSY'].includes(result.error)) {
+              if (result?.action==='adminUpdateProductFields' && ['ADMIN_SESSION_REQUIRED','REQUEST_INVALID','PRODUCT_MANAGEMENT_UPDATE_BUSY','INVENTORY_CLIENT_REFRESH_REQUIRED'].includes(result.error)) {
                 sessionStorage.removeItem(PRODUCT_MANAGEMENT_PENDING_KEY);
                 setProductManagementFeedback(result.error==='PRODUCT_MANAGEMENT_UPDATE_BUSY' ? '目前另一筆操作尚未完成，本次沒有送入儲存；輸入已保留。' : '本次未儲存，輸入已保留。錯誤：'+result.error,'error');
                 return false;
@@ -10501,6 +10576,7 @@
             },
             body: JSON.stringify({
               action: "adminUpdateProductManagement",
+              inventoryPolicyVersion: 3,
               diagnosticRequestId: measurement?.requestId,
               adminSessionToken,
               catalogVersion: adminProductCatalogVersion,
