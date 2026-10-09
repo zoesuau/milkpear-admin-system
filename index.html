@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261002-read-reliability-candidate-v1">
+<html lang="zh-Hant" data-release-version="20261009-snapshot-workspace-v1">
   <head>
     <meta charset="UTF-8" />
     <meta name="admin-release" content="20260928-order-mutation-recovery-v1" />
@@ -9,7 +9,7 @@
     />
     <title>出貨後台</title>
     <script src="./customer-config.js?v=20261002-read-reliability-candidate-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261002-read-reliability-candidate-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261009-snapshot-workspace-v1"></script>
     <script src="./admin-mutation-recovery.js?v=20261002-read-reliability-candidate-v1"></script>
     <link
       rel="stylesheet"
@@ -12067,15 +12067,20 @@
       function applyPendingAdminCompleteWorkspace() {
         const pending = adminPendingCompleteWorkspace;
         if (!pending) return false;
-        if (pending.token !== sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) ||
-            pending.queryRevision !== adminOrderQueryRequestId || pending.mutationRevision !== adminOrderMutationRevision ||
-            pending.viewVersion !== adminOrderReadMeta.snapshotLiveVersion) {
+        const contextChange = getAdminWorkspaceContextChangeCode(pending);
+        if (contextChange) {
           adminPendingCompleteWorkspace = null;
-          window.AdminDiagnostics?.finishFlow?.(pending.flow, { outcome: "failure", code: "UNCONFIRMED" });
+          window.AdminDiagnostics?.finishFlow?.(pending.flow, { outcome: "interrupted", code: contextChange });
           queueAdminCompleteWorkspaceLoad(1000);
           return false;
         }
-        if (adminOrderViewHasDraft() || selectedOrderNos.size || document.visibilityState === "hidden") return false;
+        const waitCode = adminOrderViewHasDraft() ? "WORKSPACE_WAIT_DRAFT"
+          : selectedOrderNos.size ? "WORKSPACE_WAIT_SELECTION"
+            : document.visibilityState === "hidden" ? "WORKSPACE_WAIT_HIDDEN" : "";
+        if (waitCode) {
+          window.AdminDiagnostics?.markFlow?.(pending.flow, "waiting_ui", { outcome: "started", code: waitCode });
+          return false;
+        }
         try {
           const page = adminCurrentPage;
           const orders = pending.orders;
@@ -12098,10 +12103,19 @@
           adminOrderWorkspaceComplete = false;
           adminPendingCompleteWorkspace = null;
           recordAdminCompleteWorkspaceFailure(pending.token);
-          window.AdminDiagnostics?.finishFlow?.(pending.flow, { outcome: "failure", code: "UNCONFIRMED" });
+          window.AdminDiagnostics?.finishFlow?.(pending.flow, { outcome: "failure", code: "WORKSPACE_RENDER_FAILED" });
           queueAdminCompleteWorkspaceLoad();
           return false;
         }
+      }
+
+      // Classify the existing no-overwrite guard without logging session or version values.
+      function getAdminWorkspaceContextChangeCode(context) {
+        if (context.token !== sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY)) return "WORKSPACE_SESSION_CHANGED";
+        if (context.queryRevision !== adminOrderQueryRequestId) return "WORKSPACE_QUERY_CHANGED";
+        if (context.mutationRevision !== adminOrderMutationRevision) return "WORKSPACE_MUTATION_CHANGED";
+        if (context.viewVersion !== adminOrderReadMeta.snapshotLiveVersion) return "WORKSPACE_VERSION_CHANGED";
+        return "";
       }
 
       const ADMIN_COMPLETE_WORKSPACE_MAX_FAILURES = 3;
@@ -12151,7 +12165,13 @@
             networkRecovery: true, flow });
           if (!Array.isArray(orders) || orders.adminReadMeta?.snapshotStale) {
             recordAdminCompleteWorkspaceFailure(context.token);
-            window.AdminDiagnostics?.finishFlow?.(flow, { outcome: "failure", code: "UNCONFIRMED" });
+            let contextChange = "";
+            try { contextChange = getAdminWorkspaceContextChangeCode(context); }
+            catch { /* Preserve one failed read when its diagnostic storage read fails. */ }
+            window.AdminDiagnostics?.finishFlow?.(flow, {
+              outcome: contextChange ? "interrupted" : "failure",
+              code: contextChange || (Array.isArray(orders) ? "WORKSPACE_STALE_DATA" : "WORKSPACE_READ_FAILED"),
+            });
             return false;
           }
           window.AdminDiagnostics?.markFlow?.(flow, "full_data");
@@ -12160,7 +12180,12 @@
         })().catch(() => {
           recordAdminCompleteWorkspaceFailure(context.token);
           if (adminPendingCompleteWorkspace?.flow === flow) adminPendingCompleteWorkspace = null;
-          window.AdminDiagnostics?.finishFlow?.(flow, { outcome: "failure", code: "UNCONFIRMED" });
+          let contextChange = "";
+          try { contextChange = getAdminWorkspaceContextChangeCode(context); }
+          catch { /* A diagnostic read must not rethrow the original storage failure. */ }
+          window.AdminDiagnostics?.finishFlow?.(flow, {
+            outcome: contextChange ? "interrupted" : "failure", code: contextChange || "WORKSPACE_LOAD_FAILED",
+          });
           return false;
         });
         adminCompleteWorkspacePromise = work;
@@ -12516,7 +12541,7 @@
         const page = Math.max(1, Number(options?.page ?? adminCurrentPage) || 1);
         const queryRevision = ++adminOrderQueryRequestId;
         if (adminPendingCompleteWorkspace) {
-          window.AdminDiagnostics?.finishFlow?.(adminPendingCompleteWorkspace.flow, { outcome: "failure", code: "UNCONFIRMED" });
+          window.AdminDiagnostics?.finishFlow?.(adminPendingCompleteWorkspace.flow, { outcome: "interrupted", code: "WORKSPACE_QUERY_CHANGED" });
         }
         adminPendingCompleteWorkspace = null;
         if (!adminOrderWorkspaceComplete) {
@@ -12977,7 +13002,7 @@
         try {
           adminOrderMutationRevision++;
           if (adminPendingCompleteWorkspace?.flow) {
-            window.AdminDiagnostics?.finishFlow?.(adminPendingCompleteWorkspace.flow, { outcome: "failure", code: "UNCONFIRMED" });
+            window.AdminDiagnostics?.finishFlow?.(adminPendingCompleteWorkspace.flow, { outcome: "interrupted", code: "WORKSPACE_MUTATION_CHANGED" });
           }
           adminPendingCompleteWorkspace = null;
           const nextOrders = latestAdminOrders.slice();
@@ -13181,7 +13206,7 @@
         if (!orderNo) return false;
         adminOrderMutationRevision++;
         if (adminPendingCompleteWorkspace?.flow) {
-          window.AdminDiagnostics?.finishFlow?.(adminPendingCompleteWorkspace.flow, { outcome: "failure", code: "UNCONFIRMED" });
+          window.AdminDiagnostics?.finishFlow?.(adminPendingCompleteWorkspace.flow, { outcome: "interrupted", code: "WORKSPACE_MUTATION_CHANGED" });
         }
         adminPendingCompleteWorkspace = null;
         pendingAdminSnapshotOrderOverlays.set(orderNo, { ...order });
