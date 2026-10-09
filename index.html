@@ -18521,7 +18521,7 @@
               );
               const productLabel = productId
                 ? getShippingManifestProductDisplayLabel(productId)
-                : `${item.label}｜顆數待確認`;
+                : `${item.label}｜規格待確認`;
               const productKey = productId || `unresolved:${productLabel}`;
               productTotals.set(
                 productKey,
@@ -18572,98 +18572,57 @@
       function getShippingManifestProductId(label, unitPrice = null) {
         const normalizedLabel = normalizeAdminProductCode(label);
         if (!normalizedLabel) return "";
-        let candidates = adminProductCatalog.filter((product) => {
-          const id = normalizeAdminProductCode(product?.id);
-          const code = normalizeAdminProductCode(product?.code);
-          const grade = normalizeAdminProductCode(product?.grade);
-          if (id && id === normalizedLabel) return true;
-          if (code && code === normalizedLabel) return true;
-          if (grade && grade === normalizedLabel) return true;
-          if (grade && normalizedLabel.includes(grade)) return true;
-          return (
-            code &&
-            new RegExp(`(?:^|[^A-Z0-9])${code}(?:[^A-Z0-9]|$)`).test(
-              normalizedLabel,
-            )
-          );
-        });
-
-        const labelVariety = String(label || "").includes("牛奶梨")
-          ? "牛奶梨"
-          : /(蔗香梨|薦香梨)/.test(String(label || ""))
-            ? "蔗香梨"
-            : String(label || "").includes("日本蜜柑") ? "日本蜜柑" : "";
-        if (candidates.length > 1 && labelVariety) {
-          const varietyCandidates = candidates.filter(
-            (product) => String(product?.variety || "").trim() === labelVariety,
-          );
-          if (varietyCandidates.length) candidates = varietyCandidates;
-        }
-        if (candidates.length > 1 && Number.isInteger(unitPrice) && unitPrice > 0) {
-          const pricedCandidates = candidates.filter(
-            (product) => Number(product?.price) === unitPrice,
-          );
-          if (pricedCandidates.length) candidates = pricedCandidates;
-        }
-        if (candidates.length > 1) {
-          const countedCandidates = candidates.filter((product) => {
-            const count = normalizeAdminProductCode(product?.count);
-            return count && normalizedLabel.includes(count);
-          });
-          if (countedCandidates.length) candidates = countedCandidates;
-        }
-        if (candidates.length === 1) return String(candidates[0].id || "").trim();
-
-        const sizeMatch = normalizedLabel.match(/(\d+)A/);
-        const size = sizeMatch ? Number(sizeMatch[1]) : null;
-        const hasPackageHint = /(兩粒|二粒|2顆)/.test(String(label || ""));
-        if (candidates.length > 1 && hasPackageHint) {
-          const packageCandidates = candidates.filter((product) =>
-            String(product?.category || "").includes("兩粒"),
-          );
-          if (packageCandidates.length) candidates = packageCandidates;
-        }
-        if (candidates.length === 1) return String(candidates[0].id || "").trim();
-
-        const equivalentSignatures = new Set(
-          candidates.map((product) =>
-            [
-              String(product?.variety || "").trim(),
-              normalizeAdminProductCode(product?.grade),
-              normalizeAdminProductCode(product?.count),
-              String(product?.category || "").trim(),
-              Number(product?.price) || 0,
-            ].join("|"),
+        const exactProducts = adminProductCatalog.filter((product) =>
+          [product?.id, product?.code].some((value) =>
+            value && normalizeAdminProductCode(value) === normalizedLabel,
           ),
         );
-        if (candidates.length > 1 && equivalentSignatures.size === 1) {
-          const statusRank = { 上架: 1, 僅後台販售: 2, "後台販售，允許超賣": 3, 停售: 4 };
-          candidates.sort(
-            (a, b) =>
-              (statusRank[String(a?.status || "").trim()] || 9) -
-              (statusRank[String(b?.status || "").trim()] || 9),
-          );
-          return String(candidates[0]?.id || "").trim();
-        }
+        if (exactProducts.length === 1) return String(exactProducts[0].id || "").trim();
 
-        const byGradeAndPackage = adminProductCatalog.filter((product) => {
+        const gradeMatch = normalizedLabel.match(/(\d+)A/);
+        const labelVariety = String(label || "").includes("牛奶梨") ? "牛奶梨"
+          : /(蔗香梨|薦香梨)/.test(String(label || "")) ? "蔗香梨"
+          : String(label || "").includes("日本蜜柑") ? "日本蜜柑" : "";
+        const countMatch = normalizedLabel.match(/(\d+)(?:顆|粒)/);
+        const labelCount = countMatch ? Number(countMatch[1])
+          : /(?:兩|二)粒/.test(normalizedLabel) ? 2 : null;
+        const labelSeries = normalizedLabel.includes("精裝版") ? "精裝版"
+          : normalizedLabel.includes("禮盒版") ? "禮盒版" : "";
+        const seriesOf = (product) => String(product?.productSeries || "").trim() || "禮盒版";
+        // Explicit grade, variety, count and packaging are constraints. Price is
+        // only a fallback for historical rows lacking complete variant identity.
+        let candidates = adminProductCatalog.filter((product) => {
           const grade = normalizeAdminProductCode(product?.grade);
-          const productSize = grade.match(/(\d+)A/);
-          if (!productSize || productSize[1] !== String(size || "")) return false;
-          if (
-            labelVariety &&
-            String(product?.variety || "").trim() !== labelVariety
-          ) {
-            return false;
+          if (gradeMatch) {
+            if (grade !== gradeMatch[0]) return false;
+          } else {
+            const fullName = normalizeAdminProductCode(
+              [product?.variety, product?.productSeries, product?.grade].filter(Boolean).join(" "),
+            );
+            if (!grade || (normalizedLabel !== grade && normalizedLabel !== fullName)) return false;
           }
-          if (Number.isInteger(unitPrice) && unitPrice > 0) {
-            return Number(product?.price) === unitPrice;
-          }
-          return true;
+          if (labelVariety && String(product?.variety || "").trim() !== labelVariety) return false;
+          const productCount = normalizeAdminProductCode(product?.count).match(/(\d+)(?:顆|粒)/);
+          if (labelCount !== null && (!productCount || Number(productCount[1]) !== labelCount)) return false;
+          return !labelSeries || seriesOf(product) === labelSeries;
         });
-        return byGradeAndPackage.length === 1
-          ? String(byGradeAndPackage[0].id || "").trim()
-          : "";
+        if (candidates.length > 1 && Number.isInteger(unitPrice) && unitPrice > 0) {
+          const priced = candidates.filter((product) => Number(product?.price) === unitPrice);
+          if (priced.length) candidates = priced;
+        }
+        if (candidates.length === 1) return String(candidates[0].id || "").trim();
+        const signatures = new Set(candidates.map((product) => [
+          String(product?.variety || "").trim(), normalizeAdminProductCode(product?.grade),
+          normalizeAdminProductCode(product?.count), String(product?.category || "").trim(),
+          seriesOf(product), Number(product?.price) || 0,
+        ].join("|")));
+        if (candidates.length > 1 && signatures.size === 1) {
+          const statusRank = { 上架: 1, 僅後台販售: 2, "後台販售，允許超賣": 3, 停售: 4 };
+          candidates.sort((a, b) => (statusRank[String(a?.status || "").trim()] || 9)
+            - (statusRank[String(b?.status || "").trim()] || 9));
+          return String(candidates[0].id || "").trim();
+        }
+        return "";
       }
 
       function getShippingManifestProductDisplayLabel(productId) {
@@ -18673,7 +18632,9 @@
         if (!product) return String(productId || "").trim();
         const grade = String(product.grade || "").replace(/\s+/g, "").trim();
         const count = String(product.count || "").trim();
-        return [grade, count].filter(Boolean).join("｜");
+        const series = String(product.productSeries || "").trim() ||
+          (["牛奶梨", "蔗香梨"].includes(String(product.variety || "").trim()) ? "禮盒版" : "");
+        return [grade, series, count].filter(Boolean).join("｜");
       }
 
       function buildShippingManifestProductSummary(stats) {
@@ -18723,32 +18684,13 @@
           });
         const buildLines = (entries, groupPattern = null) => {
           if (!entries.length) return "—";
-          const mergedEntries = new Map();
-          entries.forEach(([label, qty]) => {
-            const sizeMatch = String(label).match(/(\d+)\s*A/i);
-            const strippedLabel = groupPattern
-              ? label.replace(groupPattern, "").replace(/^[\s：:｜|-]+/, "").trim() ||
-                label
-              : label;
-            const productId = String(label).includes("｜")
-              ? ""
-              : getShippingManifestProductId(label);
-            const displayLabel =
-              String(label).includes("｜")
-                ? strippedLabel
-                : groupPattern && productId
-                ? getShippingManifestProductDisplayLabel(productId)
-                : sizeMatch
-                  ? `${Number(sizeMatch[1])} A`
-                  : strippedLabel;
-            const key = displayLabel.replace(/\s+/g, "").toUpperCase();
-            const existing = mergedEntries.get(key);
-            mergedEntries.set(key, [
-              existing?.[0] || displayLabel,
-              (existing?.[1] || 0) + qty,
-            ]);
-          });
-          return sortEntries([...mergedEntries.values()])
+          const displayEntries = entries.map(([label, qty]) => [
+            groupPattern
+              ? label.replace(groupPattern, "").replace(/^[\s：:｜|-]+/, "").trim() || label
+              : label,
+            qty,
+          ]);
+          return sortEntries(displayEntries)
             .map(([label, qty]) => {
               return `${escapeHtml(label)}：${escapeHtml(qty)} 盒`;
             })
