@@ -9182,12 +9182,15 @@
               ${renderSimpleOptions(["一般禮盒", "兩粒禮盒"], normalizeAdminProductCategory(product.category))}
             </select>
           </div>
-          <div class="product-field" ${isMikan ? "" : 'style="display:none;"'}>
-            <label>商品系列</label>
-            <select data-product-field="productSeries">
-              ${renderSimpleOptions(["禮盒版", "Ｑ版", "火燒柑"], product.productSeries || "禮盒版")}
+          <div class="product-field full">
+            <label>${isMikan ? "商品系列" : "包裝版本"}</label>
+            <select data-product-field="productSeries" aria-label="${isMikan ? "商品系列" : "包裝版本"}">
+              ${isMikan ? renderSimpleOptions(["禮盒版", "Ｑ版", "火燒柑"], product.productSeries || "禮盒版") : `
+                <option value=""${!product.productSeries ? " selected" : ""}>尚未指定</option>
+                ${product.productSeries && !["禮盒版", "精裝版"].includes(product.productSeries) ? `<option value="${escapeHtml(product.productSeries)}" selected>${escapeHtml(product.productSeries)}（既有值）</option>` : ""}
+                ${renderSimpleOptions(["禮盒版", "精裝版"], product.productSeries || "")}`}
             </select>
-            <small style="color:#64748b;">火燒柑可先保留；前台完成系列顯示改版前，新建立的日本蜜柑請維持停售。</small>
+            <small style="color:#64748b;">${isMikan ? "火燒柑可先保留；新建立的日本蜜柑請維持停售，確認前台後再上架。" : "同一 A 數的禮盒版、精裝版各建一筆商品，分別設定價格、庫存與照片；品種、A 數及分類相同時，前台會合併成包裝選單。"}</small>
           </div>
           <div class="product-field" ${isMikan ? 'style="display:none;"' : ""}>
             <label>A數 / 等級</label>
@@ -9236,7 +9239,7 @@
               <option value="false" ${product.includesIndividualPackaging ? "" : "selected"}>不提供</option>
               <option value="true" ${product.includesIndividualPackaging ? "selected" : ""}>商品已包含</option>
             </select>
-            <small style="color:#64748b;">只記錄商品是否已含個別包裝，不開放加購。前台本產季暫不顯示。</small>
+            <small style="color:#64748b;">指每顆水果是否另有包裝，與禮盒版／精裝版不同；不開放加購，前台不顯示。</small>
           </div>
           <div class="product-field full">
             <label>商品照片</label>
@@ -9248,7 +9251,7 @@
                 <div class="product-image-actions">
                   <button type="button" class="product-action-btn danger" onclick="clearSelectedProductImage(this)">移除照片</button>
                 </div>
-                <small data-product-image-status style="color:#64748b;">支援 PNG、JPG、WEBP、GIF，5MB 以下。選好照片後按「儲存商品」即可；前台目前不顯示。</small>
+                <small data-product-image-status style="color:#64748b;">支援 PNG、JPG、WEBP、GIF，5MB 以下。選好照片後按「儲存商品」即可；此照片對應這一筆商品及包裝版本。</small>
               </div>
             </div>
           </div>
@@ -10218,7 +10221,7 @@
           grade: getValue("variety") === "日本蜜柑" ? getValue("count") : getValue("grade"),
           count: getValue("count"),
           shippingRule: getValue("shippingRule"),
-          productSeries: getValue("variety") === "日本蜜柑" ? getValue("productSeries") : "",
+          productSeries: getValue("productSeries"),
           imageUrl: getValue("imageUrl"),
           includesIndividualPackaging: getValue("includesIndividualPackaging") === "true",
           price: Number(getValue("price")),
