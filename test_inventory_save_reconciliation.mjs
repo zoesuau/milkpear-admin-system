@@ -24,3 +24,17 @@ for(const state of ['review_required','rolled_back']) {
 }
 f=fixture();f.c.fetchAdminRecoverableResponse=async(u,o)=>({ok:true,json:async()=>f.receipt(JSON.parse(o.body).requestKey,'not_found')});await assert.rejects(f.run());assert.equal(f.writes.length,1);await assert.rejects(f.run());assert.equal(f.writes.length,2);assert.equal(f.writes[0].requestKey,f.writes[1].requestKey);
 console.log('PASS inventory lost response readback, persistent original key, no stored token, changed quantity isolation, pending/review never replay, rollback, explicit same-key retry');
+
+for(const changed of [false,true]) {
+ f=fixture();
+ const payload={...f.payload,mode:'reconcile',quantity:21,bGradeReserve:3,boxReconcile:{boxes:0.5,netJin:32,midLiang:12}};
+ f.c.fetchAdminRecoverableResponse=async()=>{throw Error('offline')};
+ await assert.rejects(f.run(payload),/offline/);
+ f.c.fetchAdminRecoverableResponse=async(u,o)=>({ok:true,json:async()=>({...f.receipt(JSON.parse(o.body).requestKey),adjustment:{productId:'p14',mode:'reconcile',enteredQuantity:21,afterStock:1}})});
+ const retry=changed?{...payload,boxReconcile:{boxes:1,netJin:16,midLiang:12}}:payload;
+ if(changed)await assert.rejects(f.run(retry),/INVENTORY_PREVIOUS_CONFIRMED/);
+ else assert.equal((await f.run(retry)).adjustment.afterStock,1);
+ assert.equal(f.writes.length,1,'recount recovery never replays or replaces the original case input');
+ assert.equal(f.storage.size,0);
+}
+console.log('PASS case recount recovery: original receipt, no duplicate writes, same estimate with changed case/weight rejected');

@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261012-b-reserve-policy-v1">
+<html lang="zh-Hant" data-release-version="20261012-grade-recount-cases-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261012-b-reserve-policy-v1" />
+    <meta name="admin-release" content="20261012-grade-recount-cases-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261012-b-reserve-policy-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261012-b-reserve-policy-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261012-b-reserve-policy-v1"></script>
+    <script src="./customer-config.js?v=20261012-grade-recount-cases-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261012-grade-recount-cases-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261012-grade-recount-cases-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -6016,7 +6016,7 @@
                 <div><label for="fruitBoxNetJin">每箱淨重（台斤）</label><input class="form-control" id="fruitBoxNetJin" type="number" inputmode="decimal" min="0.01" max="100" step="0.01" value="32" aria-describedby="fruitBoxNetJinError" oninput="handleFruitInventoryFieldInput(event)" onblur="handleFruitInventoryFieldInput(event)"><p id="fruitBoxNetJinError" class="inventory-field-error" hidden></p></div>
                 <div><label for="fruitBoxMidLiang">單顆中間重量（兩）</label><input class="form-control" id="fruitBoxMidLiang" type="number" inputmode="decimal" min="1" max="64" step="0.01" placeholder="請填單顆平均重量" aria-describedby="fruitBoxMidLiangHint fruitBoxMidLiangError" oninput="handleFruitInventoryFieldInput(event)" onblur="handleFruitInventoryFieldInput(event)"><p id="fruitBoxMidLiangHint" class="product-inventory-hint" hidden>此級別無法自動判讀重量，請依實際平均重量填寫。</p><p id="fruitBoxMidLiangError" class="inventory-field-error" hidden></p></div>
               </div>
-            </details><p class="product-inventory-hint">整批換算後捨去不足一顆的小數；整顆零頭仍保留。每箱預留 3 顆 B級。</p>
+            </details><p id="fruitBoxConversionHint" class="product-inventory-hint">整批換算後捨去不足一顆的小數；整顆零頭仍保留。每箱預留 3 顆 B級。</p>
           </div>
           <div id="fruitBGradeFields" class="fruit-inventory-fields" hidden><label for="fruitBGradeReserve">B級預留（顆，僅供管理員接單）</label><input class="form-control" id="fruitBGradeReserve" type="number" inputmode="numeric" min="0" step="1" aria-describedby="fruitBGradeReserveError" oninput="handleFruitInventoryFieldInput(event)" onblur="handleFruitInventoryFieldInput(event)"><p id="fruitBGradeReserveError" class="inventory-field-error" hidden></p></div>
           <div
@@ -9967,9 +9967,9 @@
         renderProductInventoryAdjustmentPreview();
 
         if (pendingInventory) {
-          adminInventoryAdjustmentContext = {...pendingInventory.context,ready:true};
-          if (input) { input.value=String(pendingInventory.request.boxRestock?.boxes ?? pendingInventory.request.quantity); input.disabled=true; }
-          setFruitInventoryFields(pendingInventory.request.boxRestock || pendingInventory.context.boxRestockDefaults,pendingInventory.request.bGradeReserve??pendingInventory.context.adminReservedStock,true);
+          adminInventoryAdjustmentContext = {...pendingInventory.context,ready:true,legacyFruitReconcile:pendingInventory.context.mode==='reconcile' && !pendingInventory.request.boxReconcile};
+          if (input) { input.value=String(pendingInventory.request.boxRestock?.boxes ?? pendingInventory.request.boxReconcile?.boxes ?? pendingInventory.request.quantity); input.disabled=true; }
+          setFruitInventoryFields(pendingInventory.request.boxRestock || pendingInventory.request.boxReconcile || pendingInventory.context.boxRestockDefaults,pendingInventory.request.bGradeReserve??pendingInventory.context.adminReservedStock,true);
           if (submit) submit.disabled=false;
           setProductInventoryAdjustmentFeedback('上次庫存操作尚待核對；按確認會查詢原操作，不會另外補貨。');
           renderProductInventoryAdjustmentPreview();
@@ -10017,7 +10017,7 @@
           adminInventoryAdjustmentContext.inventoryPolicyVersion = result.inventoryPolicyVersion;
           adminInventoryAdjustmentContext.adminReservedStock = result.adminReservedStock || 0;
           adminInventoryAdjustmentContext.boxRestockDefaults = result.boxRestockDefaults;
-          if(result.inventoryUnit==='fruit' && result.boxRestockVersion!==1)throw new Error('INVENTORY_CLIENT_REFRESH_REQUIRED');
+          if(result.inventoryUnit==='fruit' && (result.boxRestockVersion!==1 || (mode==='reconcile' && result.boxReconcileVersion!==1)))throw new Error('INVENTORY_CLIENT_REFRESH_REQUIRED');
           setFruitInventoryFields(result.boxRestockDefaults,result.adminReservedStock||0,false);
           adminInventoryAdjustmentContext.allowsShortage = result.allowsShortage === true;
           adminInventoryAdjustmentContext.catalogVersion = result.catalogVersion || adminProductCatalogVersion;
@@ -10081,59 +10081,71 @@
       }
       function readFruitInventoryForm(context) {
         const value=id=>String(document.getElementById(id)?.value??'').trim();
-        const entered=value('productInventoryAdjustmentQuantity'),number=/^\d+$/.test(entered)?Number(entered):NaN;
+        const restock=context.mode==='restock',recount=context.mode==='reconcile'&&!context.legacyFruitReconcile,byBox=restock||recount;
+        const entered=value('productInventoryAdjustmentQuantity');
+        const number=(recount?/^\d+(?:\.\d+)?$/:/^\d+$/).test(entered)?Number(entered):NaN;
         const before=Number(context.stock||0),reserved=Number(context.adminReservedStock||0),pending=Number(context.pendingOrderQuantity||0);
-        if(context.mode==='restock'){
+        let quantity=number,boxInput,conversionValid=true;
+        if(byBox){
           const netJin=Number(value('fruitBoxNetJin')),midLiang=Number(value('fruitBoxMidLiang'));
           const net=Math.round(netJin*100),mid=Math.round(midLiang*100);
-          const quantity=Math.floor(number*net*16/mid),bGrade=number*3;
+          quantity=Math.floor(number*net*16/mid);boxInput={boxes:number,netJin,midLiang};
+          conversionValid=(recount?Number.isSafeInteger(number*2):Number.isSafeInteger(number))&&number>=(restock?1:0)&&number<=10000&&netJin>0&&netJin<=100&&midLiang>=1&&midLiang<=64&&Math.abs(net-netJin*100)<0.000001&&Math.abs(mid-midLiang*100)<0.000001&&Number.isSafeInteger(quantity)&&quantity>=(restock?1:0);
+        }
+        if(restock){
+          const bGrade=number*3;
           return {quantity,reserved:reserved+bGrade,after:before+quantity,bGrade,
-            valid:Number.isSafeInteger(number)&&number>0&&number<=10000&&netJin>0&&netJin<=100&&midLiang>=1&&midLiang<=64&&Math.abs(net-netJin*100)<0.000001&&Math.abs(mid-midLiang*100)<0.000001&&Number.isSafeInteger(quantity)&&quantity>=1&&Number.isSafeInteger(reserved+bGrade),
-            request:{boxRestock:{boxes:number,netJin,midLiang}}};
+            valid:conversionValid&&Number.isSafeInteger(reserved+bGrade),request:{boxRestock:boxInput}};
         }
         const reserveText=value('fruitBGradeReserve'),bGrade=/^\d+$/.test(reserveText)?Number(reserveText):NaN;
-        const after=number-pending;
-        return {quantity:number,reserved:bGrade,after,bGrade,
-          valid:Number.isSafeInteger(number)&&number>=0&&Number.isSafeInteger(bGrade)&&bGrade>=0&&(after>=0||context.allowsShortage),
-          request:{bGradeReserve:bGrade,expectedReservedStock:reserved}};
+        const after=quantity-pending;
+        return {quantity,reserved:bGrade,after,bGrade,
+          valid:conversionValid&&Number.isSafeInteger(quantity)&&quantity>=0&&Number.isSafeInteger(bGrade)&&bGrade>=0&&(after>=0||context.allowsShortage),
+          request:{bGradeReserve:bGrade,expectedReservedStock:reserved,...(recount?{boxReconcile:boxInput}:{})}};
       }
       function renderFruitInventoryPreview(context) {
-        const mode=context.mode,restock=mode==='restock',plan=readFruitInventoryForm(context);
+        const mode=context.mode,restock=mode==='restock',recount=mode==='reconcile'&&!context.legacyFruitReconcile,byBox=restock||recount,plan=readFruitInventoryForm(context);
         const value=id=>String(document.getElementById(id)?.value??'').trim();
         const quantityId='productInventoryAdjustmentQuantity',entered=value(quantityId),errors={};
         const touched=context.touchedFields||{};
         const weightValid=(text,min,max)=>text!=='' && Number.isFinite(Number(text)) && Number(text)>=min && Number(text)<=max && Math.abs(Number(text)*100-Math.round(Number(text)*100))<0.000001;
         if(context.ready) {
           if(entered!=='' || touched[quantityId]) {
-            if(!/^\d+$/.test(entered) || !Number.isSafeInteger(Number(entered)) || Number(entered)<(restock?1:0) || (restock && Number(entered)>10000))
-              errors[quantityId]=restock?'請輸入 1～10000 的整數箱數。':'請輸入 0 以上的整數顆數。';
+            const number=Number(entered),format=(recount?/^\d+(?:\.\d+)?$/:/^\d+$/).test(entered);
+            if(!format || !(recount?Number.isSafeInteger(number*2):Number.isSafeInteger(number)) || number<(restock?1:0) || (byBox && number>10000))
+              errors[quantityId]=restock?'請輸入 1～10000 的整數箱數。':recount?'請輸入 0～10000 箱，以半箱為單位，例如 0.5、1、1.5。':'請輸入 0 以上的整數顆數。';
           }
-          if(restock) {
+          if(byBox) {
             if((entered!=='' || touched.fruitBoxNetJin) && !weightValid(value('fruitBoxNetJin'),0.01,100))errors.fruitBoxNetJin='請填入 0.01～100 斤的淨重，最多兩位小數。';
             if((entered!=='' || touched.fruitBoxMidLiang) && !weightValid(value('fruitBoxMidLiang'),1,64))errors.fruitBoxMidLiang='請填入 1～64 兩的單顆中間重量，最多兩位小數。';
-          } else if((entered!=='' || touched.fruitBGradeReserve) && (!/^\d+$/.test(value('fruitBGradeReserve')) || !Number.isSafeInteger(Number(value('fruitBGradeReserve'))))) {
+          }
+          if(!restock && (entered!=='' || touched.fruitBGradeReserve) && (!/^\d+$/.test(value('fruitBGradeReserve')) || !Number.isSafeInteger(Number(value('fruitBGradeReserve'))))) {
             errors.fruitBGradeReserve='請輸入 0 以上的整數顆數。';
           }
           if(entered!=='' && !Object.keys(errors).length && !restock && plan.after<0 && !context.allowsShortage)
             errors[quantityId]=`現場數量不足，已訂未寄尚缺 ${Math.abs(plan.after)} 顆。`;
         }
+        const quantityField=document.getElementById(quantityId);
+        quantityField.min=restock?'1':'0';quantityField.step=recount?'0.5':'1';quantityField.inputMode=recount?'decimal':'numeric';
+        if(byBox)quantityField.max='10000';else quantityField.removeAttribute('max');
         for(const id of [quantityId,'fruitBoxNetJin','fruitBoxMidLiang','fruitBGradeReserve']) {
           const field=document.getElementById(id),error=document.getElementById(id+'Error');
           if(field)field.setAttribute('aria-invalid',String(!!errors[id]));
           if(error){error.textContent=errors[id]||'';error.hidden=!errors[id];}
         }
         if(errors.fruitBoxNetJin || errors.fruitBoxMidLiang)document.getElementById('fruitBoxConversionDetails').open=true;
+        document.getElementById('fruitBoxConversionHint').innerText=recount?'可輸入半箱，例如 0.5、1、1.5 箱。換算捨去不足一顆的小數；B級預留沿用原值，可另行調整。':'整批換算後捨去不足一顆的小數；整顆零頭仍保留。每箱預留 3 顆 B級。';
         document.getElementById('productInventoryAdjustmentTitle').innerText=restock?'按箱補貨':mode==='reconcile'?'盤點修正':'設定首批庫存';
-        document.getElementById('productInventoryAdjustmentDescription').innerText=context.productName+'｜'+(restock?'輸入進貨箱數，系統估算顆數並每箱預留 3 顆 B級。':'請填現場全部顆數（含已訂未寄），系統扣除訂單占用；B級預留是管理員接單額度，出貨須再確認。');
-        document.getElementById('productInventoryAdjustmentQuantityLabel').innerText=restock?'本次進貨箱數':'現場實際總數（顆，含已訂未寄）';
+        document.getElementById('productInventoryAdjustmentDescription').innerText=context.productName+'｜'+(restock?'輸入進貨箱數，系統估算顆數並每箱預留 3 顆 B級。':recount?'請填現場全部箱數（含已訂未寄，可輸入半箱），系統估算顆數後扣除訂單占用；B級預留僅供管理員接單，出貨須再確認。':'請填現場全部顆數（含已訂未寄），系統扣除訂單占用；B級預留是管理員接單額度，出貨須再確認。');
+        document.getElementById('productInventoryAdjustmentQuantityLabel').innerText=restock?'本次進貨箱數':recount?'現場剩餘箱數（含已訂未寄）':'現場實際總數（顆，含已訂未寄）';
         const submit=document.getElementById('productInventoryAdjustmentSubmit');
         submit.innerText=restock?'確認補貨':'確認盤點';
         submit.disabled=!context.ready||!plan.valid||adminInventoryAdjustmentSubmitting;
         const row=(label,value,total=false)=>`<div class="inventory-adjustment-summary-row${total?' total':''}"><span>${label}</span><strong>${escapeHtml(value)} 顆</strong></div>`;
         const summary=document.getElementById('productInventoryAdjustmentSummary');
-        summary.innerHTML=!context.ready?'正在讀取最新庫存…':entered===''?(restock?'輸入箱數後，顯示預估入庫與可售顆數。':'輸入現場顆數後，顯示盤點結果。'):!plan.valid?
-          (Object.keys(errors).length?'請完成標示欄位後查看試算。':restock?'請核對箱數與換算重量。':'請核對現場顆數與 B級預留。'):
-          row(restock?'本次預估入庫':'現場實際總數',plan.quantity)+
+        summary.innerHTML=!context.ready?'正在讀取最新庫存…':entered===''?(restock?'輸入箱數後，顯示預估入庫與可售顆數。':recount?'輸入現場箱數後，顯示預估盤點結果。':'輸入現場顆數後，顯示盤點結果。'):!plan.valid?
+          (Object.keys(errors).length?'請完成標示欄位後查看試算。':byBox?'請核對箱數、換算重量與 B級預留。':'請核對現場顆數與 B級預留。'):
+          row(restock?'本次預估入庫':recount?'現場預估總顆數':'現場實際總數',plan.quantity)+
           (!restock?row('扣除已訂未寄占用（含團購）',context.pendingOrderQuantity):row('本批 B級預留',plan.bGrade))+
           row('更新後帳面剩餘（未扣 B級預留）',plan.after)+row('更新後 B級預留',plan.reserved)+
           (plan.after<0?row('超賣缺口（可儲存）',Math.abs(plan.after)):'')+row('前台可售',Math.max(0,plan.after-plan.reserved),true);
@@ -10142,7 +10154,7 @@
         const context = adminInventoryAdjustmentContext;
         const fruit=context?.inventoryUnit==='fruit';
         const boxFields=document.getElementById('fruitBoxRestockFields'),reserveFields=document.getElementById('fruitBGradeFields');
-        if(boxFields)boxFields.hidden=!fruit||context.mode!=='restock';
+        if(boxFields)boxFields.hidden=!fruit||!(context.mode==='restock'||(context.mode==='reconcile'&&!context.legacyFruitReconcile));
         if(reserveFields)reserveFields.hidden=!fruit||context.mode==='restock';
         if(fruit){renderFruitInventoryPreview(context);return;}
         const unit = getAdminInventoryUnitLabel(context);
@@ -10265,7 +10277,7 @@
 
       async function sendOrReconcileInventorySave(payload,context,measurement) {
         const token=payload.adminSessionToken;
-        const same=(a,b)=>a.productId===b.productId && a.mode===b.mode && a.quantity===b.quantity && JSON.stringify(a.boxRestock||null)===JSON.stringify(b.boxRestock||null) && a.bGradeReserve===b.bGradeReserve;
+        const same=(a,b)=>a.productId===b.productId && a.mode===b.mode && a.quantity===b.quantity && JSON.stringify(a.boxRestock||null)===JSON.stringify(b.boxRestock||null) && JSON.stringify(a.boxReconcile||null)===JSON.stringify(b.boxReconcile||null) && a.bGradeReserve===b.bGradeReserve;
         let pending=readPendingInventorySave();
         if(pending) {
           setProductInventoryAdjustmentFeedback('正在核對上一筆庫存操作…');
