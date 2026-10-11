@@ -22,7 +22,8 @@ const context = vm.createContext({ Number, String });
 vm.runInContext(
   `function normalizeAdminProductStatus(value) { return value; }
    function normalizeAdminProductCategory(value) { return value; }
-   function isAdminProductSellable(product) { return ["上架", "僅後台販售"].includes(product?.status); }
+   function isAdminProductSellable(product) { return ["上架", "僅後台販售", "後台販售，允許超賣"].includes(product?.status); }
+   ${sourceBetween(html, "      function getAdminInventoryUnitLabel", "      function renderAdminProductAvailabilityBadge")}
    ${sortingSource}
    this.sortOptions = (products) => products.slice().sort(compareAdminProductsForOrderOptions);
    this.stockLabel = getAdminProductOptionStockLabel;
@@ -57,4 +58,9 @@ assert.match(html, /formatAdminMoney\(product\.price\)\)\}｜\$\{escapeHtml\(get
 assert.match(html, /filter\(\(product\) => isAdminProductAvailableForOrderOption\(product\)\)/);
 assert.doesNotMatch(html, /getAdminProductDisplayName\(product\)\)\}｜\$\{escapeHtml\(product\.category/);
 
-console.log("admin product option grouping, labels, and availability: PASS");
+assert.equal(context.stockLabel({stock:10,inventoryUnit:"fruit"}),"可售 10 顆");
+assert.equal(context.isAvailable({status:"上架",stock:10,adminReservedStock:11,inventoryUnit:"fruit",count:"10顆"}),true,"admin may select a product wholly reserved from public sales");
+assert.equal(context.isAvailable({status:"上架",stock:9,adminReservedStock:0,inventoryUnit:"fruit",count:"10顆"}),false);
+assert.equal(context.isAvailable({status:"上架",stock:-10,adminReservedStock:11,inventoryUnit:"fruit",count:"10顆"}),false);
+assert.equal(context.isAvailable({status:"後台販售，允許超賣",stock:-10,adminReservedStock:11,inventoryUnit:"fruit",count:"10顆"}),true);
+console.log("admin product option grouping, labels, reserved allocation access, and explicit oversell: PASS");
