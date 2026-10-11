@@ -41,7 +41,14 @@ for (const bad of [new Response('<html>missing</html>', { status: 404 }), new Re
 for (const action of ['adminValidateSession', 'adminReadOrders', 'adminReadOrderSnapshot', 'adminReadProductCatalog']) {
   const f = fixture([new Response('missing', { status: 404 }), json(success(action))]);
   await f.call(action);
-  assert.equal(f.requests[0].body, f.requests[1].body, 'all recovery must retain the original payload, including auth nonce/PKCE');
+  if (action === 'adminReadProductCatalog') {
+    const [first, second] = f.requests.map(r => JSON.parse(r.body));
+    assert.equal(first.diagnosticAttempt, 1); assert.equal(second.diagnosticAttempt, 2);
+    delete first.diagnosticAttempt; delete second.diagnosticAttempt;
+    assert.deepEqual(first, second, 'only the catalog diagnostic attempt changes');
+  } else {
+    assert.equal(f.requests[0].body, f.requests[1].body, 'auth/order recovery must retain exact original payload, including nonce/PKCE');
+  }
 }
 {
   const f = fixture([new Response('missing', { status: 404 })]);
@@ -123,6 +130,7 @@ for (const action of ['adminReadOrderSnapshot', 'adminReadProductCatalog']) {
     ADMIN_LINE_SESSION_TOKEN_KEY: 'session', ADMIN_DISPLAY_NAME_KEY: 'name',
     ADMIN_READ_ORDERS_TIMEOUT_MS: 60000, ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS: 60000,
     adminOrderSnapshotVersion: 'fixture-v1', adminSiteSettings: {},
+    adminOrderMutationRevision: 0,
     latestAdminOrders: [{ orderNo: 'fixture-order' }], adminProductCatalogLoadPromise: null,
     createAdminDiagnosticRequestId: () => 'fixture-request', recordAdminReadBreadcrumb() {},
     classifyAdminReadFrontendError: () => ({ event: 'NETWORK_ERROR', stage: 'FRONTEND_FETCH' }),
@@ -149,7 +157,7 @@ for (const action of ['adminReadOrderSnapshot', 'adminReadProductCatalog']) {
   }
   assert.equal(f.requests.length, 2);
 }
-assert.equal([...html.matchAll(/await fetchAdminRecoverableResponse\(/g)].length, 9, 'only the nine reviewed read/auth callers use recovery, including product and inventory receipts');
+assert.equal([...html.matchAll(/await fetchAdminRecoverableResponse\(/g)].length, 10, 'only the ten reviewed read/auth callers use recovery, including paginated snapshots and product/inventory receipts');
 console.log('snapshot and catalog recovery integration: PASS');
 {
   const f=fixture([new Response('busy',{status:503})]);

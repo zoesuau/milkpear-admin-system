@@ -8,6 +8,7 @@ const operations = {byCode:{A:{bookedQty:3}},complete:true};
 let fail = true;
 const context = vm.createContext({
   console:{error(){}}, adminProductCatalogLoadPromise:null,
+  adminProductCatalogMutationEpoch:0, productManagementSaveInFlight:false,
   GAS_ORDERS_API_URL:'https://example.test', ADMIN_LINE_SESSION_TOKEN_KEY:'session',
   ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS:60000,
   sessionStorage:{getItem:()=> 'test',removeItem(){}},
@@ -17,8 +18,9 @@ const context = vm.createContext({
   document:{querySelector:()=>null},
   renderProductManagement(){},renderShippingManifest(){},refreshNewOrderProductOptions(){},updateNewOrderAmountPreview(){},
   setAdminProductCatalogState(ready){context.ready=ready},markAdminSessionVerified(){},
-  fetchAdminRecoverableResponse:async()=>{if(fail)throw new Error('TIMEOUT');return {json:async()=>({ok:true,action:'adminReadProductCatalog',products:[{code:'B',stock:1}],catalogVersion:'new'})}},
+  fetchAdminRecoverableResponse:async(url,options)=>{assert.match(JSON.parse(options.body).requestId,/^adminReadProductCatalog\|/);if(fail)throw new Error('TIMEOUT');return {json:async()=>({ok:true,action:'adminReadProductCatalog',products:[{code:'B',stock:1}],catalogVersion:'new'})}},
 });
+vm.runInContext(extract('      function createAdminRequestKey(', '      let adminAuthDiagnosticFlushPromise'),context);
 vm.runInContext(extract('      async function fetchAdminProductCatalogFromGas(', '      function renderAdminOrders('),context);
 assert.equal(await context.fetchAdminProductCatalogFromGas(),null);
 assert.equal(context.adminProductCatalog,oldProducts);
@@ -52,7 +54,7 @@ assert.match(elements.productCatalogReadFeedback.innerHTML,/商品讀取失敗�
 assert.match(elements.productCatalogReadFeedback.innerHTML,/>重試<\/button>/);
 assert.doesNotMatch(elements['product-management-list'].innerHTML,/目前沒有商品資料/);
 assert.match(html,/if \(!adminProductsReady\) \{ await refreshAdminCreateProducts\(\); return; \}/);
-const app = readFileSync(new URL('../app.js',import.meta.url),'utf8');
+const app = readFileSync(process.env.PUBLIC_APP_SOURCE || new URL('../app.js',import.meta.url),'utf8');
 const publicContext=vm.createContext({PUBLIC_PRODUCT_CATALOG:[
   {id:'zero',active:true,stock:0},{id:'one',active:true,stock:1},
   {id:'unlimited',active:true,stock:null},{id:'hidden',active:false,stock:5},

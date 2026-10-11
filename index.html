@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261009-snapshot-workspace-v1">
+<html lang="zh-Hant" data-release-version="20261011-product-read-diagnostics-v1">
   <head>
     <meta charset="UTF-8" />
     <meta name="admin-release" content="20260928-order-mutation-recovery-v1" />
@@ -9,7 +9,7 @@
     />
     <title>出貨後台</title>
     <script src="./customer-config.js?v=20261002-read-reliability-candidate-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261009-snapshot-workspace-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261011-product-read-diagnostics-v1"></script>
     <script src="./admin-mutation-recovery.js?v=20261002-read-reliability-candidate-v1"></script>
     <link
       rel="stylesheet"
@@ -6996,7 +6996,11 @@
             const result = await Promise.race([
               (async () => {
                 const response = await fetch(url, {
-                  ...options, body,
+                  ...options,
+                  // Correlate retries without changing any mutation payload.
+                  body: action === "adminReadProductCatalog"
+                    ? JSON.stringify({ ...JSON.parse(body), diagnosticAttempt: attempt + 1 })
+                    : body,
                   ...(controller ? { signal: controller.signal } : {}),
                 });
                 // Keep the timeout active through the complete response body.
@@ -12921,6 +12925,7 @@
               },
               body: JSON.stringify({
                 action: "adminReadProductCatalog",
+                requestId: createAdminDiagnosticRequestId("adminReadProductCatalog"),
                 includeOperations,
                 adminSessionToken,
               }),

@@ -33,7 +33,7 @@
     errorField: ['ERROR_CODE','ERROR','NONE'],
     errorType: ['STRING','OBJECT','ARRAY','NUMBER','BOOLEAN','NONE'],
     errorCode: ['ALLOWED','UNRECOGNIZED','ABSENT'],
-    stage: ['SESSION','SESSION_STORE_READ','SESSION_LOOKUP','ROUTING','LEGACY_SHEETS_READ','SNAPSHOT_CACHE_READ','SNAPSHOT_FIRESTORE_READ','SNAPSHOT_PAGE_READ','SNAPSHOT_VERSION_VERIFY','SNAPSHOT_DRIVE_FALLBACK','FILTER_VALIDATE','CUSTOMER_SEARCH_INDEX_READ','CUSTOMER_SEARCH_MATCH','SERIALIZE','RESPONSE'],
+    stage: ['SESSION','SESSION_STORE_READ','SESSION_LOOKUP','ROUTING','LEGACY_SHEETS_READ','SNAPSHOT_CACHE_READ','SNAPSHOT_FIRESTORE_READ','SNAPSHOT_PAGE_READ','SNAPSHOT_VERSION_VERIFY','SNAPSHOT_DRIVE_FALLBACK','FILTER_VALIDATE','CUSTOMER_SEARCH_INDEX_READ','CUSTOMER_SEARCH_MATCH','SERIALIZE','RESPONSE','PRODUCT_CATALOG_READ','PRODUCT_OPERATIONS_READ','PRODUCT_CATALOG_VERSION','SITE_SETTINGS_READ'],
     reason: ['GOOGLE_SERVICE_TRANSIENT','SHEET_READ_FAILED','REQUEST_VALIDATION_FAILED','DATA_READ_FAILED','SESSION_INVALID','CUSTOMER_SEARCH_INDEX_HEADER_MISMATCH','CUSTOMER_SEARCH_INDEX_BUSY'],
   };
   function sanitizeResponseContract(value) {
@@ -41,6 +41,19 @@
     const result = {};
     for (const [key, allowed] of Object.entries(responseContractFields)) result[key] = allowed.includes(value[key]) ? value[key] : '';
     return result;
+  }
+
+  function sanitizeCatalogTiming(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const result = {};
+    for (const key of ['serverElapsedMs','sessionMs','catalogMs','operationsMs','versionMs','settingsMs']) {
+      result[key] = Number.isFinite(value[key]) && value[key] >= 0 ? Math.min(600000, value[key]) : null;
+    }
+    result.operationsOutcome = ['NOT_ATTEMPTED','SKIPPED','SUCCESS','FAILED'].includes(value.operationsOutcome) ? value.operationsOutcome : 'UNKNOWN';
+    return result;
+  }
+  function sanitizeCatalogAttempt(value) {
+    return Number.isInteger(value) && value >= 1 && value <= 3 ? value : null;
   }
 
   function sanitizeSnapshotTiming(value) {
@@ -89,6 +102,8 @@
       elapsedMs:Math.min(600000, Math.max(0, Number(value.elapsedMs) || 0)),
       headersMs:Number.isFinite(value.headersMs) ? Math.min(600000,Math.max(0,value.headersMs)) : null,
       responseContract:value.stage==='RESULT' ? sanitizeResponseContract(value.responseContract) : null,
+      catalogAttempt:value.action==='adminReadProductCatalog' ? sanitizeCatalogAttempt(value.catalogAttempt) : null,
+      catalogTiming:value.action==='adminReadProductCatalog' && value.stage==='RESULT' ? sanitizeCatalogTiming(value.catalogTiming) : null,
       snapshotTiming:value.action==='adminReadOrderSnapshot' && value.stage==='RESULT' ? sanitizeSnapshotTiming(value.snapshotTiming) : null,
       bodyMs:Number.isFinite(value.bodyMs) ? Math.min(600000,Math.max(0,value.bodyMs)) : null,
       responseHost:['google-script','google-content','other','unknown'].includes(value.responseHost) ? value.responseHost : 'unknown',
@@ -240,7 +255,13 @@
     if (!c) return '';
     return `｜回覆格式 ${c.shape}｜動作 ${c.action}｜ok ${c.ok}｜錯誤欄位 ${c.errorField}/${c.errorType}/${c.errorCode}${c.stage ? '｜後端階段 '+c.stage : ''}${c.reason ? '｜後端原因 '+c.reason : ''}`;
   }
-  function format(e){const flow=sanitizeFlow(e);return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${workspaceCodeLabels[e.code] ? workspaceCodeLabels[e.code]+'（'+e.code+'）' : e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}${flow.flowId?'｜'+flowLabels[flow.flowName]+'・'+phaseLabels[flow.phase]+'｜整段 '+Math.round(flow.flowElapsedMs)+' 毫秒':''}${e.headersMs!==null&&e.headersMs!==undefined?'｜回應標頭 '+(e.headersMs/1000).toFixed(2)+' 秒':''}${e.bodyMs!==null&&e.bodyMs!==undefined?'｜回覆副本觀察 '+(e.bodyMs/1000).toFixed(2)+' 秒':''}${e.responseHost&&e.responseHost!=='unknown'?'｜'+e.responseHost:''}${e.redirected===true?'｜已轉址':''}${e.outcome==='failure'?formatResponseContract(e.responseContract):''}${e.snapshotTiming?'｜快取讀取 '+e.snapshotTiming.cacheReadReason+'｜快取存入 '+e.snapshotTiming.cacheWriteReason+(e.snapshotTiming.serverElapsedMs!==null?'｜後端 '+(e.snapshotTiming.serverElapsedMs/1000).toFixed(2)+' 秒':''):''}\n操作 ${e.operationId}${e.requestId ? "｜請求 " + e.requestId : ""}${flow.flowId?'｜流程 '+flow.flowId:''}｜${e.deviceType}｜${e.version}`;}
+  function formatCatalogTiming(value) {
+    const t = sanitizeCatalogTiming(value);
+    if (!t) return '';
+    const names = {serverElapsedMs:'後端處理',sessionMs:'登入檢查',catalogMs:'商品目錄',operationsMs:'訂單統計',versionMs:'目錄版本',settingsMs:'網站設定'};
+    return Object.entries(names).filter(([key]) => t[key] !== null).map(([key,label]) => '｜'+label+' '+(t[key]/1000).toFixed(2)+' 秒').join('')+'｜統計狀態 '+t.operationsOutcome;
+  }
+  function format(e){const flow=sanitizeFlow(e);return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${workspaceCodeLabels[e.code] ? workspaceCodeLabels[e.code]+'（'+e.code+'）' : e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}${flow.flowId?'｜'+flowLabels[flow.flowName]+'・'+phaseLabels[flow.phase]+'｜整段 '+Math.round(flow.flowElapsedMs)+' 毫秒':''}${e.headersMs!==null&&e.headersMs!==undefined?'｜回應標頭 '+(e.headersMs/1000).toFixed(2)+' 秒':''}${e.bodyMs!==null&&e.bodyMs!==undefined?'｜回覆副本觀察 '+(e.bodyMs/1000).toFixed(2)+' 秒':''}${e.responseHost&&e.responseHost!=='unknown'?'｜'+e.responseHost:''}${e.redirected===true?'｜已轉址':''}${e.outcome==='failure'?formatResponseContract(e.responseContract):''}${e.catalogAttempt?'｜第 '+e.catalogAttempt+' 次請求':''}${formatCatalogTiming(e.catalogTiming)}${e.snapshotTiming?'｜快取讀取 '+e.snapshotTiming.cacheReadReason+'｜快取存入 '+e.snapshotTiming.cacheWriteReason+(e.snapshotTiming.serverElapsedMs!==null?'｜後端 '+(e.snapshotTiming.serverElapsedMs/1000).toFixed(2)+' 秒':''):''}\n操作 ${e.operationId}${e.requestId ? "｜請求 " + e.requestId : ""}${flow.flowId?'｜流程 '+flow.flowId:''}｜${e.deviceType}｜${e.version}`;}
   function render(){try{
     const el=document.getElementById('adminDiagnosticsText'); if(el)el.textContent=history.length?history.slice().reverse().map(format).join('\n\n'):'目前這個瀏覽器沒有診斷紀錄。';
     const status=document.getElementById('adminDiagnosticsStatus');if(status)status.textContent=`本機 ${history.length} 筆｜待上傳 ${pending.size} 筆${dropped?'｜超過保存上限／期限 '+dropped+' 筆':''}。${!storageOK?'瀏覽器無法持久保存，關閉後尚未上傳的紀錄可能遺失。':''}${navigator.onLine===false?'目前離線，恢復連線後自動補傳。':uploadState}${lastUpload?' 最近上傳：'+lastUpload:''}`;
@@ -249,8 +270,8 @@
   // enter the diagnostic record. Original responses and failures are unchanged.
   const requestGroups = new Map();
   window.fetch = async function(input, options) {
-    const url=typeof input==='string'?input:input?.url;let action, requestKey;
-    try {if(url===config.gasApiUrl && typeof options?.body==='string'){const body=JSON.parse(options.body);action=body.action==='adminExecuteOrderMutation'?body.mutation?.action:body.action==='adminReadOrderMutationResult'?body.mutationAction:body.action;requestKey=safeRequestId(options?.diagnosticRequestId)||body.diagnosticRequestId||body.requestId;}}catch{}
+    const url=typeof input==='string'?input:input?.url;let action, requestKey, catalogAttempt;
+    try {if(url===config.gasApiUrl && typeof options?.body==='string'){const body=JSON.parse(options.body);action=body.action==='adminExecuteOrderMutation'?body.mutation?.action:body.action==='adminReadOrderMutationResult'?body.mutationAction:body.action;catalogAttempt=action==='adminReadProductCatalog' ? sanitizeCatalogAttempt(body.diagnosticAttempt) : null;requestKey=safeRequestId(options?.diagnosticRequestId)||body.diagnosticRequestId||body.requestId;}}catch{}
     if(!actions.has(action))return rawFetch(input,options);
     let operationId=requestKey && requestGroups.get(action+'|'+requestKey);
     if(!operationId){operationId=uuid();if(requestKey){requestGroups.set(action+'|'+requestKey,operationId);if(requestGroups.size>200)requestGroups.delete(requestGroups.keys().next().value);}}
@@ -258,7 +279,7 @@
     // Capture the binding: completion/eviction must not attach a late response
     // to a newer operation or lose its original flow association.
     pruneFlows();const flowState=requestFlows.get(requestId);
-    const recordRequest = event => record({...event,...flowMetadata(flowState)});
+    const recordRequest = event => record({...event,catalogAttempt,...flowMetadata(flowState)});
     const start=Date.now();recordRequest({requestId,operationId,action,stage:'REQUEST',outcome:'started',code:'OK'});
     try {
       const response=await rawFetch(input,options);
@@ -267,7 +288,7 @@
       // Observe a copy asynchronously; never await telemetry or alter a business response.
       try {void response.clone().json().then(body=>{
         const ok=response.ok && body?.ok===true && (body.action!=='adminReadOrderMutationResult' || body.state==='completed') && (action!=='adminUpdateProductFields' || body.state==='committed');
-        recordRequest({...metadata,responseContract:observeResponseContract(body,action),snapshotTiming:action==='adminReadOrderSnapshot' && body?.action===action ? sanitizeSnapshotTiming({...body.timing,...(body.timing ? {} : body.diagnostic),serverElapsedMs:body.elapsedMs}) : null,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start});
+        recordRequest({...metadata,responseContract:observeResponseContract(body,action),catalogTiming:action==='adminReadProductCatalog' && body?.action===action ? sanitizeCatalogTiming(body.diagnostic?.catalogTiming) : null,snapshotTiming:action==='adminReadOrderSnapshot' && body?.action===action ? sanitizeSnapshotTiming({...body.timing,...(body.timing ? {} : body.diagnostic),serverElapsedMs:body.elapsedMs}) : null,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start});
       },error=>recordRequest({...metadata,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':error?.name==='SyntaxError'?'GAS_NON_JSON_RESPONSE':'NETWORK_ERROR',httpStatus:response.status,elapsedMs:Date.now()-start}));}catch{}
       return response;
     } catch(error) {recordRequest({requestId,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':'NETWORK_ERROR',elapsedMs:Date.now()-start});throw error;}

@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 const html=fs.readFileSync(new URL('./index.html',import.meta.url),'utf8');
 const part=(a,b)=>html.slice(html.indexOf(a),html.indexOf(b,html.indexOf(a)));
-const source=part('      function refreshNewOrderProductOptions','      function resetModalProductRows')+
+const source=part('      function createAdminRequestKey(', '      let adminAuthDiagnosticFlushPromise')+
+ part('      function refreshNewOrderProductOptions','      function resetModalProductRows')+
  part('      async function fetchAdminProductCatalogFromGas','      function renderAdminOrders')+
  part('      let adminAddOrderOpening','      function closeAddOrderModal');
 let catalog=[{code:'A',price:100,stock:5}],requests=[],open=false,preview=0;
