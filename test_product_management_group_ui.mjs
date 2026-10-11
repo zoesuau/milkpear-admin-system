@@ -12,7 +12,7 @@ function section(start, end) {
 
 const management = section(
   "function renderProductManagement()",
-  "function renderProductManagementCard(product)",
+  "function renderProductManagementCard(product, shared = false)",
 );
 assert.match(management, /const varieties = \["牛奶梨", "蔗香梨", "日本蜜柑"\]/);
 assert.doesNotMatch(
@@ -22,24 +22,24 @@ assert.doesNotMatch(
 );
 
 const card = section(
-  "function renderProductManagementCard(product)",
+  "function renderProductManagementCard(product, shared = false)",
   "function getProductOperationsModalContext()",
 );
 assert.match(card, /product-admin-meta">\$\{escapeHtml\(product\.count \|\| ""\)\}裝<\/div>/);
 assert.doesNotMatch(card, /盒免運/, "collapsed cards must not show shipping-rule text");
 
 const fields = section(
-  "function renderProductManagementFields(product)",
+  "function renderProductManagementFields(product, shared = false)",
   "function getAdminProductShippingRule(product)",
 );
 assert.match(fields, /data-product-field="shippingRule"/);
 assert.match(fields, /data-product-field="productSeries"/);
 assert.match(fields, /data-product-field="imageUrl"/);
-assert.match(fields, /data-product-field="includesIndividualPackaging"/);
+assert.doesNotMatch(fields, /data-product-field="includesIndividualPackaging"/);
 assert.match(fields, /禮盒版/);
 assert.match(fields, /Ｑ版/);
 assert.match(fields, /火燒柑/);
-assert.match(fields, /前台本產季暫不顯示/);
+assert.match(fields, /新建立的日本蜜柑請維持停售/);
 assert.doesNotMatch(fields, /系統代碼|data-product-field="(?:id|code)"/);
 
 const readCard = section(
@@ -53,3 +53,7 @@ assert.match(readCard, /includesIndividualPackaging:/);
 assert.doesNotMatch(readCard, /getValue\("(?:id|code)"\)/);
 
 console.log("product management group UI tests passed");
+
+assert.match(management, /data-grade-reserve/);
+assert.match(management, /儲存此級別/);
+assert.match(management, /新增販售組合/);

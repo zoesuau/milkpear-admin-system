@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261011-product-read-diagnostics-v1">
+<html lang="zh-Hant" data-release-version="20261011-grade-box-restock-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20260928-order-mutation-recovery-v1" />
+    <meta name="admin-release" content="20261011-grade-box-restock-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261002-read-reliability-candidate-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261011-product-read-diagnostics-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261002-read-reliability-candidate-v1"></script>
+    <script src="./customer-config.js?v=20261011-grade-box-restock-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261011-grade-box-restock-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261011-grade-box-restock-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -4604,6 +4604,29 @@
       .product-image-preview[hidden] + .product-image-controls {grid-column:1 / -1;}
       .product-grade-family {border:1px solid #dbe7df;border-radius:14px;padding:14px;margin:12px 0;background:#f7faf8;}
       .product-grade-family-heading {display:flex;gap:12px;justify-content:space-between;flex-wrap:wrap;color:#4f8063;}
+      .grade-stock-panel {display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:16px;background:#edf5ef;border-radius:12px;margin:12px 0;}
+      .grade-stock-panel label,.grade-stock-panel small,.grade-stock-panel strong {display:block;}
+      .grade-stock-panel label {font-size:13px;color:#526c5c;margin-bottom:6px;}
+      .grade-stock-panel input {width:100%;box-sizing:border-box;min-height:44px;padding:9px;border:1px solid #d3e0d8;border-radius:8px;font-size:16px;}
+      .grade-stock-panel small,.grade-save-row small {display:block;font-size:12px;color:#64748b;margin-top:6px;}
+      .grade-stock-actions {display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+      .grade-save-row {display:none;margin-top:14px;}
+      .product-grade-family.editing .grade-save-row {display:block;}
+      .shared-grade-editor .product-admin-card-actions,.shared-grade-editor .product-admin-edit>.product-field:last-child {display:none;}
+      .shared-grade-editor .product-admin-title {font-size:20px;}
+      .shared-grade-editor .product-admin-price {font-size:26px;}
+      .shared-grade-editor .product-admin-main {display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+      .shared-grade-editor .product-admin-main>div:has(.product-admin-title) {display:none;}
+      .shared-grade-editor .product-admin-meta {font-size:18px;}
+      .grade-variant-details summary {color:#526c5c;font-size:13px;cursor:pointer;padding:6px 0;}
+      .grade-variant-extra {display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
+      .shared-grade-editor .product-image-editor {display:block;}
+      .shared-grade-editor .product-image-controls {min-width:0;}
+      .shared-grade-editor .product-image-controls input {width:100%;min-width:0;}
+      .fruit-inventory-fields {margin-top:12px;}
+      .fruit-inventory-fields[hidden] {display:none;}
+      .fruit-inventory-fields input {width:100%;min-height:44px;font-size:16px;box-sizing:border-box;}
+      @media(max-width:480px){.grade-stock-panel {grid-template-columns:1fr 1fr;padding:12px;gap:12px;}.grade-stock-actions{grid-column:1/-1;}}
       .product-grade-variants {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px;margin-top:12px;align-items:start;}
       .product-grade-variants .product-admin-card {margin:0;min-width:0;}
       .product-admin-card {
@@ -5969,6 +5992,13 @@
               oninput="renderProductInventoryAdjustmentPreview()"
             />
           </div>
+          <div id="fruitBoxRestockFields" class="fruit-inventory-fields" hidden>
+            <details><summary>換算設定（預設一箱淨重 32 斤）</summary>
+              <label for="fruitBoxNetJin">每箱淨重（台斤）</label><input id="fruitBoxNetJin" type="number" min="0.01" max="100" step="0.01" value="32" oninput="renderProductInventoryAdjustmentPreview()">
+              <label for="fruitBoxMidLiang">單顆中間重量（兩）</label><input id="fruitBoxMidLiang" type="number" min="1" max="64" step="0.01" oninput="renderProductInventoryAdjustmentPreview()">
+            </details><p class="product-inventory-hint">整批換算顆數後捨去小數；保留整顆零頭，每箱另預留 3 顆 B級。</p>
+          </div>
+          <div id="fruitBGradeFields" class="fruit-inventory-fields" hidden><label for="fruitBGradeReserve">其中 B級預留（顆）</label><input id="fruitBGradeReserve" type="number" min="0" step="1" oninput="renderProductInventoryAdjustmentPreview()"></div>
           <div
             class="inventory-adjustment-summary"
             id="productInventoryAdjustmentSummary"
@@ -8861,6 +8891,7 @@
         }
 
         const draftCards = [...(list.querySelectorAll?.('.product-admin-card.editing') || [])];
+        const draftFamilies = [...(list.querySelectorAll?.('.product-grade-family.editing') || [])];
         const sortedProducts = adminProductCatalog
           .slice()
           .sort(compareAdminProductsForAutoSort);
@@ -8895,6 +8926,9 @@
           list.insertAdjacentHTML('afterbegin', '<div class="product-card-empty"><p>切換後，同品種、同 A 數共用顆數庫存。現有盒數 × 每盒顆數，空白按 0 計算；系統會先備份商品表。</p><button class="product-action-btn" type="button" onclick="migrateSharedFruitInventory()">備份並切換共用顆數庫存</button></div>');
         }
         for (const draft of draftCards) {
+          // A grouped editor is preserved as a whole; moving its children first
+          // would leave the restored family empty during a background refresh.
+          if(draft.closest('.product-grade-family.editing'))continue;
           const replacement = [...list.querySelectorAll('.product-admin-card')].find(card => card.dataset.productId === draft.dataset.productId);
           if (replacement) {
             // Keep editable fields and their original comparison baseline, but
@@ -8912,13 +8946,38 @@
             replacement.replaceWith(draft);
           }
         }
+        for (const draft of draftFamilies) {
+          const replacement=[...list.querySelectorAll('.product-grade-family')].find(f=>f.dataset.gradeKey===draft.dataset.gradeKey);
+          if(!replacement)continue;
+          const current=adminProductCatalog.find(p=>p.id===draft.dataset.productId);
+          if(current){draft.querySelector('[data-grade-stock]').textContent=current.stock;draft.querySelector('[data-grade-available]').textContent=Math.max(0,current.stock-(current.adminReservedStock||0));}
+          for (const card of draft.querySelectorAll('.product-admin-card')) {
+            const product = adminProductCatalog.find(p=>p.id===card.dataset.productId);
+            const badge = card.querySelector('[data-product-availability]');
+            if (product && badge) badge.outerHTML = renderAdminProductAvailabilityBadge(product);
+          }
+          replacement.replaceWith(draft);
+        }
       }
 
       function getAdminInventoryUnitLabel(product) { return product?.inventoryUnit === 'fruit' ? '顆' : '盒'; }
       function getAdminProductBoxStock(product) {
         if (!Number.isSafeInteger(product?.stock)) return null;
         const factor = product.inventoryUnit === 'fruit' ? Number(String(product.count).replace(/顆$/, '')) : 1;
-        return Number.isSafeInteger(factor) && factor > 0 ? Math.floor(product.stock / factor) : 0;
+        const available=product.inventoryUnit==='fruit'?Math.max(0,product.stock-(product.adminReservedStock||0)):product.stock;
+        return Number.isSafeInteger(factor) && factor > 0 ? Math.floor(available / factor) : 0;
+      }
+      function renderAdminProductAvailabilityBadge(product) {
+        if (!Number.isSafeInteger(product.stock)) return '<span class="product-chip" data-product-availability>可售未控管</span>';
+        const available = product.inventoryUnit === 'fruit'
+          ? Math.max(0, product.stock - (product.adminReservedStock || 0)) : product.stock;
+        const text = product.stock < 0
+          ? `超賣 ${Math.abs(product.stock)} ${getAdminInventoryUnitLabel(product)}`
+          : product.inventoryUnit === 'fruit'
+            ? `可售 ${available} 顆／${getAdminProductBoxStock(product)} 盒`
+            : `可售 ${available} 盒`;
+        const color = product.stock < 0 ? '#dc2626' : available > 0 ? '#15803d' : '#64748b';
+        return `<span class="product-chip" data-product-availability style="color:#fff;background:${color};border-color:${color};">${escapeHtml(text)}</span>`;
       }
       function getAdminGradeFamilyKey(product) {
         return JSON.stringify([product.variety, String(product.grade).replace(/\s+/g, '').toUpperCase()]);
@@ -8963,16 +9022,52 @@
           const first = items[0];
           if (!['牛奶梨','蔗香梨'].includes(first.variety)) return renderProductManagementCard(first);
           const shared = first.inventoryUnit === 'fruit';
-          return `<section class="product-grade-family">
+          return `<section class="product-grade-family${shared?' shared-grade-editor':''}" data-grade-key="${escapeHtml(getAdminGradeFamilyKey(first))}" data-product-id="${escapeHtml(first.id)}">
             <div class="product-grade-family-heading"><strong>${escapeHtml(first.grade.replace(/\s+/g,''))} 級別</strong>
-            <span>${shared ? `共用可售 ${escapeHtml(first.stock)} 顆` : '庫存尚未切換為共用顆數'}</span></div>
+            <span>${shared ? escapeHtml(first.variety) : '庫存尚未切換為共用顆數'}</span></div>
             <p class="product-inventory-hint">${shared ? '禮盒版、精裝版及不同顆數共用此級別庫存；每盒按顆數扣除。' : '切換前仍依各商品的盒數計算。'}</p>
-            <button type="button" class="product-action-btn secondary" onclick="addGradeProductVariant('${escapeHtml(first.id)}')">＋新增包裝／顆數</button>
-            <div class="product-grade-variants">${items.map(renderProductManagementCard).join('')}</div>
+            ${shared?`<div class="grade-stock-panel"><div><label>帳面剩餘（含 B級）</label><strong><span data-grade-stock>${escapeHtml(first.stock)}</span> 顆</strong><small>已扣訂單占用；實際在庫量請用盤點核對。</small></div><label>B級預留（顆）<input data-grade-reserve type="number" min="0" step="1" value="${escapeHtml(first.adminReservedStock||0)}" readonly></label><div><label>一般禮盒可用</label><strong><span data-grade-available>${escapeHtml(Math.max(0,first.stock-(first.adminReservedStock||0)))}</span> 顆</strong><small>每進貨一箱預留 3 顆 B級，不重複扣總庫存。</small></div><div class="grade-stock-actions"><button type="button" class="product-action-btn secondary" onclick="openProductInventoryAdjustmentModal('${escapeHtml(first.id)}')">＋按箱補貨</button><button type="button" class="product-action-btn secondary" onclick="openProductInventoryAdjustmentModal('${escapeHtml(first.id)}','reconcile')">盤點修正</button></div></div><button type="button" class="product-action-btn secondary grade-edit-toggle" onclick="toggleGradeProductEdit(this)">編輯此級別</button>`:''}
+            <button type="button" class="product-action-btn secondary" onclick="addGradeProductVariant('${escapeHtml(first.id)}')">＋新增販售組合</button>
+            <div class="product-grade-variants">${items.map(p=>renderProductManagementCard(p,shared)).join('')}</div>
+            ${shared?'<div class="grade-save-row"><button type="button" class="product-action-btn primary" onclick="saveGradeProductFamily(this)">儲存此級別</button><small>已建立商品的顆數固定；不同顆數請新增販售組合，保留原訂單規格。</small></div>':''}
           </section>`;
         }).join('');
       }
+      function toggleGradeProductEdit(button) {
+        if(productManagementSaveInFlight || productImageSaveInFlight)return;
+        const family=button.closest('.product-grade-family');
+        const editing=family.classList.toggle('editing');
+        button.textContent=editing?'收合編輯':'編輯此級別';
+        family.querySelector('[data-grade-reserve]').readOnly=!editing;
+        if(editing && family.gradeReserveBase===undefined)family.gradeReserveBase=adminProductCatalog.find(p=>p.id===family.dataset.productId)?.adminReservedStock||0;
+        family.querySelectorAll('.product-admin-card').forEach(card=>{
+          card.classList.toggle('editing',editing);
+          if(editing && !card.productEditBase)card.productEditBase={...adminProductCatalog.find(p=>p.id===card.dataset.productId)};
+        });
+      }
+      async function saveGradeProductFamily(button) {
+        const family=button.closest('.product-grade-family');
+        if(!family || productManagementSaveInFlight || productImageSaveInFlight)return;
+        const cards=[...family.querySelectorAll('.product-admin-card')];
+        const reserve=Number(family.querySelector('[data-grade-reserve]').value);
+        const current=adminProductCatalog.find(p=>p.id===family.dataset.productId);
+        if(!Number.isSafeInteger(reserve)||reserve<0||reserve>Math.max(0,current?.stock||0)){
+          setProductManagementFeedback('B級預留需為 0 以上整數，且不得超過帳面剩餘庫存。','error');return;
+        }
+        const products=cards.map(readProductManagementCard);
+        const validation=validateProductManagementProducts(products);
+        if(validation){setProductManagementFeedback(validation,'error');return;}
+        await saveProductWithSelectedImage(family,()=>{
+          const changes=cards.flatMap(card=>productManagementChanges(card.productEditBase,readProductManagementCard(card))
+            .filter(c=>c.field!=='adminReservedStock').map(c=>({...c,productId:card.dataset.productId})));
+          if(reserve!==family.gradeReserveBase)changes.push({field:'adminReservedStock',before:family.gradeReserveBase,after:reserve,productId:family.dataset.productId});
+          return saveProductManagementPayload({productId:family.dataset.productId,changes});
+        });
+      }
       function addGradeProductVariant(productId) {
+        if(document.querySelector('.product-grade-family.editing')){
+          setProductManagementFeedback('請先儲存或收合級別編輯，再新增販售組合。','error');return;
+        }
         const product = adminProductCatalog.find(p => p.id === productId);
         if (!product) return;
         addProductManagementCard();
@@ -8983,21 +9078,13 @@
         fields.querySelector('[data-product-field="grade"]').readOnly = true;
       }
 
-      function renderProductManagementCard(product) {
+      function renderProductManagementCard(product, shared = false) {
         const activeText = normalizeAdminProductStatus(product.status);
         const activeClass =
           activeText === "上架"
             ? "product-status-active"
             : "product-status-inactive";
         const stockUnit = getAdminInventoryUnitLabel(product);
-        const hasNumericStock = Number.isSafeInteger(product.stock);
-        const stockText = !hasNumericStock
-          ? "可售未控管"
-          : product.stock < 0
-            ? `超賣 ${Math.abs(product.stock)} ${getAdminInventoryUnitLabel(product)}`
-            : `可售 ${product.stock} ${getAdminInventoryUnitLabel(product)}`;
-        const stockColor = product.stock > 0 ? "#15803d"
-          : product.stock < 0 ? "#dc2626" : "#64748b";
         const reservedStock = Number.isInteger(product.adminReservedStock)
           ? product.adminReservedStock
           : 0;
@@ -9036,12 +9123,8 @@
                       <span class="product-operations-chip-divider">｜</span>
                       <span>${escapeHtml(shippedText)}</span>
                     </button>
-                    ${
-                      hasNumericStock
-                        ? `<span class="product-chip" style="color:#fff;background:${stockColor};border-color:${stockColor};">${escapeHtml(stockText)}</span>`
-                        : '<span class="product-chip">可售未控管</span>'
-                    }
-                    ${reservedStock > 0 ? `<span class="product-chip">後台保留 ${escapeHtml(reservedStock)}｜前台可售 ${escapeHtml(publicStock)}</span>` : ""}
+                    ${renderAdminProductAvailabilityBadge(product)}
+                    ${!shared && reservedStock > 0 ? `<span class="product-chip">後台保留 ${escapeHtml(reservedStock)}｜前台可售 ${escapeHtml(publicStock)}</span>` : ""}
                     ${product.productSeries ? `<span class="product-chip">${escapeHtml(product.productSeries)}</span>` : ""}
 
                   </div>
@@ -9059,7 +9142,7 @@
                 </div>
               </div>
               <div class="product-admin-edit">
-                ${renderProductManagementFields(product)}
+                ${renderProductManagementFields(product, shared)}
                 <div class="product-field full">
                   <button type="button" class="product-action-btn primary" onclick="saveProductManagementCard(this)">儲存商品</button>
                 </div>
@@ -9249,18 +9332,28 @@
         renderProductOperationsModal();
       }
 
-      function renderProductManagementFields(product) {
+      function renderSharedGradeVariantFields(product) {
+        const template=document.createElement('template');
+        template.innerHTML=renderProductManagementFields(product);
+        const field=name=>template.content.querySelector(`[data-product-field="${name}"]`).closest('.product-field');
+        const basic=['productSeries','count','price','status'].map(name=>{
+          const node=field(name);node.classList.remove('full');node.querySelectorAll('small').forEach(e=>e.remove());return node.outerHTML;
+        }).join('');
+        return basic+`<details class="product-field full grade-variant-details"><summary>照片、分類與運費</summary><div class="grade-variant-extra">${['category','shippingRule','imageUrl'].map(name=>field(name).outerHTML).join('')}</div></details>`;
+      }
+      function renderProductManagementFields(product, shared = false) {
+        if(shared)return renderSharedGradeVariantFields(product);
         const isMikan = product.variety === "日本蜜柑";
         return `
-          <div class="product-field">
+          ${shared ? '' : `<div class="product-field">
             <label>品種</label>
             <select data-product-field="variety" ${product.isNew ? 'onchange="updateNewProductVariety(this)"' : "disabled"}>
               ${renderSimpleOptions(["牛奶梨", "蔗香梨", "日本蜜柑"], product.variety)}
             </select>
-          </div>
+          </div>`}
           <div class="product-field" ${isMikan ? 'style="display:none;"' : ""}>
             <label>分類</label>
-            <select data-product-field="category" onchange="updateNewProductShippingDefault(this)">
+            <select data-product-field="category" ${product.isNew?'':'disabled'} onchange="updateNewProductShippingDefault(this)">
               ${renderSimpleOptions(["一般禮盒", "兩粒禮盒"], normalizeAdminProductCategory(product.category))}
             </select>
           </div>
@@ -9274,10 +9367,10 @@
             </select>
             <small style="color:#64748b;">${isMikan ? "火燒柑可先保留；新建立的日本蜜柑請維持停售，確認前台後再上架。" : "在同一級別設定各包裝與顆數的價格、照片；切換後共用此級別的顆數庫存。"}</small>
           </div>
-          <div class="product-field" ${isMikan ? 'style="display:none;"' : ""}>
+          ${shared ? '' : `<div class="product-field" ${isMikan ? 'style="display:none;"' : ""}>
             <label>A數 / 等級</label>
             <input data-product-field="grade" value="${escapeHtml(product.grade || "")}" ${product.isNew ? "" : "readonly"}>
-          </div>
+          </div>`}
           <div class="product-field">
             <label>${isMikan ? "包裝規格" : "顆數"}</label>
             ${isMikan ? `<select data-product-field="count" onchange="updateNewProductShippingDefault(this)">${renderSimpleOptions(["5斤","10斤"],product.count)}</select>` : `<input data-product-field="count" data-count-unit="fruit" type="number" min="1" step="1" value="${escapeHtml(String(product.count || '').replace(/顆$/,''))}" ${product.isNew ? 'onchange="updateNewProductShippingDefault(this)"' : 'readonly'}>`}
@@ -9294,7 +9387,7 @@
             <label>價格</label>
             <input data-product-field="price" type="number" min="1" step="1" value="${escapeHtml(product.price || "")}">
           </div>
-          <div class="product-field">
+          ${shared ? '' : `<div class="product-field">
             <label>${product.inventoryUnit === "fruit" ? "此級別共用庫存（顆）" : "可售庫存（盒）"}</label>
             <div class="product-inventory-control">
               <input data-product-field="stock" type="number" step="1" placeholder="尚未設定" value="${Number.isInteger(product.stock) ? escapeHtml(product.stock) : ""}" readonly aria-readonly="true">
@@ -9304,9 +9397,9 @@
             <span class="product-inventory-hint">${product.isNew && product.inventoryUnit === "fruit" ? "儲存後自動沿用同級別庫存，不需再輸入。" : "補貨與商品資料分開儲存，避免覆蓋目前庫存。"}</span>
           </div>
           <div class="product-field">
-            <label>保留給後台（${getAdminInventoryUnitLabel(product)}）${product.inventoryUnit === "fruit" ? "・同級別共用" : ""}</label>
+            <label>${product.inventoryUnit === 'fruit'?'B級預留':'保留給後台'}（${getAdminInventoryUnitLabel(product)}）${product.inventoryUnit === "fruit" ? "・同級別共用" : ""}</label>
             <input data-product-field="adminReservedStock" type="number" min="0" step="1" value="${escapeHtml(Number.isInteger(product.adminReservedStock) ? product.adminReservedStock : 0)}">
-          </div>
+          </div>`}
           <div class="product-field">
             <label>狀態</label>
             <select data-product-field="status">
@@ -9834,6 +9927,8 @@
           productId: product.id,
           productName: getAdminProductDisplayName(product),
           mode,
+          inventoryUnit: product.inventoryUnit,
+          adminReservedStock: product.adminReservedStock || 0,
           stock: Number.isInteger(product.stock) ? product.stock : null,
           pendingOrderQuantity: 0,
           requestKey: createAdminInventoryRequestKey(),
@@ -9851,7 +9946,8 @@
 
         if (pendingInventory) {
           adminInventoryAdjustmentContext = {...pendingInventory.context,ready:true};
-          if (input) { input.value=String(pendingInventory.request.quantity); input.disabled=true; }
+          if (input) { input.value=String(pendingInventory.request.boxRestock?.boxes ?? pendingInventory.request.quantity); input.disabled=true; }
+          setFruitInventoryFields(pendingInventory.request.boxRestock || pendingInventory.context.boxRestockDefaults,pendingInventory.request.bGradeReserve??pendingInventory.context.adminReservedStock,true);
           if (submit) submit.disabled=false;
           setProductInventoryAdjustmentFeedback('上次庫存操作尚待核對；按確認會查詢原操作，不會另外補貨。');
           renderProductInventoryAdjustmentPreview();
@@ -9897,6 +9993,10 @@
           adminInventoryAdjustmentContext.stock = serverStock;
           adminInventoryAdjustmentContext.inventoryUnit = result.inventoryUnit || "box";
           adminInventoryAdjustmentContext.inventoryPolicyVersion = result.inventoryPolicyVersion;
+          adminInventoryAdjustmentContext.adminReservedStock = result.adminReservedStock || 0;
+          adminInventoryAdjustmentContext.boxRestockDefaults = result.boxRestockDefaults;
+          if(result.inventoryUnit==='fruit' && result.boxRestockVersion!==1)throw new Error('INVENTORY_CLIENT_REFRESH_REQUIRED');
+          setFruitInventoryFields(result.boxRestockDefaults,result.adminReservedStock||0,false);
           adminInventoryAdjustmentContext.allowsShortage = result.allowsShortage === true;
           adminInventoryAdjustmentContext.catalogVersion = result.catalogVersion || adminProductCatalogVersion;
           adminInventoryAdjustmentContext.pendingOrderQuantity = Math.max(
@@ -9939,8 +10039,50 @@
         }
       }
 
+      function setFruitInventoryFields(defaults,reserve,disabled) {
+        [['fruitBoxNetJin',defaults?.netJin??32],['fruitBoxMidLiang',defaults?.midLiang??''],['fruitBGradeReserve',reserve??0]].forEach(([id,value])=>{
+          const field=document.getElementById(id);if(field){field.value=String(value);field.disabled=disabled;}
+        });
+      }
+      function readFruitInventoryForm(context) {
+        const value=id=>String(document.getElementById(id)?.value??'').trim();
+        const entered=value('productInventoryAdjustmentQuantity'),number=/^\d+$/.test(entered)?Number(entered):NaN;
+        const before=Number(context.stock||0),reserved=Number(context.adminReservedStock||0),pending=Number(context.pendingOrderQuantity||0);
+        if(context.mode==='restock'){
+          const netJin=Number(value('fruitBoxNetJin')),midLiang=Number(value('fruitBoxMidLiang'));
+          const net=Math.round(netJin*100),mid=Math.round(midLiang*100);
+          const quantity=Math.floor(number*net*16/mid),bGrade=number*3;
+          return {quantity,reserved:reserved+bGrade,after:before+quantity,bGrade,
+            valid:Number.isSafeInteger(number)&&number>0&&number<=10000&&netJin>0&&netJin<=100&&midLiang>=1&&midLiang<=64&&Math.abs(net-netJin*100)<0.000001&&Math.abs(mid-midLiang*100)<0.000001&&Number.isSafeInteger(quantity)&&quantity>=bGrade&&reserved+bGrade<=Math.max(0,before+quantity),
+            request:{boxRestock:{boxes:number,netJin,midLiang}}};
+        }
+        const reserveText=value('fruitBGradeReserve'),bGrade=/^\d+$/.test(reserveText)?Number(reserveText):NaN;
+        const after=number-pending;
+        return {quantity:number,reserved:bGrade,after,bGrade,
+          valid:Number.isSafeInteger(number)&&number>=0&&Number.isSafeInteger(bGrade)&&bGrade>=0&&bGrade<=Math.max(0,after)&&(after>=0||context.allowsShortage),
+          request:{bGradeReserve:bGrade,expectedReservedStock:reserved}};
+      }
+      function renderFruitInventoryPreview(context) {
+        const mode=context.mode,restock=mode==='restock',plan=readFruitInventoryForm(context);
+        document.getElementById('productInventoryAdjustmentTitle').innerText=restock?'按箱補貨':mode==='reconcile'?'盤點修正':'設定首批庫存';
+        document.getElementById('productInventoryAdjustmentDescription').innerText=context.productName+'｜'+(restock?'估算整批顆數，每箱預留 3 顆 B級；不重複扣除既有訂單。':'請填現場全部顆數（含 B級與已訂未寄），系統會扣除訂單占用。');
+        document.getElementById('productInventoryAdjustmentQuantityLabel').innerText=restock?'本次進貨箱數':'現場實際總數（顆，含已訂未寄及 B級）';
+        const submit=document.getElementById('productInventoryAdjustmentSubmit');
+        submit.innerText=restock?'確認補貨':'確認盤點';
+        submit.disabled=!context.ready||!plan.valid||adminInventoryAdjustmentSubmitting;
+        const row=(label,value)=>`<div class="inventory-adjustment-summary-row"><span>${label}</span><strong>${escapeHtml(value)} 顆</strong></div>`;
+        document.getElementById('productInventoryAdjustmentSummary').innerHTML=!context.ready?'正在讀取最新庫存…':!plan.valid?'請輸入有效數量與重量；B級預留不得超過扣除訂單後的剩餘量。':
+          row(restock?'本次預估入庫':'現場實際總數',plan.quantity)+
+          (!restock?row('扣除已訂未寄占用（含團購）',context.pendingOrderQuantity):row('本批 B級預留',plan.bGrade))+
+          row('更新後帳面剩餘（含 B級）',plan.after)+row('更新後 B級預留',plan.reserved)+row('一般禮盒可用',Math.max(0,plan.after-plan.reserved));
+      }
       function renderProductInventoryAdjustmentPreview() {
         const context = adminInventoryAdjustmentContext;
+        const fruit=context?.inventoryUnit==='fruit';
+        const boxFields=document.getElementById('fruitBoxRestockFields'),reserveFields=document.getElementById('fruitBGradeFields');
+        if(boxFields)boxFields.hidden=!fruit||context.mode!=='restock';
+        if(reserveFields)reserveFields.hidden=!fruit||context.mode==='restock';
+        if(fruit){renderFruitInventoryPreview(context);return;}
         const unit = getAdminInventoryUnitLabel(context);
         const title = document.getElementById("productInventoryAdjustmentTitle");
         const description = document.getElementById(
@@ -10061,7 +10203,7 @@
 
       async function sendOrReconcileInventorySave(payload,context,measurement) {
         const token=payload.adminSessionToken;
-        const same=(a,b)=>a.productId===b.productId && a.mode===b.mode && a.quantity===b.quantity;
+        const same=(a,b)=>a.productId===b.productId && a.mode===b.mode && a.quantity===b.quantity && JSON.stringify(a.boxRestock||null)===JSON.stringify(b.boxRestock||null) && a.bGradeReserve===b.bGradeReserve;
         let pending=readPendingInventorySave();
         if(pending) {
           setProductInventoryAdjustmentFeedback('正在核對上一筆庫存操作…');
@@ -10082,7 +10224,7 @@
           if(response.ok && result?.ok===true && result.action==='adminAdjustProductInventory') {
             return checkedInventorySaveResult(pending,{...result,state:'committed'},true);
           }
-          const rejected=['REQUEST_INVALID','ADMIN_SESSION_REQUIRED','PRODUCT_CATALOG_STALE','INVENTORY_UPDATE_BUSY','INVENTORY_STOCK_CHANGED','INVENTORY_PENDING_CHANGED','INVENTORY_CLIENT_REFRESH_REQUIRED','INVENTORY_ALREADY_INITIALIZED','INVENTORY_NOT_INITIALIZED','INITIAL_STOCK_INSUFFICIENT','INVENTORY_QUANTITY_INVALID','PRODUCT_NOT_FOUND','PENDING_ORDER_ITEMS_UNREADABLE'];
+          const rejected=['REQUEST_INVALID','ADMIN_SESSION_REQUIRED','PRODUCT_CATALOG_STALE','INVENTORY_UPDATE_BUSY','INVENTORY_STOCK_CHANGED','INVENTORY_PENDING_CHANGED','INVENTORY_CLIENT_REFRESH_REQUIRED','INVENTORY_ALREADY_INITIALIZED','INVENTORY_NOT_INITIALIZED','INITIAL_STOCK_INSUFFICIENT','INVENTORY_QUANTITY_INVALID','INVENTORY_RESERVED_CHANGED','INVENTORY_RESERVED_INVALID','PRODUCT_NOT_FOUND','PENDING_ORDER_ITEMS_UNREADABLE'];
           if(response.ok && result?.ok===false && result.action==='adminAdjustProductInventory' && rejected.includes(result.error)) {
             sessionStorage.removeItem(ADMIN_PENDING_INVENTORY_KEY);
             return result;
@@ -10098,7 +10240,9 @@
         const input = document.getElementById("productInventoryAdjustmentQuantity");
         const submit = document.getElementById("productInventoryAdjustmentSubmit");
         const quantityText = String(input?.value || "").trim();
-        const quantity = /^\d+$/.test(quantityText) ? Number(quantityText) : null;
+        const fruitPlan=context?.inventoryUnit==='fruit'?readFruitInventoryForm(context):null;
+        const quantity = fruitPlan ? fruitPlan.quantity : /^\d+$/.test(quantityText) ? Number(quantityText) : null;
+        if(fruitPlan && !fruitPlan.valid){setProductInventoryAdjustmentFeedback('請檢查箱數、重量與 B級預留；B級不得超過扣除訂單後的剩餘量。','error');return;}
         if (!context?.ready || !Number.isSafeInteger(quantity)) {
           setProductInventoryAdjustmentFeedback("請輸入0以上的整數。", "error");
           return;
@@ -10141,6 +10285,7 @@
             expectedStock: context.stock,
             productId: context.productId, mode: context.mode, inventoryPolicyVersion: context.inventoryPolicyVersion,
             expectedPendingQuantity: context.pendingOrderQuantity, quantity, note: "",
+            ...(fruitPlan ? fruitPlan.request : {}),
           }, context, inventoryMeasurement);
           if (
             result?.ok !== true ||
@@ -10167,7 +10312,7 @@
           const adjustedProduct = result.products.find(p=>p.id===adjustment.productId);
           const currentStock = adjustedProduct?.stock;
           const unit = getAdminInventoryUnitLabel(adjustedProduct);
-          const currentStockText = currentStock < 0 ? `超賣 ${Math.abs(currentStock)} ${unit}` : `可售庫存 ${currentStock} ${unit}`;
+          const currentStockText = currentStock < 0 ? `超賣 ${Math.abs(currentStock)} ${unit}` : unit==='顆'?`帳面剩餘 ${currentStock} 顆，其中 B級 ${adjustedProduct.adminReservedStock||0} 顆，一般禮盒可用 ${Math.max(0,currentStock-(adjustedProduct.adminReservedStock||0))} 顆`:`可售庫存 ${currentStock} ${unit}`;
           const successText = adjustment.mode === "initialize"
             ? `✅ 首批庫存已設定，${currentStockText}`
             : adjustment.mode === "reconcile"
@@ -10185,6 +10330,8 @@
             INVENTORY_PREVIOUS_CONFIRMED: '上一筆庫存操作已確認完成；目前輸入尚未送出，請重新開啟此商品庫存視窗。',
             INVENTORY_PREVIOUS_ROLLED_BACK: '上一筆庫存操作已回復，沒有完成；輸入已保留，請重新確認最新庫存後再操作。',
             INVENTORY_STOCK_CHANGED: '這項商品的庫存已變動，盤點尚未套用；原數量已保留，請先重新確認目前庫存。',
+            INVENTORY_RESERVED_CHANGED: 'B級預留已由其他操作更新，請關閉視窗並重新讀取後再盤點。',
+            INVENTORY_RESERVED_INVALID: 'B級預留超過扣除訂單後的帳面剩餘量，請核對盤點數量。',
             INVENTORY_LOCAL_STATE_INVALID: '此裝置的庫存核對資料無法讀取，本次沒有送出新的操作。'
           };
           const message = recoveryMessages[error.message] || (["INVENTORY_PENDING_CHANGED", "INVENTORY_CLIENT_REFRESH_REQUIRED"].includes(error.message)
@@ -10223,10 +10370,11 @@
         )].map(element => ({ element, disabled: element.disabled }));
         controls.forEach(({element}) => { element.disabled = true; });
         try {
-          const input = container.querySelector('[data-product-image-file]');
-          if (input?.files?.length && !await uploadSelectedProductImage(input)) {
-            setProductManagementFeedback('照片未能上傳，商品尚未儲存；編輯內容已保留。', 'error');
-            return false;
+          for (const input of container.querySelectorAll('[data-product-image-file]')) {
+            if (input?.files?.length && !await uploadSelectedProductImage(input)) {
+              setProductManagementFeedback('照片未能上傳，商品尚未儲存；編輯內容已保留。', 'error');
+              return false;
+            }
           }
           return await save();
         } finally {
@@ -10273,14 +10421,14 @@
               (product) => String(product.id || "") === cardProductId,
             )
           : null;
-        const stockText = getValue("stock");
+        const stockText = card.querySelector('[data-product-field="stock"]')?getValue("stock"):String(existingProduct?.stock??'');
         const stock =
           stockText === ""
             ? null
             : Number.isSafeInteger(Number(stockText))
               ? Number(stockText)
               : NaN;
-        const reservedStockText = getValue("adminReservedStock");
+        const reservedStockText = card.querySelector('[data-product-field="adminReservedStock"]')?getValue("adminReservedStock"):String(existingProduct?.adminReservedStock??0);
         const adminReservedStock =
           stock === null
             ? 0
@@ -10293,9 +10441,9 @@
         return {
           id: String(existingProduct?.id || ""),
           code: normalizeAdminProductCode(existingProduct?.code || ""),
-          variety: getValue("variety"),
+          variety: getValue("variety") || existingProduct?.variety || '',
           category: normalizeAdminProductCategory(getValue("category")),
-          grade: getValue("variety") === "日本蜜柑" ? getValue("count") : getValue("grade"),
+          grade: getValue("variety") === "日本蜜柑" ? getValue("count") : getValue("grade") || existingProduct?.grade || '',
           count: card.querySelector('[data-product-field="count"]')?.dataset?.countUnit === "fruit" ? `${getValue("count")}顆` : getValue("count"),
           shippingRule: getValue("shippingRule"),
           productSeries: getValue("productSeries"),
@@ -10436,13 +10584,13 @@
           setProductManagementFeedback(sameDraft ? '✅ 已確認商品修改儲存成功' : '✅ 上一筆修改已確認成功；目前修改仍保留，請再按儲存送出。', 'success');
           return sameDraft;
         }
-        const fieldNames={price:'售價',adminReservedStock:'後台保留量',status:'販售狀態',shippingRule:'運費規則',productSeries:'系列',imageUrl:'照片',includesIndividualPackaging:'獨立包裝'};
+        const fieldNames={price:'售價',adminReservedStock:'B級預留量',status:'販售狀態',shippingRule:'運費規則',productSeries:'系列',imageUrl:'照片',includesIndividualPackaging:'獨立包裝'};
         const conflicts = Array.isArray(result.conflicts) ? result.conflicts : [];
         for (const card of document.querySelectorAll('.product-admin-card.editing')) {
-          if (card.dataset.productId !== pending.productId || !card.productEditBase) continue;
+          if (!card.productEditBase) continue;
           // Only conflicting fields are rebased for an explicit second save.
           // Unchanged draft fields must not overwrite another operator's edits.
-          conflicts.forEach(c => { card.productEditBase[c.field]=c.current; });
+          conflicts.filter(c=>(c.productId||pending.productId)===card.dataset.productId).forEach(c => { card.productEditBase[c.field]=c.current; if(c.field==='adminReservedStock' && card.closest('.product-grade-family'))card.closest('.product-grade-family').gradeReserveBase=c.current; });
         }
         setProductManagementFeedback(conflicts.length
           ? (result.state==='review_required' ? '前次儲存結果無法完整確認，目前狀態如下：' : '未儲存：') + conflicts.map(c => `${fieldNames[c.field] || c.field}已改為「${c.current}」，你的修改為「${c.requested}」`).join('；') + '。輸入已保留，確認仍要套用後再按儲存。'
@@ -10535,6 +10683,11 @@
             });
             if (restoreError) throw restoreError;
             if (saved) {
+              for(const family of document.querySelectorAll('.product-grade-family.editing')){
+                if(family.dataset.productId!==payloadPatch.productId)continue;
+                family.classList.remove('editing');
+                family.querySelectorAll('.product-admin-card').forEach(card=>card.classList.remove('editing'));
+              }
               for (const card of document.querySelectorAll('.product-admin-card.editing')) {
                 if (card.dataset.productId === payloadPatch.productId) card.classList.remove('editing');
               }
