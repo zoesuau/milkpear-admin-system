@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261012-product-groups-alignment-v1">
+<html lang="zh-Hant" data-release-version="20261012-product-group-settings-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261012-product-groups-alignment-v1" />
+    <meta name="admin-release" content="20261012-product-group-settings-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261012-product-groups-alignment-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261012-product-groups-alignment-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261012-product-groups-alignment-v1"></script>
+    <script src="./customer-config.js?v=20261012-product-group-settings-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261012-product-group-settings-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261012-product-group-settings-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -4941,6 +4941,11 @@
           max-width: 1140px;
         }
       }
+    #productGroupModal .modal-body > label, #groupShippingFields > label { display:block; margin-top:16px; }
+      #productGroupModal textarea { resize:vertical; }
+      .group-fee-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+      #productGroupModal [hidden] { display:none !important; }
+      @media(max-width:600px) { .group-fee-row { grid-template-columns:1fr; } }
     </style>
   </head>
 
@@ -5944,22 +5949,27 @@
     </div>
 
     <div class="modal-overlay" id="productGroupModal" role="dialog" aria-modal="true" aria-labelledby="productGroupModalTitle">
-      <div class="modal-container" style="max-width: 440px">
-        <div class="modal-header">
-          <h3 id="productGroupModalTitle">新增商品群組</h3>
-          <button type="button" class="modal-close-btn" aria-label="關閉新增群組" onclick="closeProductGroupModal()">×</button>
-        </div>
-        <form onsubmit="event.preventDefault(); saveProductGroup()">
+      <div class="modal-container" style="max-width: 620px">
+        <div class="modal-header"><h3 id="productGroupModalTitle">新增商品群組</h3><button type="button" class="modal-close-btn" aria-label="關閉群組設定" onclick="closeProductGroupModal()">×</button></div>
+        <form onsubmit="event.preventDefault();saveProductGroup()" style="display:contents">
           <div class="modal-body">
-            <label for="productGroupName">群組名稱</label>
-            <input id="productGroupName" class="form-control" maxlength="40" required placeholder="請輸入群組名稱" aria-describedby="productGroupFeedback">
-            <p class="product-inventory-hint">建立後可從原本「新增商品」的品種選單選取此群組。</p>
+            <label for="productGroupName">群組名稱</label><input id="productGroupName" class="form-control" maxlength="40" required placeholder="請輸入群組名稱">
+            <label for="productGroupSpecs">包裝規格</label><textarea id="productGroupSpecs" class="form-control" rows="4" placeholder="每行一項規格；尚未確定可留空"></textarea>
+            <p class="product-inventory-hint">之後可新增或修改規格；已被商品使用的規格需保留。商品選取規格後，庫存仍以盒數管理。</p>
+            <label><input id="groupShippingEnabled" type="checkbox" onchange="toggleGroupShippingFields()"> 設定自訂運費</label>
+            <p class="product-inventory-hint">同群組所有包裝規格共用此規則。未設定完成前，商品可先以停售儲存。</p>
+            <div id="groupShippingFields" hidden>
+              <label for="groupFreeBoxes">每幾盒為一組免運（本島）</label><input id="groupFreeBoxes" class="form-control" type="number" min="1" max="100" step="1" placeholder="未設定" oninput="renderGroupFeeInputs()">
+              <p class="product-inventory-hint">每滿一組免運，剩餘盒數依下方金額收費。金額可填 0，空白代表尚未設定。</p>
+              <label><input id="groupOffshoreEnabled" type="checkbox" onchange="toggleGroupShippingFields()"> 設定離島運費</label>
+              <label class="group-offshore-field" for="groupOffshoreFullFee">離島每完整一組運費（元）<input id="groupOffshoreFullFee" class="form-control" type="number" min="0" max="1000000" step="1" placeholder="未設定"></label>
+              <p class="product-inventory-hint">離島未設定完整時，結帳會提示尚未提供離島運費，不會套用本島免運。</p>
+              <div id="groupFeeRows"></div>
+            </div>
+            <p class="product-inventory-hint">儲存後同步套用群組內商品。已成立訂單不會自動重新計價。</p>
             <div id="productGroupFeedback" class="product-management-feedback" role="status" aria-live="polite"></div>
           </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-modal-cancel" onclick="closeProductGroupModal()">取消</button>
-            <button type="submit" class="btn btn-modal-submit">建立群組</button>
-          </div>
+          <div class="modal-footer"><button type="button" class="btn btn-modal-cancel" onclick="closeProductGroupModal()">取消</button><button id="productGroupSubmit" type="submit" class="btn btn-modal-submit">建立群組</button></div>
         </form>
       </div>
     </div>
@@ -8958,6 +8968,7 @@
                 <summary>
                   <span>${escapeHtml(variety)}</span>
                   <span class="product-variety-count">${products.length} 項商品</span>
+                  ${!["牛奶梨","蔗香梨","日本蜜柑"].includes(variety) ? `<button type="button" class="product-action-btn" data-group-name="${escapeHtml(variety)}" onclick="event.preventDefault();event.stopPropagation();openProductGroupModal(this.dataset.groupName)">編輯群組設定</button><button type="button" class="product-action-btn" data-group-name="${escapeHtml(variety)}" onclick="event.preventDefault();event.stopPropagation();deleteProductGroup(this.dataset.groupName)">刪除群組</button>` : ""}
                 </summary>
                 <div class="product-variety-body">
                   ${products.length ? renderProductGradeFamilies(products) : '<p class="product-card-empty">尚無商品。</p>'}
@@ -9387,6 +9398,7 @@
       }
       function renderProductManagementFields(product, shared = false) {
         if(shared)return renderSharedGradeVariantFields(product);
+        const groupConfig=getProductGroupConfig(product.variety);
         const isMikan = product.variety === "日本蜜柑";
         return `
           ${shared ? '' : `<div class="product-field">
@@ -9409,23 +9421,24 @@
                 ${product.productSeries && !["禮盒版", "精裝版"].includes(product.productSeries) ? `<option value="${escapeHtml(product.productSeries)}" selected>${escapeHtml(product.productSeries)}（既有值）</option>` : ""}
                 ${renderSimpleOptions(["禮盒版", "精裝版"], product.productSeries || "")}`}
             </select>
-            <small style="color:#64748b;">${isMikan ? "火燒柑可先保留；新建立的日本蜜柑請維持停售，確認前台後再上架。" : "在同一級別設定各包裝與顆數的價格、照片；切換後共用此級別的顆數庫存。"}</small>
+            <small style="color:#64748b;">${groupConfig ? "此群組依各商品規格管理盒數庫存。" : isMikan ? "火燒柑可先保留；新建立的日本蜜柑請維持停售，確認前台後再上架。" : "在同一級別設定各包裝與顆數的價格、照片；切換後共用此級別的顆數庫存。"}</small>
           </div>
           ${shared ? '' : `<div class="product-field" ${isMikan ? 'style="display:none;"' : ""}>
             <label>A數 / 等級</label>
             <input data-product-field="grade" value="${escapeHtml(product.grade || "")}" ${product.isNew ? "" : "readonly"}>
           </div>`}
           <div class="product-field">
-            <label>${isMikan ? "包裝規格" : "顆數"}</label>
-            ${isMikan ? `<select data-product-field="count" onchange="updateNewProductShippingDefault(this)">${renderSimpleOptions(["5斤","10斤"],product.count)}</select>` : `<input data-product-field="count" data-count-unit="fruit" type="number" min="1" step="1" value="${escapeHtml(String(product.count || '').replace(/顆$/,''))}" ${product.isNew ? 'onchange="updateNewProductShippingDefault(this)"' : 'readonly'}>`}
+            <label>${isMikan || groupConfig ? "包裝規格" : "顆數"}</label>
+            ${groupConfig ? `<select data-product-field="count" ${product.isNew ? "" : "disabled"}><option value="">請先選擇包裝規格</option>${renderSimpleOptions([...new Set([...groupConfig.specs,product.count].filter(Boolean))],product.count)}</select>` : isMikan ? `<select data-product-field="count" onchange="updateNewProductShippingDefault(this)">${renderSimpleOptions(["5斤","10斤"],product.count)}</select>` : `<input data-product-field="count" data-count-unit="fruit" type="number" min="1" step="1" value="${escapeHtml(String(product.count || '').replace(/顆$/,''))}" ${product.isNew ? 'onchange="updateNewProductShippingDefault(this)"' : 'readonly'}>`}
           </div>
           <div class="product-field full">
             <label>運費規則</label>
-            <select data-product-field="shippingRule">
+            <select data-product-field="shippingRule" ${groupConfig ? "disabled" : ""}>
+              ${groupConfig ? `<option value="${escapeHtml(encodeGroupShippingRule(groupConfig))}">依群組設定${isGroupShippingReady(groupConfig.shipping) ? `：每 ${groupConfig.shipping.boxes} 盒一組免運` : "（尚未完成）"}</option>` : ""}
               <option value="standard_3" ${getAdminProductShippingRule(product) === "standard_3" ? "selected" : ""}>三盒免運</option>
               <option value="half_6" ${getAdminProductShippingRule(product) === "half_6" ? "selected" : ""}>六盒免運</option>
             </select>
-            <small style="color:#64748b;">${isMikan ? "五斤裝預設六盒免運，十斤裝預設三盒免運；皆可單盒購買。" : "兩粒禮盒預設六盒免運，前台仍須成雙購買。"} 離島及未滿免運組數依既有運費計算。</small>
+            <small style="color:#64748b;">${groupConfig ? "運費由群組設定統一管理；修改群組後同步套用。" : isMikan ? "五斤裝預設六盒免運，十斤裝預設三盒免運；皆可單盒購買。" : "兩粒禮盒預設六盒免運，前台仍須成雙購買。"} ${groupConfig ? "離島及剩餘盒數依群組填寫的金額計算。" : "離島及未滿免運組數依既有運費計算。"}</small>
           </div>
           <div class="product-field">
             <label>價格</label>
@@ -9468,6 +9481,8 @@
       }
 
       function getAdminProductShippingRule(product) {
+        const config=getProductGroupConfig(product?.variety);
+        if(config)return encodeGroupShippingRule(config);
         return product?.shippingRule || (normalizeAdminProductCategory(product?.category) === "兩粒禮盒" ||
           (product?.variety === "日本蜜柑" && product?.count === "5斤") ? "half_6" : "standard_3");
       }
@@ -9481,6 +9496,8 @@
         product.grade = product.variety === "日本蜜柑" ? "5斤" : "";
         product.productSeries = product.variety === "日本蜜柑" ? "禮盒版" : "";
         product.shippingRule = product.variety === "日本蜜柑" ? "half_6" : "standard_3";
+        const config=getProductGroupConfig(product.variety);
+        if(config){product.count=config.specs[0] || "";product.shippingRule=encodeGroupShippingRule(config);}
         fields.innerHTML = renderProductManagementFields(product);
       }
 
@@ -9889,71 +9906,157 @@
         return [...new Set(["牛奶梨", "蔗香梨", "日本蜜柑", ...(adminSiteSettings.productGroups || []), ...adminProductCatalog.map(product => product.variety), selected].filter(Boolean))];
       }
 
+// Shared by the Apps Script authority and both clients. No IO or default prices.
+function normalizeGroupShippingPolicy(value) {
+  if (value === null || value === undefined) return null;
+  const money = n => n === null || (Number.isSafeInteger(n) && n >= 0 && n <= 1000000);
+  if (!value || !Number.isInteger(value.boxes) || value.boxes < 1 || value.boxes > 100 ||
+      !Array.isArray(value.fees) || value.fees.length !== value.boxes - 1 || !value.fees.every(money)) throw Error('GROUP_SHIPPING_INVALID');
+  let offshore = null;
+  if (value.offshore != null) {
+    if (!money(value.offshore.full) || !Array.isArray(value.offshore.fees) ||
+        value.offshore.fees.length !== value.boxes - 1 || !value.offshore.fees.every(money)) throw Error('GROUP_SHIPPING_INVALID');
+    offshore = {full:value.offshore.full,fees:value.offshore.fees.slice()};
+  }
+  return {boxes:value.boxes,fees:value.fees.slice(),offshore};
+}
+function isGroupShippingReady(policy) {
+  return !!policy && policy.fees.every(n => Number.isSafeInteger(n) && n >= 0);
+}
+function parseGroupShippingRule(rule) {
+  if (typeof rule !== 'string' || !rule.startsWith('group_v1:')) return null;
+  try {
+    const data = JSON.parse(decodeURIComponent(rule.slice(9)));
+    if (typeof data.name !== 'string' || !data.name.trim() || !Number.isInteger(data.revision) || data.revision < 1) throw Error();
+    return {name:data.name,revision:data.revision,shipping:normalizeGroupShippingPolicy(data.shipping)};
+  } catch (_) { throw Error('GROUP_SHIPPING_INVALID'); }
+}
+function encodeGroupShippingRule(config) {
+  return 'group_v1:' + encodeURIComponent(JSON.stringify({name:config.name,revision:config.revision,shipping:config.shipping}));
+}
+function calculateGroupShipping(items, offshore, legacyCalculate) {
+  const selected = items.filter(item => item.qty > 0);
+  const groups = selected.map(item => parseGroupShippingRule(item.shippingRule));
+  const first = groups.find(Boolean);
+  if (!first) return legacyCalculate(selected.reduce((sum,item) => sum + item.qty * (item.shippingRule === 'half_6' ? 0.5 : 1),0));
+  if (groups.some(group => !group || group.name !== first.name)) throw Error('SHIPPING_GROUP_MIX_NOT_SUPPORTED');
+  if (selected.some(item => !Number.isSafeInteger(item.qty) || item.qty < 1) ||
+      groups.some(group => JSON.stringify(group) !== JSON.stringify(first))) throw Error('GROUP_SHIPPING_REFRESH_REQUIRED');
+  const p = first.shipping;
+  if (!isGroupShippingReady(p)) throw Error('GROUP_SHIPPING_NOT_CONFIGURED');
+  const quantity = selected.reduce((sum,item) => sum + item.qty,0);
+  if (!Number.isSafeInteger(quantity)) throw Error('GROUP_SHIPPING_INVALID');
+  const full = Math.floor(quantity / p.boxes), remainder = quantity % p.boxes;
+  if (offshore) {
+    if (!p.offshore || p.offshore.full === null || p.offshore.fees.some(n => n === null)) throw Error('GROUP_OFFSHORE_NOT_CONFIGURED');
+    const fee=full * p.offshore.full + (remainder ? p.offshore.fees[remainder - 1] : 0);
+    if(!Number.isSafeInteger(fee))throw Error("GROUP_SHIPPING_INVALID");
+    return fee;
+  }
+  return remainder ? p.fees[remainder - 1] : 0;
+}
+
+      function groupShippingMessage(code) {
+        return ({SHIPPING_GROUP_MIX_NOT_SUPPORTED:'目前選到不同群組的商品，請保留同一群組。',GROUP_OFFSHORE_NOT_CONFIGURED:'此群組尚未設定完整離島運費。',GROUP_SHIPPING_NOT_CONFIGURED:'此群組運費尚未設定完整。',GROUP_SHIPPING_REFRESH_REQUIRED:'群組規則已更新，請重新讀取商品。'})[code] || '目前無法確認運費，請重新讀取商品。';
+      }
+      function getProductGroupConfig(name) {
+        return (adminSiteSettings.productGroupSettings || []).find(group => !group.deleted && group.name === name);
+      }
       let productGroupSaveInFlight = false;
-      function openProductGroupModal() {
-        if (productGroupSaveInFlight) return;
-        document.getElementById("productGroupName").value = "";
-        document.getElementById("productGroupFeedback").textContent = "";
-        document.getElementById("productGroupModal").classList.add("open");
-        document.getElementById("productGroupName").focus();
+      let productGroupEditingName = null;
+      let productGroupBaseRevision = null;
+      function renderGroupFeeInputs(saved = {}) {
+        const boxes = Number(document.getElementById('groupFreeBoxes').value);
+        const root = document.getElementById('groupFeeRows');
+        const current = [...root.querySelectorAll('[data-group-fee]')].map(el => el.value === '' ? null : Number(el.value));
+        const offCurrent = [...root.querySelectorAll('[data-group-offshore-fee]')].map(el => el.value === '' ? null : Number(el.value));
+        const fees = saved.fees || current, offshore = saved.offshore?.fees || offCurrent;
+        if (!Number.isInteger(boxes) || boxes < 1 || boxes > 100) { root.innerHTML=''; return; }
+        root.innerHTML=Array.from({length:boxes-1},(_,i)=>`<div class="group-fee-row"><label>剩餘 ${i+1} 盒（本島）<input class="form-control" type="number" min="0" max="1000000" step="1" data-group-fee="${i}" value="${fees[i] ?? ''}" placeholder="未設定"></label><label class="group-offshore-field">剩餘 ${i+1} 盒（離島）<input class="form-control" type="number" min="0" max="1000000" step="1" data-group-offshore-fee="${i}" value="${offshore[i] ?? ''}" placeholder="未設定"></label></div>`).join('') || '<p>每 1 盒為一組，本島每組免運。</p>';
+        toggleGroupShippingFields();
+      }
+      function toggleGroupShippingFields() {
+        document.getElementById('groupShippingFields').hidden=!document.getElementById('groupShippingEnabled').checked;
+        const enabled=document.getElementById('groupOffshoreEnabled').checked;
+        document.querySelectorAll('#productGroupModal .group-offshore-field').forEach(el=>el.hidden=!enabled);
+      }
+      function openProductGroupModal(name = null) {
+        if (productGroupSaveInFlight || productManagementSaveInFlight) return;
+        productGroupEditingName=typeof name==='string'?name:null;
+        const config=getProductGroupConfig(productGroupEditingName);
+        productGroupBaseRevision=productGroupEditingName?(config?.revision || 0):null;
+        const field=document.getElementById('productGroupName');field.value=productGroupEditingName || '';field.readOnly=!!productGroupEditingName;
+        document.getElementById('productGroupModalTitle').textContent=productGroupEditingName?'編輯群組設定':'新增商品群組';
+        document.getElementById('productGroupSubmit').textContent=productGroupEditingName?'儲存設定':'建立群組';
+        document.getElementById('productGroupSpecs').value=(config?.specs || [...new Set(adminProductCatalog.filter(p=>p.variety===name).map(p=>p.count))]).join('\n');
+        const shipping=config?.shipping;
+        document.getElementById('groupShippingEnabled').checked=!!shipping;
+        document.getElementById('groupFreeBoxes').value=shipping?.boxes ?? '';
+        document.getElementById('groupOffshoreEnabled').checked=!!shipping?.offshore;
+        document.getElementById('groupOffshoreFullFee').value=shipping?.offshore?.full ?? '';
+        document.getElementById('groupFeeRows').innerHTML='';renderGroupFeeInputs(shipping || {});toggleGroupShippingFields();
+        document.getElementById('productGroupFeedback').textContent='';
+        document.getElementById('productGroupModal').classList.add('open');
+        (productGroupEditingName?document.getElementById('productGroupSpecs'):field).focus();
       }
       function closeProductGroupModal() {
-        if (productGroupSaveInFlight) return;
-        document.getElementById("productGroupModal").classList.remove("open");
+        if (!productGroupSaveInFlight) document.getElementById('productGroupModal').classList.remove('open');
+      }
+      function readProductGroupSettingsForm() {
+        const name=document.getElementById('productGroupName').value.trim().normalize('NFC');
+        const specs=document.getElementById('productGroupSpecs').value.split(/\r?\n/).map(s=>s.trim().normalize('NFC')).filter(Boolean);
+        const valid=s=>s.length>0 && s.length<=40 && !/[\u0000-\u001f\u007f<>]/.test(s) && !Object.prototype.hasOwnProperty.call(Object.prototype,s);
+        if(!valid(name))throw Error('PRODUCT_GROUP_NAME_INVALID');
+        if(specs.length>100 || new Set(specs).size!==specs.length || specs.some(s=>!valid(s)))throw Error('PRODUCT_GROUP_SPECS_INVALID');
+        const money=el=>el.value===''?null:Number(el.value);
+        let shipping=null;
+        if(document.getElementById('groupShippingEnabled').checked){
+          shipping=normalizeGroupShippingPolicy({boxes:Number(document.getElementById('groupFreeBoxes').value),fees:[...document.querySelectorAll('[data-group-fee]')].map(money),offshore:document.getElementById('groupOffshoreEnabled').checked?{full:money(document.getElementById('groupOffshoreFullFee')),fees:[...document.querySelectorAll('[data-group-offshore-fee]')].map(money)}:null});
+        }
+        return {name,specs,shipping};
+      }
+      function productGroupErrorMessage(code) {
+        return ({PRODUCT_GROUP_NOT_EMPTY:'群組內仍有商品，無法刪除。請先處理群組內的商品。',PRODUCT_GROUP_DELETE_PROTECTED:'原有商品群組不能刪除。',PRODUCT_GROUP_DELETE_UNCONFIRMED:'尚未確認刪除結果，請重新整理確認；重新送出同一筆刪除不會影響其他商品。',ADMIN_SESSION_REQUIRED:'登入已過期，請重新登入 LINE。',PRODUCT_GROUP_NAME_INVALID:'群組名稱需為 1～40 字，不能含換行或 < >。',PRODUCT_GROUP_SPECS_INVALID:'規格請每行填一項，不可重複，每項最多 40 字。',GROUP_SHIPPING_INVALID:'免運盒數需為 1～100 的整數，金額需為 0～1,000,000 的整數；尚未確定的金額可留空。',PRODUCT_GROUP_CONFLICT:'群組已被其他操作更新，或同名群組已存在。請重新讀取商品後再開啟設定。',PRODUCT_GROUP_SPEC_IN_USE:'既有商品正在使用的規格不能移除或改名；請保留原規格，再新增其他規格。',PRODUCT_GROUP_ACTIVE_REQUIRES_SHIPPING:'群組內仍有販售中的商品，請填完整本島運費；或先將商品停售。',PRODUCT_GROUP_LIMIT_REACHED:'群組數量或設定儲存空間已達上限。',PRODUCT_MANAGEMENT_UPDATE_BUSY:'另一筆操作尚未完成，請稍後再試。'})[code] || '尚未確認儲存結果，輸入已保留。可重新讀取商品確認；相同內容重試不會重複建立。';
       }
       async function saveProductGroup() {
-        if (productGroupSaveInFlight || productManagementSaveInFlight || productImageSaveInFlight) return;
-        const modal = document.getElementById("productGroupModal");
-        const input = document.getElementById("productGroupName");
-        const feedback = document.getElementById("productGroupFeedback");
-        const name = input.value.trim().normalize("NFC");
-        if (!name || name.length > 40 || /[\u0000-\u001f\u007f<>]/.test(name) || Object.prototype.hasOwnProperty.call(Object.prototype, name)) {
-          feedback.textContent = "請填寫 1～40 字的群組名稱，不含換行或 < > 符號。";
-          return;
-        }
-        if (getAdminProductGroupNames().includes(name)) {
-          feedback.textContent = "此群組已存在，無需重複建立。";
-          return;
-        }
-        const token = sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-        if (!token) { feedback.textContent = "登入已過期，請重新登入 LINE。"; return; }
-        productGroupSaveInFlight = true;
-        productManagementSaveInFlight = true;
-        adminProductCatalogMutationEpoch++;
-        const controls = [...document.querySelectorAll("#productGroupModal button, #productGroupModal input, #product-page-section button, #product-page-section input, #product-page-section select")]
-          .map(element => ({ element, disabled: element.disabled }));
-        controls.forEach(({ element }) => element.disabled = true);
-        feedback.textContent = "正在建立群組…";
-        try {
-          const response = await fetchWithTimeout(GAS_ORDERS_API_URL, {
-            method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({ action: "adminCreateProductGroup", adminSessionToken: token, groupName: name }),
-          }, 20000);
-          const result = await response.json();
-          if (!response.ok || result?.ok !== true || result.action !== "adminCreateProductGroup" || result.groupName !== name || !Array.isArray(result.siteSettings?.productGroups)) {
-            throw new Error(result?.error || "PRODUCT_GROUP_SAVE_UNCONFIRMED");
-          }
-          adminProductCatalogMutationEpoch++;
-          adminSiteSettings = { ...adminSiteSettings, ...result.siteSettings,
-            productGroups: [...new Set([...result.siteSettings.productGroups, name])] };
-          productManagementSaveInFlight = false;
-          renderProductManagement();
-          modal.classList.remove("open");
-          setProductManagementFeedback(result.created ? `已建立「${name}」群組。` : `「${name}」群組已存在。`, "success");
-        } catch (error) {
-          const messages = {
-            ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入 LINE。",
-            PRODUCT_GROUP_LIMIT_REACHED: "自訂群組已達 100 個，無法再新增。",
-            PRODUCT_MANAGEMENT_UPDATE_BUSY: "目前另一筆操作尚未完成，請稍後再試。",
-            PRODUCT_GROUP_NAME_INVALID: "群組名稱格式不正確，請修改後再試。",
-          };
-          feedback.textContent = messages[error.message] || "尚未確認建立結果，名稱已保留。可重新整理商品確認，或用相同名稱重試，不會重複建立。";
-        } finally {
-          controls.forEach(({ element, disabled }) => element.disabled = disabled);
-          productManagementSaveInFlight = false;
-          adminProductCatalogMutationEpoch++;
-          productGroupSaveInFlight = false;
-        }
+        if(productGroupSaveInFlight || productManagementSaveInFlight || productImageSaveInFlight)return;
+        const feedback=document.getElementById('productGroupFeedback');let config;
+        try{config=readProductGroupSettingsForm();}catch(e){feedback.textContent=productGroupErrorMessage(e.message);return;}
+        const token=sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+        if(!token){feedback.textContent=productGroupErrorMessage('ADMIN_SESSION_REQUIRED');return;}
+        productGroupSaveInFlight=true;productManagementSaveInFlight=true;adminProductCatalogMutationEpoch++;
+        const controls=[...document.querySelectorAll('#productGroupModal button,#productGroupModal input,#productGroupModal textarea,#product-page-section button,#product-page-section input,#product-page-section select')].map(element=>({element,disabled:element.disabled}));
+        controls.forEach(({element})=>element.disabled=true);feedback.textContent='正在儲存群組設定…';
+        try{
+          const response=await fetchWithTimeout(GAS_ORDERS_API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'adminSaveProductGroup',adminSessionToken:token,groupSettings:config,expectedRevision:productGroupBaseRevision})},20000);
+          const result=await response.json();
+          if(!response.ok || result?.ok!==true || result.action!=='adminSaveProductGroup' || result.groupName!==config.name || !Array.isArray(result.siteSettings?.productGroupSettings) || !Array.isArray(result.products))throw Error(result?.error || 'PRODUCT_GROUP_SAVE_UNCONFIRMED');
+          adminProductCatalogMutationEpoch++;adminSiteSettings={...adminSiteSettings,...result.siteSettings};adminProductCatalog=result.products;adminProductCatalogVersion=String(result.catalogVersion || "");
+          productManagementSaveInFlight=false;renderProductManagement();document.getElementById('productGroupModal').classList.remove('open');
+          setProductManagementFeedback(`已儲存「${config.name}」群組設定，群組內商品的新訂單會使用目前規則。`,'success');
+        }catch(error){feedback.textContent=productGroupErrorMessage(error.message);}
+        finally{controls.forEach(({element,disabled})=>element.disabled=disabled);productGroupSaveInFlight=false;productManagementSaveInFlight=false;adminProductCatalogMutationEpoch++;}
+      }
+
+      async function deleteProductGroup(name) {
+        if(productGroupSaveInFlight || productManagementSaveInFlight || productImageSaveInFlight)return;
+        if(adminProductCatalog.some(p=>p.variety===name)){setProductManagementFeedback(productGroupErrorMessage('PRODUCT_GROUP_NOT_EMPTY'),'error');return;}
+        const token=sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+        if(!token){setProductManagementFeedback(productGroupErrorMessage('ADMIN_SESSION_REQUIRED'),'error');return;}
+        if(!confirm(`確定刪除「${name}」群組及其規格、運費設定？只有沒有商品的群組可以刪除。`))return;
+        const expectedRevision=getProductGroupConfig(name)?.revision || 0;
+        productGroupSaveInFlight=true;productManagementSaveInFlight=true;adminProductCatalogMutationEpoch++;
+        const controls=[...document.querySelectorAll('#product-page-section button,#product-page-section input,#product-page-section select')].map(element=>({element,disabled:element.disabled}));
+        controls.forEach(({element})=>element.disabled=true);
+        setProductManagementFeedback('正在刪除群組…','');
+        try{
+          const response=await fetchWithTimeout(GAS_ORDERS_API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'adminDeleteProductGroup',adminSessionToken:token,groupName:name,expectedRevision})},20000);
+          const result=await response.json();
+          if(!response.ok || result?.ok!==true || result.action!=='adminDeleteProductGroup' || result.groupName!==name || !Array.isArray(result.siteSettings?.productGroups) || result.siteSettings.productGroups.includes(name) || !Array.isArray(result.products))throw Error(result?.error || 'PRODUCT_GROUP_DELETE_UNCONFIRMED');
+          adminProductCatalogMutationEpoch++;adminSiteSettings={...adminSiteSettings,...result.siteSettings};adminProductCatalog=result.products;adminProductCatalogVersion=String(result.catalogVersion || '');
+          productManagementSaveInFlight=false;renderProductManagement();setProductManagementFeedback(`已刪除「${name}」群組。`,'success');
+        }catch(error){setProductManagementFeedback(productGroupErrorMessage(error.message),'error');}
+        finally{controls.forEach(({element,disabled})=>element.disabled=disabled);productGroupSaveInFlight=false;productManagementSaveInFlight=false;adminProductCatalogMutationEpoch++;}
       }
 
       function addProductManagementCard() {
@@ -10644,7 +10747,8 @@
           }
           const isNew = product === newProduct;
           if (!isNew && (!product.id || !product.code)) return "商品識別資料不完整，請重新整理。";
-          if (!["standard_3", "half_6"].includes(getAdminProductShippingRule(product))) return "請選擇有效的運費規則。";
+          if (parseGroupShippingRule(getAdminProductShippingRule(product)) && product.status!=="停售" && !isGroupShippingReady(parseGroupShippingRule(product.shippingRule).shipping)) return "群組運費尚未設定完整，請先以停售儲存。";
+          if (!parseGroupShippingRule(getAdminProductShippingRule(product)) && !["standard_3", "half_6"].includes(getAdminProductShippingRule(product))) return "請選擇有效的運費規則。";
           if (product.variety === "日本蜜柑" && !["禮盒版", "Ｑ版", "火燒柑"].includes(product.productSeries)) return "請選擇日本蜜柑的商品系列。";
           if (String(product.imageUrl || "").length > 1000 || (product.imageUrl && !String(product.imageUrl).startsWith("https://"))) return "商品照片網址格式無效，請重新上傳。";
           if (!Number.isInteger(product.price) || product.price <= 0) {
@@ -11315,10 +11419,9 @@
               : item.qty)
           );
         }, 0);
-        const shippingFee = calculateShippingFeeByAddress(
-          shippingUnits,
-          address,
-        );
+        let shippingFee;
+        try { shippingFee=calculateGroupShipping(normalizedItems,isOffshoreShippingAddress(address),units=>calculateShippingFeeByAddress(units,address)); }
+        catch(error){return {items:normalizedItems,subtotal,totalBoxes,shippingFee:null,codFee:0,originalTotal:null,discount:0,finalTotal:null,valid:false,shippingError:error.message};}
         const codFee =
           paymentMethod === "貨到付款" ||
           paymentMethod === "銀行轉帳＋追加款貨到付款"
@@ -15279,7 +15382,11 @@
           discount,
           recipientAddress,
         );
-        if (!amount.valid) return;
+        if (!amount.valid) {
+          editor.querySelector('[data-preview-fees]').innerText='待確認';
+          editor.querySelector('[data-preview-final]').innerText=amount.shippingError?groupShippingMessage(amount.shippingError):'待確認';
+          return;
+        }
 
         editor.querySelector("[data-preview-subtotal]").innerText =
           `$${formatAdminMoney(amount.subtotal)}`;
@@ -18786,7 +18893,7 @@
           const product = adminProductCatalog.find(
             (entry) => String(entry?.id || "").trim() === productId,
           );
-          if (!product) return null;
+          if (!product || parseGroupShippingRule(getAdminProductShippingRule(product))) return null;
           shippingUnits += item.qty * (getAdminProductShippingRule(product) === "half_6" ? 0.5 : 1);
           if (normalizeAdminProductCategory(product.category) === "兩粒禮盒") {
             twoPieceBoxes += item.qty;
@@ -24190,6 +24297,7 @@ ${adminNote}
           discountAmount: amount.discount,
           originalTotal: amount.originalTotal,
           finalTotal: amount.finalTotal,
+          shippingError: amount.shippingError,
           valid: amount.valid,
         };
       }
@@ -24213,7 +24321,12 @@ ${adminNote}
         if (!adminProductsReady) return;
         const totals = calculateNewOrderPreviewTotals();
         updateNewOrderCodAmount(totals);
-        if (!totals.valid) return;
+        if (!totals.valid) {
+          for(const id of ['new-preview-shipping','new-preview-total']){const el=document.getElementById(id);if(el)el.innerText='待確認';}
+          const feedback=document.getElementById('new-order-feedback');
+          if(feedback && totals.shippingError)feedback.textContent=groupShippingMessage(totals.shippingError);
+          return;
+        }
         const setText = (id, value) => {
           const el = document.getElementById(id);
           if (el) el.innerText = formatMoney(value);
