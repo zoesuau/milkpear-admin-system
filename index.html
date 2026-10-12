@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261012-grade-recount-cases-v1">
+<html lang="zh-Hant" data-release-version="20261012-product-groups-alignment-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261012-grade-recount-cases-v1" />
+    <meta name="admin-release" content="20261012-product-groups-alignment-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261012-grade-recount-cases-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261012-grade-recount-cases-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261012-grade-recount-cases-v1"></script>
+    <script src="./customer-config.js?v=20261012-product-groups-alignment-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261012-product-groups-alignment-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261012-product-groups-alignment-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -3993,7 +3993,7 @@
         color: white;
       }
 
-      .order-workspace-nav { max-width: 1250px; margin: 0 auto 16px; padding: 0 16px; }
+      .order-workspace-nav { max-width: 500px; margin: 0 auto 16px; }
       .order-workspace-nav h2 { margin: 0 0 12px; font-size: 24px; color: #334155; }
       .order-workspace-tabs { display: flex; gap: 24px; border-bottom: 1px solid #dbe5dd; }
       .order-workspace-tabs[hidden] { display: none; }
@@ -4918,6 +4918,7 @@
 
       @media screen and (min-width: 768px) {
         .admin-tab-bar,
+        .order-workspace-nav,
         .product-management-panel {
           max-width: 1024px;
         }
@@ -4934,6 +4935,7 @@
 
       @media screen and (min-width: 1200px) {
         .admin-tab-bar,
+        .order-workspace-nav,
         .shipping-print-control-panel,
         .product-management-panel {
           max-width: 1140px;
@@ -5745,6 +5747,7 @@
         <div class="product-management-header">
           <h2>商品管理</h2>
           <div class="product-management-actions">
+            <button type="button" class="product-action-btn secondary" onclick="openProductGroupModal()">新增群組</button>
             <button
               type="button"
               class="product-action-btn secondary"
@@ -5937,6 +5940,27 @@
             建立並下載 CSV
           </button>
         </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="productGroupModal" role="dialog" aria-modal="true" aria-labelledby="productGroupModalTitle">
+      <div class="modal-container" style="max-width: 440px">
+        <div class="modal-header">
+          <h3 id="productGroupModalTitle">新增商品群組</h3>
+          <button type="button" class="modal-close-btn" aria-label="關閉新增群組" onclick="closeProductGroupModal()">×</button>
+        </div>
+        <form onsubmit="event.preventDefault(); saveProductGroup()">
+          <div class="modal-body">
+            <label for="productGroupName">群組名稱</label>
+            <input id="productGroupName" class="form-control" maxlength="40" required placeholder="請輸入群組名稱" aria-describedby="productGroupFeedback">
+            <p class="product-inventory-hint">建立後可從原本「新增商品」的品種選單選取此群組。</p>
+            <div id="productGroupFeedback" class="product-management-feedback" role="status" aria-live="polite"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-modal-cancel" onclick="closeProductGroupModal()">取消</button>
+            <button type="submit" class="btn btn-modal-submit">建立群組</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -8904,7 +8928,7 @@
             ? `<p style="color:#b45309;">${adminProductCatalog.length ? "商品更新失敗，顯示上次資料" : "商品讀取失敗，請重試"} <button type="button" class="product-action-btn" onclick="fetchAdminProductCatalogFromGas()">重試</button></p>`
             : "";
         }
-        if (!adminProductCatalog.length) {
+        if (!adminProductCatalog.length && (adminProductCatalogLoading || adminProductCatalogReadFailed)) {
           list.innerHTML =
             `<div class="product-card-empty">${adminProductCatalogLoading ? "商品讀取中" : adminProductCatalogReadFailed ? "商品資料尚未成功讀取" : "目前沒有商品資料"}</div>`;
           return;
@@ -8918,8 +8942,8 @@
         const varieties = ["牛奶梨", "蔗香梨", "日本蜜柑"];
         const extraVarieties = [
           ...new Set(
-            sortedProducts
-              .map((product) => product.variety)
+            (adminSiteSettings.productGroups || []).concat(sortedProducts
+              .map((product) => product.variety))
               .filter((variety) => !varieties.includes(variety)),
           ),
         ];
@@ -8936,7 +8960,7 @@
                   <span class="product-variety-count">${products.length} 項商品</span>
                 </summary>
                 <div class="product-variety-body">
-                  ${renderProductGradeFamilies(products)}
+                  ${products.length ? renderProductGradeFamilies(products) : '<p class="product-card-empty">尚無商品。</p>'}
                 </div>
               </details>
             `;
@@ -9368,7 +9392,7 @@
           ${shared ? '' : `<div class="product-field">
             <label>品種</label>
             <select data-product-field="variety" ${product.isNew ? 'onchange="updateNewProductVariety(this)"' : "disabled"}>
-              ${renderSimpleOptions(["牛奶梨", "蔗香梨", "日本蜜柑"], product.variety)}
+              ${renderSimpleOptions(getAdminProductGroupNames(product.variety), product.variety)}
             </select>
           </div>`}
           <div class="product-field" ${isMikan ? 'style="display:none;"' : ""}>
@@ -9859,6 +9883,77 @@
         const isEditing = card.classList.toggle("editing");
         if (isEditing) card.productEditBase = JSON.parse(JSON.stringify(adminProductCatalog.find(p => p.id === card.dataset.productId)));
         button.innerText = isEditing ? "收合" : "編輯";
+      }
+
+      function getAdminProductGroupNames(selected = "") {
+        return [...new Set(["牛奶梨", "蔗香梨", "日本蜜柑", ...(adminSiteSettings.productGroups || []), ...adminProductCatalog.map(product => product.variety), selected].filter(Boolean))];
+      }
+
+      let productGroupSaveInFlight = false;
+      function openProductGroupModal() {
+        if (productGroupSaveInFlight) return;
+        document.getElementById("productGroupName").value = "";
+        document.getElementById("productGroupFeedback").textContent = "";
+        document.getElementById("productGroupModal").classList.add("open");
+        document.getElementById("productGroupName").focus();
+      }
+      function closeProductGroupModal() {
+        if (productGroupSaveInFlight) return;
+        document.getElementById("productGroupModal").classList.remove("open");
+      }
+      async function saveProductGroup() {
+        if (productGroupSaveInFlight || productManagementSaveInFlight || productImageSaveInFlight) return;
+        const modal = document.getElementById("productGroupModal");
+        const input = document.getElementById("productGroupName");
+        const feedback = document.getElementById("productGroupFeedback");
+        const name = input.value.trim().normalize("NFC");
+        if (!name || name.length > 40 || /[\u0000-\u001f\u007f<>]/.test(name) || Object.prototype.hasOwnProperty.call(Object.prototype, name)) {
+          feedback.textContent = "請填寫 1～40 字的群組名稱，不含換行或 < > 符號。";
+          return;
+        }
+        if (getAdminProductGroupNames().includes(name)) {
+          feedback.textContent = "此群組已存在，無需重複建立。";
+          return;
+        }
+        const token = sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+        if (!token) { feedback.textContent = "登入已過期，請重新登入 LINE。"; return; }
+        productGroupSaveInFlight = true;
+        productManagementSaveInFlight = true;
+        adminProductCatalogMutationEpoch++;
+        const controls = [...document.querySelectorAll("#productGroupModal button, #productGroupModal input, #product-page-section button, #product-page-section input, #product-page-section select")]
+          .map(element => ({ element, disabled: element.disabled }));
+        controls.forEach(({ element }) => element.disabled = true);
+        feedback.textContent = "正在建立群組…";
+        try {
+          const response = await fetchWithTimeout(GAS_ORDERS_API_URL, {
+            method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ action: "adminCreateProductGroup", adminSessionToken: token, groupName: name }),
+          }, 20000);
+          const result = await response.json();
+          if (!response.ok || result?.ok !== true || result.action !== "adminCreateProductGroup" || result.groupName !== name || !Array.isArray(result.siteSettings?.productGroups)) {
+            throw new Error(result?.error || "PRODUCT_GROUP_SAVE_UNCONFIRMED");
+          }
+          adminProductCatalogMutationEpoch++;
+          adminSiteSettings = { ...adminSiteSettings, ...result.siteSettings,
+            productGroups: [...new Set([...result.siteSettings.productGroups, name])] };
+          productManagementSaveInFlight = false;
+          renderProductManagement();
+          modal.classList.remove("open");
+          setProductManagementFeedback(result.created ? `已建立「${name}」群組。` : `「${name}」群組已存在。`, "success");
+        } catch (error) {
+          const messages = {
+            ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入 LINE。",
+            PRODUCT_GROUP_LIMIT_REACHED: "自訂群組已達 100 個，無法再新增。",
+            PRODUCT_MANAGEMENT_UPDATE_BUSY: "目前另一筆操作尚未完成，請稍後再試。",
+            PRODUCT_GROUP_NAME_INVALID: "群組名稱格式不正確，請修改後再試。",
+          };
+          feedback.textContent = messages[error.message] || "尚未確認建立結果，名稱已保留。可重新整理商品確認，或用相同名稱重試，不會重複建立。";
+        } finally {
+          controls.forEach(({ element, disabled }) => element.disabled = disabled);
+          productManagementSaveInFlight = false;
+          adminProductCatalogMutationEpoch++;
+          productGroupSaveInFlight = false;
+        }
       }
 
       function addProductManagementCard() {
