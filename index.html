@@ -1,16 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261013-login-delivery-recovery-v1">
+<html lang="zh-Hant" data-release-version="20261013-direct-response-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261013-login-delivery-recovery-v1" />
+    <meta name="admin-release" content="20261013-direct-response-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261013-login-delivery-recovery-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261013-login-delivery-recovery-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261013-login-delivery-recovery-v1"></script>
+    <script src="./customer-config.js?v=20261013-direct-response-v1"></script>
+    <script src="./admin-direct-response.js?v=20261013-direct-response-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261013-direct-response-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261013-direct-response-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -7034,6 +7035,13 @@
           throw offlineError;
         }
 
+        if (window.ORDER_SYSTEM_CONFIG?.features?.adminDirectResponse === true &&
+            ["adminAuth", "adminValidateSession", "adminReadOrderSnapshot", "adminReadOrders", "adminReadProductCatalog"].includes(action) &&
+            !window.AdminDirectResponse?.enabledFor(action)) throw Error("DIRECT_RESPONSE_UNAVAILABLE");
+        if (window.AdminDirectResponse?.enabledFor(action)) {
+          const directBudgetMs = Math.min(timeoutMs || 30000, Number(recoveryOptions.totalBudgetMs) || Infinity);
+          return window.AdminDirectResponse.request(options, directBudgetMs);
+        }
         const backgroundValidation = action === "adminValidateSession" && recoveryOptions.singleAttempt === true;
         // LINE authorization codes are one-time values. Give the original
         // exchange the complete recovery budget instead of aborting at 12s

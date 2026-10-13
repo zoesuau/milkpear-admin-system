@@ -1,5 +1,4 @@
-// Generated from config/customers/sanheyuan.production.json. Do not edit by hand.
-// Never put tokens, secrets, Spreadsheet IDs or backup folder IDs here.
+// Candidate generated from customer-manifest.json. Not deployed.
 window.ORDER_SYSTEM_CONFIG = Object.freeze({
   "productId": "farm-order-fulfillment",
   "customerId": "sanheyuan",
@@ -14,7 +13,8 @@ window.ORDER_SYSTEM_CONFIG = Object.freeze({
   "features": {
     "adminOrderSnapshot": true,
     "adminReadObservabilityLevel": "DEBUG",
-    "groupOrders": true
+    "groupOrders": true,
+    "adminDirectResponse": true
   },
   "line": {
     "liffId": "2010333281-Ra5txFF3",
@@ -22,5 +22,6 @@ window.ORDER_SYSTEM_CONFIG = Object.freeze({
   },
   "assets": {
     "bannerImageUrl": "assets/sanheyuan-banner.png"
-  }
+  },
+  "adminDirectResponseUrl": "https://sanheyuan-admin-response.zoe-quokka.workers.dev/request"
 });

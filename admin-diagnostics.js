@@ -271,7 +271,7 @@
   const requestGroups = new Map();
   window.fetch = async function(input, options) {
     const url=typeof input==='string'?input:input?.url;let action, requestKey, catalogAttempt;
-    try {if(url===config.gasApiUrl && typeof options?.body==='string'){const body=JSON.parse(options.body);action=body.action==='adminExecuteOrderMutation'?body.mutation?.action:body.action==='adminReadOrderMutationResult'?body.mutationAction:body.action;catalogAttempt=action==='adminReadProductCatalog' ? sanitizeCatalogAttempt(body.diagnosticAttempt) : null;requestKey=safeRequestId(options?.diagnosticRequestId)||body.diagnosticRequestId||body.requestId;}}catch{}
+    try {if((url===config.gasApiUrl || url===config.adminDirectResponseUrl) && typeof options?.body==='string'){const body=JSON.parse(options.body);action=body.action==='adminExecuteOrderMutation'?body.mutation?.action:body.action==='adminReadOrderMutationResult'?body.mutationAction:body.action;catalogAttempt=action==='adminReadProductCatalog' ? sanitizeCatalogAttempt(body.diagnosticAttempt) : null;requestKey=safeRequestId(options?.diagnosticRequestId)||body.diagnosticRequestId||body.requestId;}}catch{}
     if(!actions.has(action))return rawFetch(input,options);
     let operationId=requestKey && requestGroups.get(action+'|'+requestKey);
     if(!operationId){operationId=uuid();if(requestKey){requestGroups.set(action+'|'+requestKey,operationId);if(requestGroups.size>200)requestGroups.delete(requestGroups.keys().next().value);}}
