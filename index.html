@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261012-product-group-settings-v1">
+<html lang="zh-Hant" data-release-version="20261013-login-delivery-recovery-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261012-product-group-settings-v1" />
+    <meta name="admin-release" content="20261013-login-delivery-recovery-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261012-product-group-settings-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261012-product-group-settings-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261012-product-group-settings-v1"></script>
+    <script src="./customer-config.js?v=20261013-login-delivery-recovery-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261013-login-delivery-recovery-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261013-login-delivery-recovery-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -7062,6 +7062,73 @@
               )
             : Math.min(recoveryBudgetMs, 12000);
         const deadline = Date.now() + recoveryBudgetMs;
+        // ContentService can finish on GAS while its redirected response stalls.
+        // Keep that request alive; once, after 8s, race a read-only delivery path.
+        // This opt-in is for startup reads and the original LINE exchange only.
+        const requestPayload = JSON.parse(body);
+        if (recoveryOptions.deliveryRecovery === true &&
+            typeof AbortController !== "undefined" &&
+            (action === "adminReadOrderSnapshot" ||
+              (action === "adminAuth" && requestPayload.resultOnly !== true && requestPayload.code))) {
+          const contextKey = action === "adminAuth" ? ADMIN_LINE_NONCE_KEY : ADMIN_LINE_SESSION_TOKEN_KEY;
+          const contextValue = action === "adminAuth" ? requestPayload.nonce : requestPayload.adminSessionToken;
+          return new Promise((resolve, reject) => {
+            const controllers = [new AbortController(), new AbortController()];
+            let settled = false, rescueStarted = false, rescueDone = false, originalError, rescueTimer;
+            const finish = (error, response) => {
+              if (settled) return;
+              settled = true;
+              window.clearTimeout(rescueTimer);
+              controllers.forEach(controller => controller.abort());
+              if (error) reject(error); else resolve(response);
+            };
+            const read = (payload, index) => fetchAdminRecoverableResponse(url, {
+              ...options, body: JSON.stringify(payload), signal: controllers[index].signal,
+            }, Math.max(1, deadline - Date.now()), {
+              ...recoveryOptions, deliveryRecovery: false, maxAttempts: 1,
+              totalBudgetMs: Math.max(1, deadline - Date.now()),
+            });
+            const rescue = () => {
+              if (settled || rescueStarted) return;
+              rescueStarted = true;
+              if (Date.now() >= deadline || navigator.onLine === false ||
+                  !contextValue || sessionStorage.getItem(contextKey) !== contextValue) {
+                rescueDone = true;
+                if (originalError) finish(originalError);
+                return;
+              }
+              const alternate = { ...requestPayload };
+              if (action === "adminAuth") {
+                delete alternate.code;
+                alternate.resultOnly = true;
+              }
+              const idKey = action === "adminAuth" ? "diagnosticRequestId" : "requestId";
+              alternate[idKey] = String(requestPayload[idKey] || action).slice(0, 140) + "_delivery";
+              window.AdminDiagnostics?.bindRequestToFlow?.(alternate[idKey], recoveryOptions.flow);
+              read(alternate, 1).then(async response => {
+                // A pending/not-found receipt is not proof the original failed.
+                // Only a confirmed result or permission rejection may win.
+                const payload = response.ok ? await response.json() : null;
+                rescueDone = true;
+                const terminalAuthResult = action === "adminAuth" && payload?.ok === false &&
+                  !["ADMIN_AUTH_PENDING", "ADMIN_AUTH_RESULT_NOT_FOUND"].includes(payload.error);
+                if ((payload?.ok === true) || response.status === 401 || response.status === 403 ||
+                    payload?.error === "ADMIN_SESSION_REQUIRED" || terminalAuthResult ||
+                    (originalError && payload?.ok === false)) finish(null, response);
+                else if (originalError) finish(originalError);
+              }).catch(() => {
+                rescueDone = true;
+                if (originalError) finish(originalError);
+              });
+            };
+            rescueTimer = window.setTimeout(rescue, Math.min(8000, recoveryBudgetMs));
+            read(requestPayload, 0).then(response => finish(null, response), error => {
+              originalError = error;
+              if (rescueDone) finish(error);
+              else rescue();
+            });
+          });
+        }
         // Reconciliation owns the readback retry budget and records each attempt.
         const defaultMaxAttempts = action === "adminReadShipmentResults" ||
           backgroundValidation || oneTimeAdminAuth ? 1 : 3;
@@ -7078,6 +7145,9 @@
           if (remaining <= 0) break;
           const controller = typeof AbortController === "undefined"
             ? null : new AbortController();
+          const cancelAttempt = () => controller?.abort();
+          if (options.signal?.aborted) throw new Error("GAS_TIMEOUT");
+          options.signal?.addEventListener("abort", cancelAttempt, { once: true });
           let timer;
           try {
             const result = await Promise.race([
@@ -7154,6 +7224,7 @@
             lastError.elapsedMs = Date.now() - requestStartedAt;
           } finally {
             window.clearTimeout(timer);
+            options.signal?.removeEventListener("abort", cancelAttempt);
           }
           const delay = (attempt + 1) * 500;
           if (
@@ -7986,7 +8057,9 @@
             const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
               method: 'POST', headers: {'Content-Type':'text/plain;charset=utf-8'},
               body: JSON.stringify(request),
-            }, Math.min(30000, deadline - Date.now()));
+            }, Math.min(30000, deadline - Date.now()), {
+              deliveryRecovery: request.resultOnly !== true, flow: recovery.flow,
+            });
             if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce) throw new Error('AUTH_CALLBACK_CONTEXT_MISSING');
             // Permission and definitive auth failures must not be retried.
             if (!response.ok) return response;
@@ -8082,7 +8155,7 @@
                 codeVerifier,
                 nonce,
                 diagnosticRequestId,
-          }, { deadline: recovery.deadline });
+          }, { deadline: recovery.deadline, flow: authFlow });
 
           const responseContentType = String(
             response.headers.get("content-type") || "",
@@ -12520,7 +12593,11 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
                 method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify({ action: "adminReadOrderSnapshot", viewMode: "page", ...queryFilter,
                   adminSessionToken: token, requestId }),
-              }, ADMIN_ORDER_SNAPSHOT_ATTEMPT_TIMEOUT_MS, { totalBudgetMs: ADMIN_ORDER_SNAPSHOT_ATTEMPT_TIMEOUT_MS, maxAttempts: 1 });
+              }, ADMIN_ORDER_SNAPSHOT_ATTEMPT_TIMEOUT_MS, {
+                totalBudgetMs: ADMIN_ORDER_SNAPSHOT_ATTEMPT_TIMEOUT_MS, maxAttempts: 1,
+                deliveryRecovery: options.initialDeliveryRecovery === true,
+                flow: options.flow || window.adminStartupFlow,
+              });
               if (!response.ok) throw new Error(`HTTP_${response.status}`);
               return response.json();
             };
@@ -12997,6 +13074,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
       async function fetchInitialAdminOrdersWithRecovery(options = {}) {
         const firstResult = await fetchAdminOrdersFromGas({
           ...options,
+          initialDeliveryRecovery: true,
           networkRecovery: true,
           requestId: createAdminDiagnosticRequestId(
             "adminReadOrderSnapshot",
