@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261013-direct-response-v1">
+<html lang="zh-Hant" data-release-version="20261014-startup-v2">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261013-direct-response-v1" />
+    <meta name="admin-release" content="20261014-startup-v2" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261013-direct-response-v1"></script>
-    <script src="./admin-direct-response.js?v=20261013-direct-response-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261013-direct-response-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261013-direct-response-v1"></script>
+    <script src="./customer-config.js?v=20261014-startup-v2"></script>
+    <script src="./admin-direct-response.js?v=20261014-startup-v2"></script>
+    <script src="./admin-diagnostics.js?v=20261014-startup-v2"></script>
+    <script src="./admin-mutation-recovery.js?v=20261014-startup-v2"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -8044,12 +8044,27 @@
         }
       }
 
+      let adminLoginOrderBootstrap = null;
       let adminAuthCompletionPromise = null;
       async function fetchAdminAuthWithResultRecovery(payload, recovery = {}) {
         // One deadline belongs to the whole callback, including reloads. A slow
         // successful exchange must not be cut off just to start shorter queries.
         const deadline = Number.isFinite(recovery.deadline)
           ? recovery.deadline : Date.now() + 60000;
+        if (window.AdminDirectResponse?.enabledFor?.("adminAuth")) {
+          if (adminBrowserIsOffline()) throw new Error('ADMIN_NETWORK_OFFLINE');
+          if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce) throw new Error('AUTH_CALLBACK_CONTEXT_MISSING');
+          const remaining = deadline - Date.now();
+          if (remaining <= 0) throw new Error('ADMIN_AUTH_RECOVERY_EXPIRED');
+          // A single Execution API response contains auth and the first page.
+          // Never turn an uncertain response into automatic result polling.
+          const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
+            method: 'POST', headers: {'Content-Type':'text/plain;charset=utf-8'},
+            body: JSON.stringify(payload),
+          }, Math.min(60000, remaining), {maxAttempts:1, totalBudgetMs:remaining, flow:recovery.flow});
+          if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce) throw new Error('AUTH_CALLBACK_CONTEXT_MISSING');
+          return response;
+        }
         let attempt = 0;
         while (Date.now() < deadline) {
           if (adminBrowserIsOffline()) throw new Error('ADMIN_NETWORK_OFFLINE');
@@ -8097,6 +8112,7 @@
       }
 
       async function performAdminAuthCompletion(code) {
+        adminLoginOrderBootstrap = null;
         const codeVerifier = sessionStorage.getItem(
           ADMIN_LINE_CODE_VERIFIER_KEY,
         );
@@ -8156,8 +8172,14 @@
           const resultOnly = sessionStorage.getItem(sentKey) === nonce;
           // Persist before dispatch: a reload cannot replay an uncertain exchange.
           sessionStorage.setItem(sentKey, nonce);
+          const startup = window.AdminDirectResponse?.enabledFor?.("adminAuth") ? {
+            filter: getAdminOrderPageFilter(1),
+            requestId: createAdminDiagnosticRequestId("adminReadOrderSnapshotBootstrap"),
+          } : null;
+          const startupRevision = adminOrderMutationRevision;
           const response = await fetchAdminAuthWithResultRecovery({
                 action: "adminAuth",
+                ...(startup ? {startup} : {}),
                 ...(resultOnly ? { resultOnly: true } : { code }),
                 redirectUri: ADMIN_AUTH_REDIRECT_URI,
                 codeVerifier,
@@ -8227,6 +8249,16 @@
                 ADMIN_DISPLAY_NAME_KEY,
                 adminDisplayName,
               );
+            }
+            if (startup) {
+              // In-memory handoff of the SAME response, never a persistent cache
+              // or a rescue fetch. The usual page validator checks its contents.
+              adminLoginOrderBootstrap = {
+                token: payload.adminSessionToken.trim(), filter: startup.filter,
+                mutationRevision: startupRevision, requestId: startup.requestId,
+                payload: payload.startup?.requestId === startup.requestId
+                  ? payload.startup.snapshot : {ok:false,error:"ADMIN_STARTUP_RESPONSE_MISSING"},
+              };
             }
             clearAdminAuthSession();
             clearAdminAuthQuery();
@@ -12588,7 +12620,8 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         const mutationRevision = adminOrderMutationRevision;
         const key = JSON.stringify([token, filter, mutationRevision]);
         if (adminOrderPageRequests.has(key)) return adminOrderPageRequests.get(key);
-        const requestId = options.requestId || createAdminDiagnosticRequestId("adminReadOrderSnapshot");
+        const requestId = (options.initialDeliveryRecovery === true && adminLoginOrderBootstrap?.requestId)
+          || options.requestId || createAdminDiagnosticRequestId("adminReadOrderSnapshot");
         window.AdminDiagnostics?.bindRequestToFlow?.(requestId, options.flow || window.adminStartupFlow);
         const startedAt = Date.now();
         const work = (async () => {
@@ -12609,8 +12642,17 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
               if (!response.ok) throw new Error(`HTTP_${response.status}`);
               return response.json();
             };
-            let payload = await read();
-            if (payload?.error === "ADMIN_ORDER_SNAPSHOT_VERSION_NOT_READY") payload = await read();
+            let payload;
+            const bootstrap = options.initialDeliveryRecovery === true ? adminLoginOrderBootstrap : null;
+            if (bootstrap) {
+              adminLoginOrderBootstrap = null;
+              if (bootstrap.token !== token || bootstrap.mutationRevision !== mutationRevision ||
+                  JSON.stringify(bootstrap.filter) !== JSON.stringify(filter)) throw new Error("ADMIN_STARTUP_CONTEXT_CHANGED");
+              payload = bootstrap.payload;
+            } else {
+              payload = await read();
+              if (payload?.error === "ADMIN_ORDER_SNAPSHOT_VERSION_NOT_READY") payload = await read();
+            }
             if (sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) !== token || mutationRevision !== adminOrderMutationRevision) return null;
             if (payload?.error === "ADMIN_SESSION_REQUIRED") throw new Error("ADMIN_SESSION_REQUIRED");
             if (payload?.ok !== true || payload.action !== "adminReadOrderSnapshot") throw new Error(payload?.error || "ADMIN_ORDER_SNAPSHOT_PAGE_UNAVAILABLE");
@@ -13080,6 +13122,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
       }
 
       async function fetchInitialAdminOrdersWithRecovery(options = {}) {
+        const combinedResponse = !!adminLoginOrderBootstrap;
         const firstResult = await fetchAdminOrdersFromGas({
           ...options,
           initialDeliveryRecovery: true,
@@ -13089,6 +13132,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           ),
         });
         if (Array.isArray(firstResult)) return firstResult;
+        if (combinedResponse) return null; // A failed combined read is shown, never silently re-fetched.
         if (
           adminBrowserIsOffline() ||
           adminNetworkRecoveryPending !== "orders" ||
