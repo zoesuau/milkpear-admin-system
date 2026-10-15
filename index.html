@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261014-startup-v2.1">
+<html lang="zh-Hant" data-release-version="20261015-shipping-batch-delete-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261014-startup-v2.1" />
+    <meta name="admin-release" content="20261015-shipping-batch-delete-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261014-startup-v2.1"></script>
-    <script src="./admin-direct-response.js?v=20261014-startup-v2.1"></script>
-    <script src="./admin-diagnostics.js?v=20261014-startup-v2.1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261014-startup-v2.1"></script>
+    <script src="./customer-config.js?v=20261015-shipping-batch-delete-v1"></script>
+    <script src="./admin-direct-response.js?v=20261015-shipping-batch-delete-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261015-shipping-batch-delete-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261015-shipping-batch-delete-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -4452,6 +4452,10 @@
         white-space: nowrap;
       }
 
+      .shipping-batch-delete-note { grid-column: 1 / -1; }
+      .shipping-batch-card-actions .product-action-btn.danger { color: #b42318; border-color: #f2b8b5; }
+      .shipping-batch-card-actions .product-action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
       .shipping-batch-management button:focus-visible {
         outline: 3px solid #4f7f63;
         outline-offset: 3px;
@@ -8614,6 +8618,7 @@
                   ${totalOrderCount !== activeOrderCount ? `<span class="product-chip">含取消共 ${escapeHtml(totalOrderCount)} 筆</span>` : ""}
                 </div>
                 <div class="shipping-batch-card-actions">
+                  <button type="button" class="product-action-btn danger" aria-label="刪除 ${escapeHtml(batch.displayLabel || batch.batchId)}" ${batch.canDelete === true && !adminShippingBatchSubmitting ? "" : "disabled"} title="${batch.canDelete === true ? "刪除批次並保留歷史訂單資訊" : "已有訂單，須超過收單截止時間才能刪除"}" onclick="deleteAdminShippingBatch('${escapeHtml(batch.batchId)}')">刪除</button>
                   <button type="button" class="product-action-btn secondary" aria-label="編輯 ${escapeHtml(batch.displayLabel || batch.batchId)}" onclick="openShippingBatchModal('${escapeHtml(batch.batchId)}')">✏️編輯</button>
                 </div>
                 <div class="shipping-batch-card-identity">
@@ -8627,6 +8632,7 @@
                   </div>
                   ${isOpen || status === "scheduled" ? `<button type="button" class="product-action-btn danger" onclick="closeAdminShippingBatch('${escapeHtml(batch.batchId)}')">立即關閉</button>` : ""}
                 </div>
+                ${batch.canDelete === false ? '<div class="shipping-batch-card-meta shipping-batch-delete-note">已有訂單，收單截止後可刪除；歷史訂單資訊會保留。</div>' : ""}
               </article>
             `;
           })
@@ -8882,6 +8888,9 @@
       }
 
       function getShippingBatchSaveErrorMessage(errorCode, payload) {
+        if (errorCode === "SHIPPING_BATCH_DELETED") {
+          return "此批次已刪除，請重新整理批次資料。";
+        }
         if (errorCode === "SHIPPING_BATCH_OPEN_DATE_INVALID") {
           return "前台開始顯示日期不正確，或已晚於收單截止時間。";
         }
@@ -8979,6 +8988,49 @@
         } finally {
           adminShippingBatchSubmitting = false;
           if (saveButton) saveButton.disabled = false;
+        }
+      }
+
+      async function deleteAdminShippingBatch(batchId) {
+        const batch = adminShippingBatches.find(item => item.batchId === batchId);
+        if (!batch || batch.canDelete !== true || adminShippingBatchSubmitting) return;
+        const adminSessionToken = String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "").trim();
+        if (!adminSessionToken) {
+          setShippingBatchManagementFeedback("登入已過期，請重新登入 LINE。", "error");
+          return;
+        }
+        const orderCount = Number(batch.orderCount || 0);
+        if (!window.confirm(`刪除「${batch.displayLabel}」？\n\n批次將從管理列表與新訂單選項移除。${orderCount ? `既有 ${orderCount} 筆訂單的批次名稱、日期與出貨狀態會保留。` : "此批次目前沒有訂單。"}\n刪除後無法在此頁恢復。`)) return;
+        adminShippingBatchSubmitting = true;
+        renderShippingBatchManagement();
+        setShippingBatchManagementFeedback("正在刪除批次...");
+        try {
+          const response = await fetchWithTimeout(GAS_ORDERS_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ action: "adminDeleteShippingBatch", adminSessionToken, batchId }),
+          }, ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS);
+          const payload = await response.json();
+          if (!response.ok || payload?.ok !== true || payload?.action !== "adminDeleteShippingBatch" ||
+              payload.batchId !== batchId || !Array.isArray(payload.batches) ||
+              payload.batches.some(item => item.batchId === batchId)) {
+            throw new Error(payload?.error || "SHIPPING_BATCH_DELETE_UNCONFIRMED");
+          }
+          adminShippingBatches = payload.batches.slice();
+          setShippingBatchManagementFeedback(`已刪除「${batch.displayLabel}」，歷史訂單資訊保留。`, "success");
+        } catch (error) {
+          const code = String(error?.message || "");
+          const messages = {
+            SHIPPING_BATCH_HAS_ORDERS_NOT_EXPIRED: "此批次已有訂單，須超過收單截止時間才能刪除。請重新整理批次資料。",
+            ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入 LINE。",
+            SHIPPING_BATCH_UPDATE_BUSY: "目前有其他操作正在進行，請稍後再試。",
+            SHIPPING_BATCH_NOT_FOUND: "找不到此批次，請重新整理批次資料。",
+            SHIPPING_BATCH_DELETE_FAILED: "批次刪除失敗，請重新整理後再確認。",
+          };
+          setShippingBatchManagementFeedback(messages[code] || "刪除結果尚未確認，請重新整理批次資料後確認；歷史訂單不會被刪除。", "error");
+        } finally {
+          adminShippingBatchSubmitting = false;
+          renderShippingBatchManagement();
         }
       }
 
