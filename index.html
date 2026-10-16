@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261015-shipping-batch-delete-v1">
+<html lang="zh-Hant" data-release-version="20261016-shipping-batch-legacy-expiry-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261015-shipping-batch-delete-v1" />
+    <meta name="admin-release" content="20261016-shipping-batch-legacy-expiry-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261015-shipping-batch-delete-v1"></script>
-    <script src="./admin-direct-response.js?v=20261015-shipping-batch-delete-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261015-shipping-batch-delete-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261015-shipping-batch-delete-v1"></script>
+    <script src="./customer-config.js?v=20261016-shipping-batch-legacy-expiry-v1"></script>
+    <script src="./admin-direct-response.js?v=20261016-shipping-batch-legacy-expiry-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261016-shipping-batch-legacy-expiry-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261016-shipping-batch-legacy-expiry-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -8618,7 +8618,7 @@
                   ${totalOrderCount !== activeOrderCount ? `<span class="product-chip">含取消共 ${escapeHtml(totalOrderCount)} 筆</span>` : ""}
                 </div>
                 <div class="shipping-batch-card-actions">
-                  <button type="button" class="product-action-btn danger" aria-label="刪除 ${escapeHtml(batch.displayLabel || batch.batchId)}" ${batch.canDelete === true && !adminShippingBatchSubmitting ? "" : "disabled"} title="${batch.canDelete === true ? "刪除批次並保留歷史訂單資訊" : "已有訂單，須超過收單截止時間才能刪除"}" onclick="deleteAdminShippingBatch('${escapeHtml(batch.batchId)}')">刪除</button>
+                  <button type="button" class="product-action-btn danger" aria-label="刪除 ${escapeHtml(batch.displayLabel || batch.batchId)}" ${batch.canDelete === true && !adminShippingBatchSubmitting ? "" : "disabled"} title="${batch.canDelete === true ? "刪除批次並保留歷史訂單資訊" : "已有訂單，收單截止後可刪除；未設定截止時間時須等寄出區間結束"}" onclick="deleteAdminShippingBatch('${escapeHtml(batch.batchId)}')">刪除</button>
                   <button type="button" class="product-action-btn secondary" aria-label="編輯 ${escapeHtml(batch.displayLabel || batch.batchId)}" onclick="openShippingBatchModal('${escapeHtml(batch.batchId)}')">✏️編輯</button>
                 </div>
                 <div class="shipping-batch-card-identity">
@@ -8632,7 +8632,7 @@
                   </div>
                   ${isOpen || status === "scheduled" ? `<button type="button" class="product-action-btn danger" onclick="closeAdminShippingBatch('${escapeHtml(batch.batchId)}')">立即關閉</button>` : ""}
                 </div>
-                ${batch.canDelete === false ? '<div class="shipping-batch-card-meta shipping-batch-delete-note">已有訂單，收單截止後可刪除；歷史訂單資訊會保留。</div>' : ""}
+                ${batch.canDelete === false ? '<div class="shipping-batch-card-meta shipping-batch-delete-note">已有訂單，收單截止後可刪除；未設定截止時間時，以寄出結束日判斷。歷史訂單資訊會保留。</div>' : ""}
               </article>
             `;
           })
@@ -9021,7 +9021,7 @@
         } catch (error) {
           const code = String(error?.message || "");
           const messages = {
-            SHIPPING_BATCH_HAS_ORDERS_NOT_EXPIRED: "此批次已有訂單，須超過收單截止時間才能刪除。請重新整理批次資料。",
+            SHIPPING_BATCH_HAS_ORDERS_NOT_EXPIRED: "此批次已有訂單，收單截止後可刪除；未設定截止時間時須等寄出區間結束。請重新整理批次資料。",
             ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入 LINE。",
             SHIPPING_BATCH_UPDATE_BUSY: "目前有其他操作正在進行，請稍後再試。",
             SHIPPING_BATCH_NOT_FOUND: "找不到此批次，請重新整理批次資料。",
