@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261016-shipping-batch-legacy-expiry-v1">
+<html lang="zh-Hant" data-release-version="20261017-admin-ux-desktop-table-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261016-shipping-batch-legacy-expiry-v1" />
+    <meta name="admin-release" content="20261017-admin-ux-desktop-table-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261016-shipping-batch-legacy-expiry-v1"></script>
-    <script src="./admin-direct-response.js?v=20261016-shipping-batch-legacy-expiry-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261016-shipping-batch-legacy-expiry-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261016-shipping-batch-legacy-expiry-v1"></script>
+    <script src="./customer-config.js?v=20261017-admin-ux-desktop-table-v1"></script>
+    <script src="./admin-direct-response.js?v=20261017-admin-ux-desktop-table-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261017-admin-ux-desktop-table-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261017-admin-ux-desktop-table-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -4954,7 +4954,191 @@
       .group-fee-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
       #productGroupModal [hidden] { display:none !important; }
       @media(max-width:600px) { .group-fee-row { grid-template-columns:1fr; } }
-    </style>
+
+      /* Local UX candidate: shared search controls and compact order toolbar. */
+      .admin-search-row { display:flex; gap:8px; width:100%; }
+      .admin-search-input, .shipping-manifest-search input.admin-search-input { min-width:0; flex:1; min-height:42px; padding:9px 12px; border:1px solid #cbd5e1; border-radius:9px; background:#fff; color:#24372e; font:inherit; font-size:14px; }
+      .admin-search-clear, .shipping-manifest-search-clear.admin-search-clear { min-height:42px; padding:8px 14px; border:1px solid #cbd5e1; border-radius:9px; background:#fff; color:#475569; font-size:14px; font-weight:700; cursor:pointer; flex-shrink:0; }
+      .admin-search-input:focus-visible, .admin-search-clear:focus-visible, .order-reset-filters:focus-visible { outline:2px solid #4f7f63; outline-offset:2px; }
+      .order-search-field { display:grid; gap:5px; margin:10px 0 12px; }
+      .order-filter-field { display:flex; align-items:center; gap:10px; margin:7px 0; min-width:0; }
+      .order-filter-label { flex:0 0 56px; font-size:13px; color:#475569; font-weight:700; }
+      #order-page-section .order-filter-field .scroll-filter-row { flex:1; min-width:0; margin:0; padding:0 0 2px; gap:6px; }
+      #order-page-section .scroll-filter-row button { min-height:36px; padding:7px 12px; font-size:13px; }
+      .order-date-help { color:#526557; font-size:12px; line-height:1.5; margin:4px 0 8px 66px; }
+      #customDateRange .order-date-help { margin-left:0; }
+      .order-tools-footer { position:relative; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-top:10px; padding-top:8px; border-top:1px solid #edf0ee; }
+      .order-reset-filters { border:0; background:none; color:#4f6d5b; padding:5px 0; min-height:36px; font-size:13px; cursor:pointer; }
+      #adminOperationRecords { font-size:13px; color:#526557; margin:0; border:0; padding:0; }
+      .order-tools-footer > #adminOperationRecords { width:auto; }
+      #adminOperationRecords > summary { padding:8px 0; cursor:pointer; }
+      #adminOperationRecords[open] { flex:1; }
+      .order-records-content { padding:10px; background:#f4f6f5; border-radius:8px; overflow-wrap:anywhere; }
+      .order-records-content details { margin:6px 0; }
+      .order-batch-tools { margin-top:8px; padding-top:10px; border-top:1px solid #edf0ee; }
+      .order-batch-tools .search-control-left { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; }
+      .order-batch-tools label { display:flex; align-items:center; gap:5px; }
+      .order-batch-tools input { width:17px; height:17px; }
+      .order-batch-tools .btn-batch-shipped { margin-left:auto; font-size:12px; min-height:34px; padding:7px 10px; }
+      #order-page-section .panel-header-row { margin-bottom:4px; }
+      #order-page-section .admin-refresh-meta { margin:0; font-size:12px; }
+      #order-page-section .admin-workflow-feedback:empty { display:none; }
+      .order-workspace-nav > h2 { display:none; }
+      .order-workspace-nav { margin-bottom:10px; }
+      @media (max-width:480px) { .order-filter-label { flex-basis:52px; font-size:12px; } .order-date-help { margin-left:62px; } #order-page-section .top-filter-panel { padding:12px; } }
+
+ .legacy-order-filters { display:none!important; }
+ .order-dropdown-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0 6px; }
+ .order-dropdown-grid label { display:grid;gap:6px;min-width:0;font-size:13px;font-weight:700;color:#475569; }
+ .order-dropdown-grid select { width:100%;min-width:0;min-height:44px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;color:#24372e;padding:8px 5px;font:inherit;font-weight:400; }
+ .order-dropdown-grid select:focus-visible { outline:2px solid #4f7f63;outline-offset:2px; }
+ .order-dropdown-grid select:disabled { opacity:.6; }
+ .order-dropdown-help { color:#64748b;font-size:12px;line-height:1.5; }
+ .order-dropdown-help:empty { display:none; }
+ .order-filter-result { font-size:13px;color:#475569;margin-top:12px; }
+ .order-query-tools { display:grid;grid-template-columns:minmax(260px,1.8fr) minmax(0,3fr);gap:14px;align-items:start;margin:12px 0 8px; }
+ .order-query-tools .order-search-field,.order-query-tools .order-dropdown-grid { margin:0; }
+ .order-query-tools .order-search-field { gap:6px;min-width:0; }
+ .order-query-tools .order-search-field > label { font-size:13px;font-weight:700;color:#475569;line-height:normal; }
+ .order-query-tools .admin-search-input,.order-query-tools .admin-search-clear,.order-query-tools select { box-sizing:border-box;height:44px;min-height:44px; }
+ @media(max-width:900px) { .order-query-tools { grid-template-columns:minmax(0,1fr);gap:12px; } }
+ @media(max-width:480px) { .order-dropdown-grid { gap:6px; } .order-dropdown-grid label,.order-dropdown-grid select { font-size:12px; } }
+ /* Compact query and batch tools */
+ .order-query-tools { grid-template-columns:minmax(230px,1.6fr) minmax(360px,3fr) auto;gap:12px;margin:10px 0 4px; }
+ .order-query-tools > .order-reset-filters { align-self:end;height:44px;padding:0 12px;white-space:nowrap;font-size:12px;font-weight:700;background:#355e46;color:#fff;border:1px solid #355e46;border-radius:9px; }
+ .order-query-tools > .order-reset-filters:hover { background:#294b37;border-color:#294b37; }
+ .order-query-tools > .order-reset-filters:active { background:#203c2b; }
+ .order-query-tools .admin-search-row { position:relative;gap:0; }
+ .order-query-tools #searchBar { width:100%;padding-right:40px; }
+ .order-query-tools #searchBar::-webkit-search-cancel-button { -webkit-appearance:none; }
+ .order-query-tools #orderSearchClear { position:absolute;right:2px;top:2px;width:36px;height:40px;min-height:40px;padding:0;border:0;background:transparent;font-size:23px;line-height:1;border-radius:7px;color:#64748b; }
+ #orderSearchClear[hidden] { display:none!important; }
+ #order-page-section .order-filter-result { margin:8px 0 0; }
+ #order-page-section .admin-pagination[hidden] { display:none!important; }
+ #order-page-section .admin-card-view-toolbar { display:flex;flex-wrap:nowrap;justify-content:space-between;gap:8px;overflow-x:auto;padding:4px 0;margin-top:8px; }
+ #order-page-section .order-batch-tools { margin:0;padding:0;border:0;flex-shrink:0; }
+ #order-page-section .order-batch-tools .search-control-left { flex-wrap:nowrap;gap:8px;white-space:nowrap; }
+ #order-page-section .order-batch-tools .btn-batch-shipped { margin-left:4px; }
+ #order-page-section .admin-card-view-switch { flex-shrink:0;margin-left:auto;padding:0; }
+ #order-page-section .admin-card-view-button { display:inline-flex;align-items:center;justify-content:center;width:34px;min-width:34px;height:34px;padding:7px; }
+ #order-page-section .admin-card-view-status:not(:empty) { position:absolute;top:100%;right:0; }
+ #system-records-page-section { background:#fff;border:1px solid #e2e8e4;border-radius:14px;padding:18px;margin:12px auto; }
+ #system-records-page-section h2 { margin:0 0 14px;font-size:20px;color:#334155; }
+ #system-records-page-section #adminOperationRecords { width:100%; }
+ .order-workspace-tabs { gap:14px; }
+ @media(max-width:1000px) {
+  .order-query-tools { grid-template-columns:minmax(0,1fr) auto;gap:10px 8px; }
+  .order-query-tools .order-search-field { grid-column:1;grid-row:1; }
+  .order-query-tools > .order-reset-filters { grid-column:2;grid-row:1; }
+  .order-query-tools .order-dropdown-grid { grid-column:1 / -1;grid-row:2; }
+ }
+ @media(max-width:480px) {
+  .order-workspace-tabs { gap:8px; }
+  .order-workspace-tabs button { font-size:14px;padding:10px 5px;white-space:nowrap; }
+  #order-page-section .order-batch-tools .search-control-left { font-size:11px;gap:5px; }
+  #order-page-section .order-batch-tools .btn-batch-shipped { font-size:11px;padding:6px;min-height:34px;margin-left:0; }
+  #order-page-section .order-batch-tools input { width:15px;height:15px; }
+  #order-page-section .admin-card-view-toolbar { gap:5px; }
+  #order-page-section .admin-card-view-switch { gap:2px; }
+  #order-page-section .admin-card-view-button { width:30px;min-width:30px;padding:5px; }
+ }
+ 
+ #order-page-section .order-date-status { display:flex;align-items:center;flex-wrap:wrap;gap:8px; }
+ #order-page-section .order-date-status .customer-status-row { display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin:0; }
+ #order-page-section .order-date-status .state-badge { white-space:nowrap; }
+ #order-page-section .amount-payment-row { display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px; }
+ #order-page-section .amount-payment-row .payment-badge { margin-top:0; }
+ #order-page-section .card .main-customer-block { flex-wrap:wrap;gap:12px; }
+ #order-page-section .card .customer-info-group { flex:1 1 200px;min-width:0; }
+ #order-page-section .card .right-header-box { flex:0 1 auto;max-width:100%;margin-left:auto; }
+ /* Order status and payment use independent, localized color cues. */
+#order-page-section .card {
+  --admin-card-list-bg:#fff;
+  background:#fff;
+  border:1px solid #dce4e0;
+  opacity:1;
+}
+#order-page-section .state-badge {
+  display:inline-flex;
+  align-items:center;
+  padding:3px 8px;
+  border:1px solid transparent;
+  border-radius:6px;
+  font-size:12px;
+  line-height:1.4;
+}
+#order-page-section .state-badge-pending { background:#eaf2fb;color:#2b567e;border-color:#d5e3f2; }
+#order-page-section .state-badge-confirmed { background:#eaf3ed;color:#345e44;border-color:#d5e5da; }
+#order-page-section .state-badge-shipped { background:#f0f4f1;color:#52675b;border-color:#dee6e0; }
+#order-page-section .state-badge-cancelled { background:#f1f3f5;color:#59636f;border-color:#e1e5e9; }
+#order-page-section .state-badge-unpaid-shipped { background:#fff4df;color:#855512;border-color:#f0d9a7; }
+#order-page-section .payment-badge { padding:3px 8px;border-radius:6px;line-height:1.4; }
+#order-page-section .payment-badge.pay-success { background:#edf5ef;color:#356247;border-color:#d5e5da; }
+#order-page-section .payment-badge.pay-danger { background:#fff4df;color:#855512;border-color:#f0d9a7; }
+#order-page-section .payment-badge.pay-neutral { background:#f2f4f6;color:#4d5b68;border-color:#e0e5ea; }
+
+/* Prioritize fulfilment date and recipient; keep monetary details secondary. */
+#order-page-section .card .order-no { gap:4px; }
+#order-page-section .card .order-no-value { font-size:26px;font-weight:800;line-height:1.2; }
+#order-page-section .card .name { font-size:32px;font-weight:800;line-height:1.25;overflow-wrap:anywhere; }
+#order-page-section .card .amount { font-size:28px;font-weight:700;letter-spacing:-.4px;line-height:1.15; }
+#order-page-section .cards-container.admin-card-view-compact .card:not(.is-view-expanded) .name { font-size:28px; }
+#order-page-section .cards-container.admin-card-view-compact .card:not(.is-view-expanded) .amount { font-size:24px; }
+#order-page-section .cards-container.admin-card-view-list .card:not(.is-view-expanded) .admin-card-list-date strong { font-size:14px;font-weight:800; }
+#order-page-section .cards-container.admin-card-view-list .card:not(.is-view-expanded) .admin-card-list-recipient strong { font-size:16px;font-weight:800; }
+#order-page-section .cards-container.admin-card-view-list .card:not(.is-view-expanded) .admin-card-list-amount { font-size:14px;font-weight:700; }
+@media(max-width:480px) {
+ #order-page-section .card .row-top { flex-wrap:wrap;gap:8px; }
+ #order-page-section .card .order-no-wrapper { flex:1 0 100%; }
+ #order-page-section .card .order-no-value { white-space:nowrap; }
+ #order-page-section .card .card-edit-actions { margin-left:auto;flex-wrap:nowrap; }
+ #order-page-section .card .card-edit-actions button { white-space:nowrap; }
+ #order-page-section .card .order-no-value { font-size:24px; }
+ #order-page-section .card .name { font-size:30px; }
+ #order-page-section .card .amount { font-size:25px; }
+ #order-page-section .cards-container.admin-card-view-compact .card:not(.is-view-expanded) .name { font-size:27px; }
+ #order-page-section .cards-container.admin-card-view-compact .card:not(.is-view-expanded) .amount { font-size:23px; }
+}
+
+/* Soft stage backgrounds; existing badges and typography remain unchanged. */
+#order-page-section .card.status-pending {
+  --admin-card-list-bg:#fdf0f2;
+  background:#fdf0f2;
+  border-color:#eedde1;
+}
+#order-page-section .card.status-confirmed {
+  --admin-card-list-bg:#fcf8e7;
+  background:#fcf8e7;
+  border-color:#e9e3c9;
+}
+#order-page-section .card.status-shipped {
+  --admin-card-list-bg:#edf5ef;
+  background:#edf5ef;
+  border-color:#dce7df;
+}
+#order-page-section .card.status-cancelled {
+  --admin-card-list-bg:#f2f4f5;
+  background:#f2f4f5;
+  border-color:#e0e5e8;
+}
+/* Local preview comparison changes paint only, without replacing order DOM. */
+#order-page-section .state-badge-pending { background:#fdf0f2;color:#824c5d;border-color:#eedde1; }
+#order-page-section .state-badge-confirmed { background:#fcf8e7;color:#756023;border-color:#e9e3c9; }
+#order-page-section .state-badge-shipped { background:#edf5ef;color:#52675b;border-color:#dce7df; }
+#order-page-section .state-badge-cancelled { background:#f2f4f5;color:#59636f;border-color:#e0e5e8; }
+/* Table rows stay neutral; an expanded card keeps its stage background. */
+#order-page-section .cards-container.admin-card-view-list .card:not(.is-view-expanded) {
+  --admin-card-list-bg:#fff;
+  background:#fff;
+  border-color:#dce4e0;
+}
+body.preview-white-cards #order-page-section .card {
+  --admin-card-list-bg:#fff;
+  background:#fff;
+  border-color:#dce4e0;
+}
+
+</style>
   </head>
 
   <body>
@@ -5016,6 +5200,7 @@
         <div id="order-workspace-tabs" class="order-workspace-tabs" role="tablist" aria-label="訂單作業內容" hidden>
           <button type="button" role="tab" id="orderListTabButton" aria-controls="order-page-section" aria-selected="true" onclick="switchAdminTab('orders')">訂單列表</button>
           <button type="button" role="tab" id="groupOrdersTabButton" aria-controls="group-order-page-section" aria-selected="false" onclick="switchAdminTab('groupOrders')">團體管理</button>
+          <button type="button" role="tab" id="systemRecordsTabButton" aria-controls="system-records-page-section" aria-selected="false" onclick="switchAdminTab('systemRecords')">系統處理紀錄</button>
         </div>
       </div>
     <section id="order-page-section">
@@ -5057,12 +5242,22 @@
         </div>
         <div class="admin-refresh-meta" id="adminRefreshMeta">尚未更新</div>
         <div id="adminSessionStatus" role="status" class="admin-workflow-feedback"></div>
-        <details id="adminCreateTiming" class="hidden">
-          <summary>查看建單耗時</summary>
-          <div id="adminCreateTimingText" style="overflow-wrap:anywhere"></div>
-        </details>
 
-        <div class="scroll-filter-row" id="statusFilterRow">
+
+
+<input type="hidden" id="singleShippingDateInput"><div class="order-query-tools">        <div class="order-search-field">
+          <label for="searchBar" class="shipping-manifest-search-label">搜尋訂單</label>
+          <div class="admin-search-row">
+            <input type="search" class="admin-search-input" id="searchBar" placeholder="姓名、電話、地址、訂單編號…" oninput="syncOrderSearchClear();handleSearch()" />
+            <button type="button" id="orderSearchClear" class="admin-search-clear" aria-label="清除訂單搜尋" hidden onclick="clearAdminOrderSearch()">×</button>
+          </div>
+
+        </div><div class="order-dropdown-grid">
+ <label>出貨日期<select id="orderDateSelect" onchange="changeOrderDropdown('date',this.value)"><option value="全部">全部日期</option></select></label>
+ <label>訂單狀態<select id="orderStatusSelect" onchange="changeOrderDropdown('status',this.value)"><option value="全部">全部狀態</option><option value="待確認">新訂單</option><option value="已安排出貨">已排程</option><option value="已寄出">已寄出</option><option value="已取消">已取消</option></select></label>
+ <label>訂單來源<select id="orderSourceSelect" onchange="changeOrderDropdown('source',this.value)"><option value="全部">全部來源</option><option value="line">LINE 客戶</option><option value="phone">管理員新增</option><option value="group">團體訂單</option></select></label>
+ </div><button type="button" class="order-reset-filters" onclick="resetAdminOrderFilters()">清除全部條件</button></div><div id="adminSearchStatus" class="admin-workflow-feedback" role="status"></div><div id="orderDropdownHelp" class="order-dropdown-help" role="status"></div>
+ <div hidden class="legacy-order-filters">        <div class="order-filter-field"><span class="order-filter-label" id="statusFilterRowLabel">訂單狀態</span><div class="scroll-filter-row" id="statusFilterRow" role="group" aria-labelledby="statusFilterRowLabel">
           <button class="active" onclick="filterByStatus('全部', this)">
             全部
           </button>
@@ -5075,21 +5270,43 @@
             ></span>
           </button>
           <button onclick="filterByStatus('已安排出貨', this)">
-            已安排出貨日期
+            已排程
           </button>
           <button onclick="filterByStatus('已寄出', this)">已寄出</button>
           <button onclick="filterByStatus('已取消', this)">已取消</button>
-        </div>
+        </div></div>
 
-        <div class="scroll-filter-row" id="dateFilterRow">
+        <div class="order-filter-field"><span class="order-filter-label" id="dateFilterRowLabel">出貨日期</span><div class="scroll-filter-row" id="dateFilterRow" role="group" aria-labelledby="dateFilterRowLabel">
           <button class="active" onclick="filterByDateRange('全部', this)">
             全部
           </button>
           <button onclick="filterByDateRange('今日', this)">今天</button>
           <button onclick="filterByDateRange('明天', this)">明天</button>
           <button onclick="filterByDateRange('自訂', this)">自訂</button>
-        </div>
-        <div class="filter-custom-range" id="customDateRange">
+        </div></div>
+        <p class="order-date-help">已寄出依實際日，其餘依預計日；未排定則依希望寄出區間。</p>
+        <div class="order-filter-field"><span class="order-filter-label" id="notificationFilterRowLabel">訂單來源</span><div class="scroll-filter-row" id="notificationFilterRow" role="group" aria-labelledby="notificationFilterRowLabel">
+          <button
+            class="active"
+            onclick="filterByNotificationMode('全部', this)"
+          >
+            全部
+          </button>
+          <button onclick="filterByNotificationMode('line', this)">
+            LINE客戶訂單
+          </button>
+          <button onclick="filterByNotificationMode('phone', this)">
+            管理員新增的訂單
+          </button>
+          <button id="groupOrdersFilterButton" onclick="filterByNotificationMode('group', this)" hidden>
+            團體訂單
+          </button>
+        </div></div>
+
+
+</div>
+         <div class="filter-custom-range" id="customDateRange">
+          <p class="order-date-help">先選開始日期，再選結束日期；同一天可選單日。</p>
           <input type="hidden" id="customDateStart" aria-label="自訂開始日期" />
           <input type="hidden" id="customDateEnd" aria-label="自訂結束日期" />
           <div class="range-calendar" aria-label="自訂日期區間選擇器">
@@ -5122,54 +5339,10 @@
           </div>
         </div>
 
-        <div class="scroll-filter-row" id="notificationFilterRow">
-          <button
-            class="active"
-            onclick="filterByNotificationMode('全部', this)"
-          >
-            全部
-          </button>
-          <button onclick="filterByNotificationMode('line', this)">
-            LINE客戶訂單
-          </button>
-          <button onclick="filterByNotificationMode('phone', this)">
-            管理員新增的訂單
-          </button>
-          <button id="groupOrdersFilterButton" onclick="filterByNotificationMode('group', this)" hidden>
-            團體訂單
-          </button>
-        </div>
+<div id="orderFilterResult" role="status" class="order-filter-result"></div>
+         
 
-        <div class="search-control-box">
-          <div class="search-control-left">
-            <label><input type="checkbox" id="global-selectAll" /> 全選</label>
-            <span id="selectedOrderCount">已選 0 張</span>
-            <button id="batchShippedBtn" class="btn-batch-shipped" disabled>
-              標記已寄出並通知（0）
-            </button>
-          </div>
-          <input
-            class="beautiful-search-input"
-            id="searchBar"
-            placeholder="🔍 搜尋姓名、金額、地址..."
-            oninput="handleSearch()"
-          />
-        </div>
-        <div id="adminSearchStatus" class="admin-workflow-feedback"></div>
-        <div id="batchActionFeedback" class="admin-workflow-feedback"></div>
-        <details id="adminDiagnostics">
-          <summary>查看處理紀錄</summary>
-          <p>自動保存並背景上傳診斷紀錄，不含客戶資料或登入憑證。本機最近 100 筆，待上傳最多 500 筆／7 天；集中保存 30 天。</p>
-          <p id="adminDiagnosticsStatus" aria-live="polite">正在讀取本機紀錄…</p>
-          <button type="button" onclick="showCentralAdminDiagnostics(this)">查看各裝置最近 100 筆紀錄</button>
-          <pre id="adminDiagnosticsCentral" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></pre>
-          <pre id="adminDiagnosticsText" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></pre>
-        </details>
-        <details id="adminShipmentDiagnostics" hidden>
-          <summary>舊版寄出處理紀錄</summary>
-          <p>僅保存本機最近 40 筆處理紀錄，不含客戶資料或登入憑證。</p>
-          <pre id="adminShipmentDiagnosticsText" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></pre>
-        </details>
+
       </div>
 
       <div class="admin-pagination" id="adminPagination" hidden>
@@ -5178,14 +5351,23 @@
         <button type="button" id="adminNextPageBtn">下一頁</button>
       </div>
 
-      <div class="admin-card-view-toolbar" aria-label="訂單卡片顯示方式">
+      <div class="admin-card-view-toolbar" aria-label="訂單選取與顯示方式"><div class="order-batch-tools">          <div class="search-control-left">
+            <label><input type="checkbox" id="global-selectAll" /> 全選</label>
+            <span id="selectedOrderCount">已選 0 張</span>
+            <button id="batchShippedBtn" class="btn-batch-shipped" disabled>
+              標記已寄出並通知（0）
+            </button>
+          </div>
+</div>
+        
         <span class="admin-card-view-status" id="adminCardViewStatus" aria-live="polite"></span>
         <div class="admin-card-view-switch" role="group" aria-label="訂單卡片顯示方式">
-          <button type="button" class="admin-card-view-button" data-admin-card-view="full" aria-label="完整卡片" title="完整卡片" aria-pressed="false" onclick="setAdminCardViewMode('full')"><i class="fa-solid fa-table-cells-large" aria-hidden="true"></i><span class="admin-card-view-button-label">完整卡片</span></button>
-          <button type="button" class="admin-card-view-button" data-admin-card-view="compact" aria-label="精簡卡片" title="精簡卡片" aria-pressed="false" onclick="setAdminCardViewMode('compact')"><i class="fa-solid fa-list" aria-hidden="true"></i><span class="admin-card-view-button-label">精簡卡片</span></button>
-          <button type="button" class="admin-card-view-button" data-admin-card-view="list" aria-label="清單表格" title="清單表格" aria-pressed="false" onclick="setAdminCardViewMode('list')"><i class="fa-solid fa-table-list" aria-hidden="true"></i><span class="admin-card-view-button-label">清單表格</span></button>
+          <button type="button" class="admin-card-view-button" data-admin-card-view="full" aria-label="完整卡片" title="完整卡片" aria-pressed="false" onclick="setAdminCardViewMode('full')"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="admin-card-view-button-label">完整卡片</span></button>
+          <button type="button" class="admin-card-view-button" data-admin-card-view="compact" aria-label="精簡卡片" title="精簡卡片" aria-pressed="false" onclick="setAdminCardViewMode('compact')"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01"/></svg><span class="admin-card-view-button-label">精簡卡片</span></button>
+          <button type="button" class="admin-card-view-button" data-admin-card-view="list" aria-label="清單表格" title="清單表格" aria-pressed="false" onclick="setAdminCardViewMode('list')"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg><span class="admin-card-view-button-label">清單表格</span></button>
         </div>
       </div>
+<div id="batchActionFeedback" class="admin-workflow-feedback" role="status"></div>
       <div class="admin-card-list-scroll" id="adminCardListScroll">
       <div class="admin-card-list-header" id="adminCardListHeader" hidden aria-hidden="true">
         <span>選取</span>
@@ -5419,6 +5601,21 @@
       </div>
     </section>
 
+    <section id="system-records-page-section" role="tabpanel" aria-labelledby="systemRecordsTabButton" style="display:none"><h2>系統處理紀錄</h2><div id="adminOperationRecords"><div class="order-records-content">        <details id="adminCreateTiming" class="hidden">
+          <summary>查看建單耗時</summary>
+          <div id="adminCreateTimingText" style="overflow-wrap:anywhere"></div>
+        </details>        <details id="adminDiagnostics">
+          <summary>查看處理紀錄</summary>
+          <p>自動保存並背景上傳診斷紀錄，不含客戶資料或登入憑證。本機最近 100 筆，待上傳最多 500 筆／7 天；集中保存 30 天。</p>
+          <p id="adminDiagnosticsStatus" aria-live="polite">正在讀取本機紀錄…</p>
+          <button type="button" onclick="showCentralAdminDiagnostics(this)">查看各裝置最近 100 筆紀錄</button>
+          <pre id="adminDiagnosticsCentral" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></pre>
+          <pre id="adminDiagnosticsText" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></pre>
+        </details>        <details id="adminShipmentDiagnostics" hidden>
+          <summary>舊版寄出處理紀錄</summary>
+          <p>僅保存本機最近 40 筆處理紀錄，不含客戶資料或登入憑證。</p>
+          <pre id="adminShipmentDiagnosticsText" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></pre>
+        </details></div></div></section>
     </section><!-- order-workspace-section -->
 
     <section id="shipping-print-page-section" style="display: none">
@@ -5523,17 +5720,17 @@
             >
               搜尋出貨單
             </label>
-            <span class="shipping-manifest-search-row">
+            <span class="shipping-manifest-search-row admin-search-row">
               <input
                 type="search"
-                id="shippingManifestSearchInput"
+                id="shippingManifestSearchInput" class="admin-search-input"
                 placeholder="姓名、電話、地址、訂單編號、母單或宅配單號"
                 autocomplete="off"
                 oninput="setShippingManifestSearchQuery(this.value)"
               />
               <button
                 type="button"
-                class="shipping-manifest-search-clear"
+                class="shipping-manifest-search-clear admin-search-clear" aria-label="清除出貨搜尋"
                 onclick="clearShippingManifestSearch()"
               >
                 清除
@@ -6786,7 +6983,7 @@
       const ADMIN_ORDERS_PER_PAGE = 20;
       const ADMIN_CARD_VIEW_MODE_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-card-view-mode-v2`;
       const ADMIN_ACTIVE_TAB_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-active-tab-v1`;
-      const ADMIN_TAB_NAMES = new Set([
+      const ADMIN_TAB_NAMES = new Set(["systemRecords",
         "orders",
         "groupOrders",
         "shippingPrint",
@@ -8488,9 +8685,12 @@
             : "orders";
         sessionStorage.setItem(ADMIN_ACTIVE_TAB_KEY, normalizedTabName);
         const workspace = document.getElementById("order-workspace-section");
-        if (workspace) workspace.style.display = ["orders", "groupOrders"].includes(normalizedTabName) ? "" : "none";
+        if (workspace) workspace.style.display = ["orders", "groupOrders", "systemRecords"].includes(normalizedTabName) ? "" : "none";
         const subTabs = document.getElementById("order-workspace-tabs");
-        if (subTabs) subTabs.hidden = !GROUP_ORDERS_ENABLED;
+        if (subTabs) subTabs.hidden = false;
+        document.getElementById('groupOrdersTabButton').hidden = !GROUP_ORDERS_ENABLED;
+        document.getElementById('systemRecordsTabButton').setAttribute('aria-selected', String(normalizedTabName === 'systemRecords'));
+        document.getElementById('system-records-page-section').style.display = normalizedTabName === 'systemRecords' ? '' : 'none';
         document.getElementById("orderListTabButton")?.setAttribute("aria-selected", String(normalizedTabName === "orders"));
         document.getElementById("groupOrdersTabButton")?.setAttribute("aria-selected", String(normalizedTabName === "groupOrders"));
         const orderSection = document.getElementById("order-page-section");
@@ -8522,7 +8722,7 @@
         tabButtons.forEach((button) => {
           button.classList.toggle(
             "active",
-            button.dataset.tab === (normalizedTabName === "groupOrders" ? "orders" : normalizedTabName),
+            button.dataset.tab === (["groupOrders", "systemRecords"].includes(normalizedTabName) ? "orders" : normalizedTabName),
           );
         });
 
@@ -11897,7 +12097,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
 
       function initializeAdminCardViewMode() {
         const initialMode = window.matchMedia("(min-width: 768px)").matches
-          ? "full"
+          ? "list"
           : getSavedAdminCardViewMode();
         return setAdminCardViewMode(initialMode, {
           force: true,
@@ -14421,7 +14621,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         const listStatusLabel =
           {
             待確認: "新訂單",
-            已安排出貨: "已安排",
+            已安排出貨: "已排程",
             已寄出: paymentState === "bank_unpaid" ? "寄出・未收款" : "已寄出",
             已取消: "已取消",
           }[orderStatus] || statusMeta.badgeText;
@@ -14512,7 +14712,10 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
                 }
                 <div class="order-no">
                   <div>${escapeHtml(shippingDateMeta.label)}</div>
-                  <div class="order-no-value">${escapeHtml(shippingDateMeta.value)}</div>
+                  <div class="order-date-status"><div class="order-no-value">${escapeHtml(shippingDateMeta.value)}</div>                <div class="customer-status-row">
+                  <span class="state-badge ${escapeHtml(statusMeta.badgeClass)}">${escapeHtml(statusMeta.badgeText)}</span>
+                  ${groupChildBadgeHtml}
+                </div></div>
                 </div>
               </div>
               <div class="card-edit-actions">
@@ -14555,24 +14758,21 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
             <div class="admin-content-readonly">
             <div class="main-customer-block">
               <div class="customer-info-group">
-                <div class="customer-status-row">
-                  <span class="state-badge ${escapeHtml(statusMeta.badgeClass)}">${escapeHtml(statusMeta.badgeText)}</span>
-                  ${groupChildBadgeHtml}
-                </div>
+
                 <div class="name">${escapeHtml(recipientName || "未提供")}</div>
                 <div class="phone">${escapeHtml(recipientPhone || "未提供")}</div>
                 <div class="address">${escapeHtml(recipientAddress || "未提供")}</div>
               </div>
 
               <div class="right-header-box">
-                <div class="amount">$${escapeHtml(finalAmount)}</div>
+                <div class="amount-payment-row"><div class="amount">$${escapeHtml(finalAmount)}</div><div class="payment-badge ${escapeHtml(paymentClass)}">${escapeHtml(paymentLabel)}</div></div>
                 ${
                   hasDiscount
                     ? `<div class="original-amount">$${escapeHtml(originalAmount)}</div>`
                     : ""
                 }
                 ${order.paymentState === "cod" && order.codCollectionAmount !== undefined && order.codCollectionAmount !== null ? `<div class="cod-collection-amount">宅配代收 $${escapeHtml(formatAdminMoney(order.codCollectionAmount))}</div>` : ""}
-                <div class="payment-badge ${escapeHtml(paymentClass)}">${escapeHtml(paymentLabel)}</div>
+                
               </div>
             </div>
 
@@ -18212,7 +18412,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           return {
             cardClass: "status-confirmed",
             badgeClass: "state-badge-confirmed",
-            badgeText: "已安排出貨日期",
+            badgeText: "已排程",
           };
         }
         if (status === "已寄出") {
@@ -19646,7 +19846,8 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           : isRangeMode && startDate && endDate && startDate > endDate
             ? "開始日期不可晚於結束日期"
             : "請選擇出貨日期或日期區間";
-        loadStatus.classList.toggle("is-ready", remoteDataReady);
+        const canPrint = hasValidDateRange && remoteDataReady && !shippingManifestRemoteLoading && !remoteDataFailed && orders.length > 0;
+        loadStatus.classList.toggle("is-ready", canPrint);
         loadStatus.classList.toggle("is-error", remoteDataFailed);
         loadStatus.innerHTML = !hasValidDateRange
           ? ""
@@ -19655,7 +19856,13 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
             : remoteDataFailed
               ? `⚠️ ${escapeHtml(getEzcatReadErrorMessage(shippingManifestRemoteError))}<button type="button" class="shipping-manifest-load-retry" onclick="loadCompleteShippingManifestOrders()">重新載入</button>`
               : remoteDataReady
-                ? "✓ 宅配單號已同步，可以列印。"
+                ? orders.length
+                  ? "✓ 宅配單號已同步，可以列印。"
+                  : normalizedSearchQuery || (shippingManifestSenderFilterMode !== "all" && shippingManifestSenderFilterKey)
+                    ? "目前條件沒有可列印的訂單，請清除搜尋或調整寄件人篩選。"
+                    : isPendingDateMode
+                      ? "目前沒有待排出貨日期的訂單。"
+                      : "此日期沒有出貨訂單，請改選日期。"
                 : "宅配單號等待同步，完成前暫停列印…";
         summary.innerHTML = `
           <div class="shipping-manifest-stat"><span>${isPendingDateMode ? "待排出貨日期" : isRangeMode ? "出貨區間" : "出貨日期"}</span><strong>${escapeHtml(dateLabel)}</strong></div>
@@ -19679,7 +19886,9 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         if (!orders.length) {
           panel.classList.add("is-empty");
           empty.innerText =
-            shippingManifestRemoteLoading || !remoteDataReady
+            remoteDataFailed && !shippingManifestRemoteLoading
+              ? "出貨資料讀取失敗，請按上方「重新載入」。"
+              : shippingManifestRemoteLoading || !remoteDataReady
               ? "正在確認完整出貨資料…"
               : normalizedSearchQuery
               ? `找不到符合「${shippingManifestSearchQuery.trim()}」的出貨訂單`
@@ -19699,10 +19908,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         panel.classList.remove("is-empty");
         empty.innerText = "";
         if (printButton) {
-          printButton.disabled =
-            shippingManifestRemoteLoading ||
-            remoteDataFailed ||
-            !remoteDataReady;
+          printButton.disabled = !canPrint;
         }
         const orderRowsHtml = orders
           .map((order, index) => {
@@ -21800,7 +22006,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           card.classList.add("status-pending");
         } else if (newStatus === "已安排出貨") {
           card.classList.add("status-confirmed");
-          badgeText = "已安排出貨";
+          badgeText = "已排程";
           badgeClass = "state-badge-confirmed";
         } else if (newStatus === "已寄出") {
           card.classList.add("status-shipped");
@@ -22045,6 +22251,99 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         renderCustomDateCalendar();
       }
 
+      function syncOrderSearchClear() {
+        const clear = document.getElementById('orderSearchClear');
+        if (clear) clear.hidden = !document.getElementById('searchBar')?.value;
+      }
+
+      function getOrderDropdownDate(order) {
+        const status = String(order.orderStatus || '').trim();
+        const value = status === '已寄出' && order.actualShippingDate
+          ? order.actualShippingDate : order.expectedShippingDate;
+        const date = normalizeAdminDateValue(value || '');
+        return date && adminWorkflowIsValidDate(date) ? date : '';
+      }
+
+      function buildOrderDropdownDateCounts(orders) {
+        const counts = new Map();
+        for (const order of orders) {
+          if (String(order.orderStatus || '').trim() === '已取消') continue;
+          const key = getOrderDropdownDate(order) || '未安排';
+          counts.set(key, (counts.get(key) || 0) + 1);
+        }
+        return counts;
+      }
+
+      function getSelectedOrderDropdownDate() {
+        if (currentDateFilter === '指定單日') return document.getElementById('singleShippingDateInput')?.value || '全部';
+        return currentDateFilter;
+      }
+
+      function syncOrderDropdowns(totalCount) {
+        syncOrderSearchClear();
+        const select = document.getElementById('orderDateSelect');
+        if (!select) return;
+        const complete = adminOrderWorkspaceComplete && adminOrderReadMeta.serverFiltered !== true;
+        for (const id of ['orderDateSelect','orderStatusSelect','orderSourceSelect']) document.getElementById(id).disabled = !complete;
+        document.getElementById('orderDropdownHelp').innerText = complete ? '' : '正在載入完整日期與張數，完成後即可篩選。';
+        if (!complete) return;
+        const selected = getSelectedOrderDropdownDate();
+        const counts = buildOrderDropdownDateCounts(latestAdminOrders);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(selected) && !counts.has(selected)) counts.set(selected, 0);
+        const year = getTaipeiToday().slice(0,4);
+        const dateLabel = date => date.slice(0,4) === year
+          ? `${Number(date.slice(5,7))}/${Number(date.slice(8,10))}` : date.replaceAll('-','/');
+        const option = (value,label) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`;
+        select.innerHTML = option('全部','全部日期') + [...counts.keys()].filter(k=>k!=='未安排').sort()
+          .map(date=>option(date,`${dateLabel(date)}（${counts.get(date)}）`)).join('')
+          + option('未安排',`未安排日期（${counts.get('未安排') || 0}）`)
+          + option('自訂','自訂日期區間…');
+        select.value = selected;
+        document.getElementById('orderStatusSelect').value = currentFilterStatus;
+        document.getElementById('orderSourceSelect').value = currentNotificationFilter;
+        document.getElementById('orderSourceSelect').querySelector('option[value="group"]').hidden = !GROUP_ORDERS_ENABLED;
+        document.getElementById('orderFilterResult').innerText = `符合 ${totalCount} 張訂單`;
+      }
+
+      function changeOrderDropdown(kind, value) {
+        if (adminOrderViewHasDraft() || selectedOrderNos.size > 0) {
+          syncOrderDropdowns(getFilteredAdminCards().length);
+          setAdminSearchStatus('已保留目前編輯或勾選，請先完成或取消後再切換條件。', true);
+          return;
+        }
+        if (kind === 'status') currentFilterStatus = value;
+        if (kind === 'source') currentNotificationFilter = value;
+        if (kind === 'date') {
+          if (value !== '自訂') customDateRangeSelectingEnd = false;
+          currentDateFilter = /^\d{4}-\d{2}-\d{2}$/.test(value) ? '指定單日' : value;
+          document.getElementById('singleShippingDateInput').value = currentDateFilter === '指定單日' ? value : '';
+          document.getElementById('customDateRange').classList.toggle('active', value === '自訂');
+          if (value === '自訂') {
+            const seed = getCustomCalendarMonthSeed();
+            setCustomCalendarMonth(seed.year, seed.month);
+            renderCustomDateCalendar();
+          }
+        }
+        window.clearTimeout(adminOrderSearchTimer);
+        adminOrderSearchRequestId += 1;
+        void loadAdminOrdersForCurrentView({page:1});
+      }
+
+      function isDropdownCardDateMatched(card) {
+        if (currentDateFilter === '全部') return true;
+        const rawDate = getAdminFilterCardDate(card);
+        const date = rawDate && adminWorkflowIsValidDate(rawDate) ? rawDate : '';
+        if (currentDateFilter === '未安排') return !date;
+        if (!date) return false;
+        if (currentDateFilter === '指定單日') return date === document.getElementById('singleShippingDateInput')?.value;
+        if (currentDateFilter === '自訂') {
+          const start = document.getElementById('customDateStart')?.value || '';
+          const end = document.getElementById('customDateEnd')?.value || '';
+          return !!(start || end) && (!start || date >= start) && (!end || date <= end);
+        }
+        return false;
+      }
+
       function filterByStatus(status, btnElement) {
         if (adminOrderViewHasDraft()) return;
         currentFilterStatus = status;
@@ -22165,6 +22464,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
       }
 
       function isCardDateMatched(card) {
+        if (document.getElementById("orderDateSelect")) return isDropdownCardDateMatched(card);
         if (currentDateFilter === "全部") return true;
         const cardRange = getAdminFilterCardDateRange(card);
         if (!cardRange) return false;
@@ -22237,6 +22537,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
       }
 
       function isCardStatusMatched(card) {
+        if (document.getElementById("orderStatusSelect") && currentFilterStatus === "全部" && card.dataset.status === "已取消") return false;
         if (currentFilterStatus === "全部") return true;
         if (currentFilterStatus === "待通知") return isNoticeWorkCard(card);
         return (
@@ -22448,6 +22749,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
               .join("")
           : `<div class="status-msg">目前沒有符合條件的訂單</div>`;
         syncAdminCardViewControls();
+        if (typeof syncOrderDropdowns === "function") syncOrderDropdowns(totalCount);
         updateAdminPagination(totalCount);
         cleanupSelectedOrderNos(true);
         syncBatchSelectionUi();
@@ -23891,6 +24193,36 @@ ${adminNote}
         if (!status) return;
         status.innerText = String(message || "");
         status.style.color = isError ? "#dc2626" : "";
+      }
+
+      function clearAdminOrderSearch() {
+        if (adminOrderViewHasDraft()) return;
+        window.clearTimeout(adminOrderSearchTimer);
+        adminOrderSearchRequestId += 1;
+        adminOrderQueryRequestId += 1;
+        const input = document.getElementById("searchBar");
+        if (input) { input.value = ""; input.focus(); }
+        void loadAdminOrdersForCurrentView({ page: 1 });
+      }
+
+      function resetAdminOrderFilters() {
+        if (adminOrderViewHasDraft()) return;
+        window.clearTimeout(adminOrderSearchTimer);
+        adminOrderSearchRequestId += 1;
+        adminOrderQueryRequestId += 1;
+        currentFilterStatus = "全部";
+        currentDateFilter = "全部";
+        currentNotificationFilter = "全部";
+        customDateRangeSelectingEnd = false;
+        ["searchBar", "customDateStart", "customDateEnd", "singleShippingDateInput"].forEach(id => {
+          const input = document.getElementById(id);
+          if (input) input.value = "";
+        });
+        document.getElementById("customDateRange")?.classList.remove("active");
+        ["statusFilterRow", "dateFilterRow", "notificationFilterRow"].forEach(id => {
+          setActiveFilterButton(id, document.getElementById(id)?.querySelector("button"));
+        });
+        void loadAdminOrdersForCurrentView({ page: 1 });
       }
 
       function handleSearch() {
