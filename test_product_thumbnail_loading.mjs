@@ -1,0 +1,22 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+const html=fs.readFileSync(process.env.ADMIN_APP_SOURCE || new URL('./index.html',import.meta.url),'utf8');
+const start=html.indexOf('function getProductThumbnailSources('),end=html.indexOf('function renderProductManagementCard(',start);
+assert.ok(start>=0&&end>start,'thumbnail loading helpers must exist');
+const ctx={URL,escapeHtml:s=>String(s).replaceAll('&','&amp;').replaceAll('"','&quot;'),document:{createElement:()=>({setAttribute(k,v){this[k]=v;}})}};
+vm.createContext(ctx);vm.runInContext(html.slice(start,end),ctx);
+const sources=url=>Array.from(ctx.getProductThumbnailSources(url));
+assert.deepEqual(sources('https://drive.google.com/thumbnail?id=public_photo-1&sz=w1600'),['https://lh3.googleusercontent.com/d/public_photo-1=w320','https://drive.google.com/thumbnail?id=public_photo-1&sz=w320']);
+for(const url of ['https://example.com/photo.jpg','https://drive.google.com.evil.test/thumbnail?id=x','https://drive.google.com/thumbnail?id=x%2Fsecret'])assert.deepEqual(sources(url),[url]);
+assert.deepEqual(sources(''),[]);assert.equal(ctx.renderProductThumbnail(''),'');
+assert.match(ctx.renderProductThumbnail('https://drive.google.com/thumbnail?id=test&sz=w1600'),/referrerpolicy="no-referrer"/);
+assert.match(ctx.renderProductThumbnail('https://example.com/"photo.jpg'),/src="https:\/\/example.com\/&quot;photo.jpg"/);
+let fallback='https://drive.google.com/thumbnail?id=test&sz=w320',replacement,tries=0;
+const image={getAttribute:()=>fallback,removeAttribute:()=>{fallback=null;},set src(v){tries++;this.lastSource=v;},replaceWith:p=>{replacement=p;},onerror:()=>{}};
+ctx.handleProductThumbnailError(image);assert.equal(tries,1);assert.equal(replacement,undefined);assert.equal(fallback,null);
+ctx.handleProductThumbnailError(image);assert.equal(tries,1);assert.equal(image.onerror,null);assert.equal(replacement.role,'img');assert.equal(replacement['aria-label'],'商品圖片暫時無法載入');
+// Rendering normalization must not replace the URL stored in editable product data.
+assert.match(html,/data-product-field="imageUrl" value="\$\{escapeHtml\(product.imageUrl \|\| ""\)\}"/);
+for(const [,js] of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))new vm.Script(js);
+console.log('PASS direct small Drive thumbnail, exact host validation, custom URL preservation, HTML escaping, one fallback, accessible failure placeholder, stored URL unchanged, script syntax');

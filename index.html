@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261018-product-management-v1">
+<html lang="zh-Hant" data-release-version="20261018-product-thumbnail-v2">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261018-product-management-v1" />
+    <meta name="admin-release" content="20261018-product-thumbnail-v2" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261018-product-management-v1"></script>
-    <script src="./admin-direct-response.js?v=20261018-product-management-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261018-product-management-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261018-product-management-v1"></script>
+    <script src="./customer-config.js?v=20261018-product-thumbnail-v2"></script>
+    <script src="./admin-direct-response.js?v=20261018-product-thumbnail-v2"></script>
+    <script src="./admin-diagnostics.js?v=20261018-product-thumbnail-v2"></script>
+    <script src="./admin-mutation-recovery.js?v=20261018-product-thumbnail-v2"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -5509,6 +5509,8 @@ body.preview-white-cards #order-page-section .card {
  .product-grade-stock-summary .grade-edit-toggle {grid-column:2;grid-row:1/3;}
 }
 
+#product-page-section .product-image-unavailable {display:inline-flex;align-items:center;justify-content:center;background:#f3f6f4;color:#6c8175;font-size:20px;}
+
     </style>
   </head>
 
@@ -9838,6 +9840,42 @@ function renderProductUiFields(product, shared) {
   });
   return template.innerHTML;
 }
+function getProductThumbnailSources(imageUrl) {
+  const original = String(imageUrl || '').trim();
+  if (!original) return [];
+  try {
+    const url = new URL(original);
+    if (url.protocol === 'https:' && url.hostname === 'drive.google.com' && url.pathname === '/thumbnail') {
+      const id = url.searchParams.get('id');
+      if (id && /^[A-Za-z0-9_-]+$/.test(id)) {
+        return [`https://lh3.googleusercontent.com/d/${id}=w320`, `https://drive.google.com/thumbnail?id=${id}&sz=w320`];
+      }
+    }
+  } catch {}
+  return [original];
+}
+function renderProductThumbnail(imageUrl) {
+  const [source, fallback] = getProductThumbnailSources(imageUrl);
+  if (!source) return '';
+  return `<img class="product-card-image" src="${escapeHtml(source)}"${fallback ? ` data-thumbnail-fallback="${escapeHtml(fallback)}"` : ''} referrerpolicy="no-referrer" decoding="async" alt="" onerror="handleProductThumbnailError(this)">`;
+}
+function handleProductThumbnailError(image) {
+  const fallback = image.getAttribute('data-thumbnail-fallback');
+  if (fallback) {
+    image.removeAttribute('data-thumbnail-fallback');
+    image.src = fallback;
+    return;
+  }
+  image.onerror = null;
+  const placeholder = document.createElement('span');
+  placeholder.className = 'product-card-image product-image-unavailable';
+  placeholder.setAttribute('role', 'img');
+  placeholder.setAttribute('aria-label', '商品圖片暫時無法載入');
+  placeholder.title = '商品圖片暫時無法載入';
+  placeholder.innerHTML = '<i class="fa-solid fa-image" aria-hidden="true"></i>';
+  image.replaceWith(placeholder);
+}
+
 function renderProductManagementCard(product, shared = false) {
   const status = normalizeAdminProductStatus(product.status);
   const label = [shared || product.grade === product.count ? '' : product.grade, product.productSeries, `${product.count || ''}裝`].filter(Boolean).map(part => `<span>${escapeHtml(part)}</span>`).join('<span aria-hidden="true" class="product-row-separator">・</span>');
@@ -9846,7 +9884,7 @@ function renderProductManagementCard(product, shared = false) {
   const booked = adminProductOperationsLoading ? '統計讀取中' : operations ? `已訂 ${Number(operations.bookedQty || 0)} · 已寄 ${Number(operations.shippedQty || 0)}${complete?'':'（待確認）'}` : '查看訂單統計';
   return `<article class="product-admin-card${status==='上架'?'':' is-inactive'}" data-product-id="${escapeHtml(product.id)}" data-shared="${shared}">
     <div class="product-admin-summary"><button type="button" class="product-edit-mini-btn product-row-button" aria-expanded="false" aria-label="編輯 ${escapeHtml(getAdminProductDisplayName(product))}" onclick="toggleProductManagementEdit(this)">
-      ${product.imageUrl?`<img class="product-card-image" src="${escapeHtml(product.imageUrl)}" alt="">`:''}<span class="product-row-identity"><span class="product-admin-meta">${label}</span><span class="${status==='上架'?'product-status-active':'product-status-inactive'}">${escapeHtml(status)}</span>${!shared?renderAdminProductAvailabilityBadge(product):''}</span><span class="product-admin-price">$${Number(product.price).toLocaleString("zh-TW")}</span>${productUiIcon('angle-right')}</button></div>
+      ${renderProductThumbnail(product.imageUrl)}<span class="product-row-identity"><span class="product-admin-meta">${label}</span><span class="${status==='上架'?'product-status-active':'product-status-inactive'}">${escapeHtml(status)}</span>${!shared?renderAdminProductAvailabilityBadge(product):''}</span><span class="product-admin-price">$${Number(product.price).toLocaleString("zh-TW")}</span>${productUiIcon('angle-right')}</button></div>
     <div class="product-admin-edit">
       <div class="product-field full product-editor-title"><strong>編輯商品</strong><button type="button" class="product-action-btn secondary" onclick="cancelProductManagementEdit(this)">取消</button></div>
       <div class="product-field full"><button type="button" class="product-chip product-operations-chip" onclick="openProductOperationsModal('${escapeHtml(product.id)}')">${escapeHtml(booked)} ${productUiIcon('angle-right')}</button></div>
