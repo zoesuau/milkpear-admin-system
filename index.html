@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261018-shipping-filter-row-v1">
+<html lang="zh-Hant" data-release-version="20261018-shipping-mobile-actions-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261018-shipping-filter-row-v1" />
+    <meta name="admin-release" content="20261018-shipping-mobile-actions-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261018-shipping-filter-row-v1"></script>
-    <script src="./admin-direct-response.js?v=20261018-shipping-filter-row-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261018-shipping-filter-row-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261018-shipping-filter-row-v1"></script>
+    <script src="./customer-config.js?v=20261018-shipping-mobile-actions-v1"></script>
+    <script src="./admin-direct-response.js?v=20261018-shipping-mobile-actions-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261018-shipping-mobile-actions-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261018-shipping-mobile-actions-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -3250,6 +3250,149 @@
         }
       }
 
+
+      @media screen and (max-width: 767.98px) {
+        .shipping-manifest-header {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 10px;
+        }
+        .shipping-manifest-header > div { min-width: 0; }
+        .shipping-manifest-title { line-height: 1.4; }
+        .shipping-manifest-subtitle,
+        .shipping-manifest-load-status {
+          line-height: 1.5;
+          overflow-wrap: anywhere;
+        }
+        .shipping-manifest-header .shipping-manifest-print {
+          width: 100%;
+          min-height: 44px;
+        }
+        .shipping-manifest-product-columns {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .shipping-manifest-product-summary { overflow-wrap: anywhere; }
+        .shipping-blackcat-operations {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+        }
+        .shipping-blackcat-operations .shipping-ezcat-export-panel,
+        .shipping-blackcat-operations .shipping-tracking-import-panel {
+          display: contents;
+          padding: 0;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          box-shadow: none;
+          min-width: 0;
+        }
+        .shipping-blackcat-operations h3,
+        .shipping-blackcat-operations .shipping-operation-steps,
+        .shipping-blackcat-operations .shipping-operation-note,
+        .shipping-blackcat-operations .is-idle {
+          display: none;
+        }
+        .shipping-blackcat-operations .shipping-ezcat-export-button,
+        .shipping-blackcat-operations .shipping-tracking-import-actions {
+          margin-top: 0;
+        }
+        .shipping-blackcat-operations .shipping-tracking-import-actions {
+          display: contents;
+        }
+        .shipping-blackcat-operations .shipping-ezcat-export-button {
+          grid-column: 1;
+          grid-row: 1;
+        }
+        .shipping-blackcat-operations .shipping-tracking-file-label {
+          grid-column: 2;
+          grid-row: 1;
+        }
+        .shipping-blackcat-operations .shipping-ezcat-export-button,
+        .shipping-blackcat-operations .shipping-tracking-file-label {
+          padding: 8px 6px;
+          font-size: 13px;
+          white-space: nowrap;
+        }
+        .shipping-blackcat-operations .shipping-ezcat-export-feedback,
+        .shipping-blackcat-operations .shipping-tracking-import-feedback,
+        .shipping-blackcat-operations .shipping-tracking-import-summary,
+        .shipping-blackcat-operations .shipping-tracking-import-list,
+        .shipping-blackcat-operations .shipping-tracking-import-submit {
+          grid-column: 1 / -1;
+          min-width: 0;
+        }
+        .shipping-blackcat-operations .shipping-tracking-file-label,
+        .shipping-blackcat-operations .shipping-tracking-import-submit {
+          width: 100%;
+          min-height: 44px;
+          justify-content: center;
+        }
+        .shipping-blackcat-operations .shipping-ezcat-export-button {
+          width: 100%;
+          min-height: 44px;
+        }
+        .shipping-tracking-import-panel:not(:has(#shippingTrackingImportSummary:not([hidden])))
+          .shipping-tracking-import-submit:disabled {
+          display: none;
+        }
+      }
+
+
+      .shipping-tracking-preview { display: contents; }
+      .shipping-tracking-preview-heading,
+      .shipping-tracking-preview-hint { display: none; }
+      @media screen and (min-width: 768px) {
+        .shipping-tracking-import-panel { display: flex; flex-wrap: wrap; column-gap: 8px; }
+        .shipping-tracking-import-panel > h3 { order: 0; width: 100%; }
+        .shipping-tracking-import-panel > .shipping-operation-steps { order: 1; width: 100%; }
+        .shipping-tracking-import-actions { display: contents; }
+        .shipping-tracking-file-label { order: 2; margin-top: 10px; }
+        .shipping-tracking-import-submit { order: 3; margin-top: 10px; }
+        .shipping-tracking-import-panel > .shipping-operation-note { order: 4; width: 100%; }
+        .shipping-tracking-import-feedback { order: 5; width: 100%; }
+        .shipping-tracking-import-summary { order: 6; width: 100%; }
+        .shipping-tracking-import-list { order: 7; width: 100%; }
+      }
+      @media screen and (max-width: 767.98px) {
+        .shipping-blackcat-operations .shipping-tracking-preview {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr);
+          grid-column: 1 / -1;
+          gap: 12px;
+          min-width: 0;
+          margin-top: 4px;
+          padding: 16px;
+          border: 1px solid #dbe5dd;
+          border-radius: 14px;
+          background: #fff;
+          box-shadow: 0 2px 8px rgba(28, 53, 39, .025);
+        }
+        .shipping-tracking-preview:has(.is-idle):not(:has(.shipping-tracking-import-summary:not([hidden]))) { display: none !important; }
+        .shipping-tracking-preview .shipping-tracking-preview-heading { display: grid; gap: 4px; min-width: 0; }
+        .shipping-tracking-preview-heading strong { color: #243b2d; font-size: 15px; font-weight: 800; }
+        .shipping-tracking-preview-heading span { color: #718078; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+        .shipping-tracking-preview:not(:has(.shipping-tracking-import-summary:not([hidden]))) .shipping-tracking-preview-heading,
+        .shipping-tracking-preview:not(:has(.shipping-tracking-import-summary:not([hidden]))) .shipping-tracking-preview-hint,
+        .shipping-tracking-preview .shipping-tracking-import-feedback.is-preview { display: none; }
+        .shipping-tracking-preview .shipping-tracking-import-feedback { margin: 0; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+        .shipping-tracking-preview .shipping-tracking-import-summary {
+          margin: 0;
+          padding: 10px 0;
+          gap: 12px;
+          border-top: 1px solid #edf1ee;
+          border-bottom: 1px solid #edf1ee;
+        }
+        .shipping-tracking-preview .shipping-tracking-import-stat { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; padding: 0; background: transparent; border-radius: 0; }
+        .shipping-tracking-preview .shipping-tracking-import-stat:nth-child(1),
+        .shipping-tracking-preview .shipping-tracking-import-stat:nth-child(4) { display: none; }
+        .shipping-tracking-preview .shipping-tracking-import-stat span { font-size: 11px; color: #718078; font-weight: 500; }
+        .shipping-tracking-preview .shipping-tracking-import-stat strong { margin: 0; font-size: 14px; color: #284735; white-space: nowrap; }
+        .shipping-tracking-preview .shipping-tracking-import-list { margin: 0; padding: 10px; max-height: 180px; border: 0; border-radius: 8px; background: #f5f8f5; color: #42564a; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+        .shipping-tracking-preview .shipping-tracking-preview-hint { display: block; margin: 0; color: #718078; font-size: 11px; line-height: 1.5; }
+        .shipping-tracking-preview .shipping-tracking-import-submit { margin: 0; min-height: 42px; border-radius: 8px; background: #4f7f63; font-size: 14px; font-weight: 700; }
+        .shipping-tracking-preview .shipping-tracking-import-submit:disabled { background: #dce5df; color: #84948b; }
+      }
+
       /* Desktop RWD Grid */
       @media screen and (min-width: 768px) {
         body {
@@ -5943,21 +6086,18 @@ body.preview-white-cards #order-page-section .card {
                 onchange="handleShippingTrackingFileSelected(event)"
               />
             </label>
-            <button
-              type="button"
-              class="shipping-tracking-import-submit"
-              id="shippingTrackingImportButton"
-              onclick="commitShippingTrackingImport()"
-              disabled
-            >
-              ③確認匯入
-            </button>
+
           </div>
           <div class="shipping-operation-note">
             確認匯入只會寫入託運單號，不會標記已寄出或發送通知。
           </div>
+          <div class="shipping-tracking-preview">
+            <div class="shipping-tracking-preview-heading">
+              <strong>匯入預覽</strong>
+              <span id="shippingTrackingPreviewFilename"></span>
+            </div>
           <div
-            class="shipping-tracking-import-feedback"
+            class="shipping-tracking-import-feedback is-idle"
             id="shippingTrackingImportFeedback"
             aria-live="polite"
           >
@@ -5973,6 +6113,17 @@ body.preview-white-cards #order-page-section .card {
             id="shippingTrackingImportList"
             hidden
           ></div>
+            <p class="shipping-tracking-preview-hint">確認後寫入宅配單號，不會發送通知。</p>
+            <button
+              type="button"
+              class="shipping-tracking-import-submit"
+              id="shippingTrackingImportButton"
+              onclick="commitShippingTrackingImport()"
+              disabled
+            >
+              ③確認匯入
+            </button>
+          </div>
         </section>
       </div>
 
@@ -20163,6 +20314,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           "shippingEzcatExportFeedback",
         );
         if (!feedback) return;
+        feedback.classList.toggle("is-idle", !isError && String(message || "").startsWith("目前準備日期："));
         feedback.classList.toggle("is-error", isError);
         feedback.innerText = String(message || "");
       }
@@ -21050,11 +21202,13 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         }
       }
 
-      function setShippingTrackingImportFeedback(message, isError = false) {
+      function setShippingTrackingImportFeedback(message, isError = false, isPreview = false) {
         const feedback = document.getElementById(
           "shippingTrackingImportFeedback",
         );
         if (!feedback) return;
+        feedback.classList.toggle("is-idle", !isError && (!message || message === "尚未選擇檔案"));
+        feedback.classList.toggle("is-preview", isPreview);
         feedback.classList.toggle("is-error", isError);
         feedback.innerText = String(message || "");
       }
@@ -21202,6 +21356,9 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         );
         if (!summary || !list || !importButton) return;
 
+        const filename = document.getElementById("shippingTrackingPreviewFilename");
+        if (filename) filename.textContent = String(preview.fileName || "");
+
         const stats = [
           ["檔案資料列", `${preview.dataRowCount} 列`],
           ["有效訂單編號", `${preview.entries.length} 筆`],
@@ -21261,6 +21418,10 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         const importButton = document.getElementById(
           "shippingTrackingImportButton",
         );
+        for (const id of ["shippingTrackingImportSummary", "shippingTrackingImportList"]) {
+          const element = document.getElementById(id);
+          if (element) element.hidden = true;
+        }
         shippingTrackingImportPreview = null;
         if (importButton) importButton.disabled = true;
         if (!file) {
@@ -21341,6 +21502,8 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           renderShippingTrackingImportPreview(shippingTrackingImportPreview);
           setShippingTrackingImportFeedback(
             `已讀取 ${file.name}（${decoded.encoding.toUpperCase()}）。請確認預覽後再寫入。`,
+            false,
+            true,
           );
         } catch (error) {
           console.error("黑貓貨態檔解析失敗", error);
