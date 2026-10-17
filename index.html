@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261017-admin-source-creator-v1">
+<html lang="zh-Hant" data-release-version="20261018-shipping-filter-row-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261017-admin-source-creator-v1" />
+    <meta name="admin-release" content="20261018-shipping-filter-row-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261017-admin-source-creator-v1"></script>
-    <script src="./admin-direct-response.js?v=20261017-admin-source-creator-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261017-admin-source-creator-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261017-admin-source-creator-v1"></script>
+    <script src="./customer-config.js?v=20261018-shipping-filter-row-v1"></script>
+    <script src="./admin-direct-response.js?v=20261018-shipping-filter-row-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261018-shipping-filter-row-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261018-shipping-filter-row-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -938,7 +938,7 @@
 
       .shipping-manifest-search-sort-row {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+        grid-template-columns: minmax(0, 1fr) minmax(180px, 220px) minmax(180px, 220px);
         align-items: start;
         gap: 12px;
         margin-top: 12px;
@@ -1036,9 +1036,25 @@
         display: none;
       }
 
+      .shipping-manifest-search-sort-row > * { min-width: 0; }
+      .shipping-manifest-search-sort-row .shipping-manifest-ordering {
+        display: grid;
+        align-content: start;
+      }
+      .shipping-manifest-search-sort-row .shipping-manifest-ordering label {
+        min-width: 0;
+      }
+      .shipping-manifest-search-sort-row .shipping-manifest-ordering select {
+        min-width: 0;
+        min-height: 42px;
+        font-size: 14px;
+      }
       @media screen and (max-width: 767px) {
         .shipping-manifest-search-sort-row {
-          grid-template-columns: minmax(0, 1fr);
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        }
+        .shipping-manifest-search-sort-row .shipping-manifest-search {
+          grid-column: 1 / -1;
         }
       }
 
@@ -5837,7 +5853,6 @@ body.preview-white-cards #order-page-section .card {
               </select>
             </label>
           </div>
-        </div>
         <div class="shipping-manifest-ordering">
           <label>
             寄件人篩選
@@ -5863,6 +5878,7 @@ body.preview-white-cards #order-page-section .card {
               <option value="">請選擇寄件人</option>
             </select>
           </label>
+        </div>
         </div>
       </div>
 
