@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261017-admin-table-inline-source-v1">
+<html lang="zh-Hant" data-release-version="20261017-admin-mobile-payment-fix-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261017-admin-table-inline-source-v1" />
+    <meta name="admin-release" content="20261017-admin-mobile-payment-fix-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261017-admin-table-inline-source-v1"></script>
-    <script src="./admin-direct-response.js?v=20261017-admin-table-inline-source-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261017-admin-table-inline-source-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261017-admin-table-inline-source-v1"></script>
+    <script src="./customer-config.js?v=20261017-admin-mobile-payment-fix-v1"></script>
+    <script src="./admin-direct-response.js?v=20261017-admin-mobile-payment-fix-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261017-admin-mobile-payment-fix-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261017-admin-mobile-payment-fix-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -5197,6 +5197,17 @@ body.preview-white-cards #order-page-section .card {
  #order-page-section .admin-card-list-date:has(> .admin-list-requested-date) > strong { display:none; }
  #order-page-section .admin-card-list-status { min-width:0; }
  #order-page-section .admin-card-list-status .group-child-badge { max-width:100%; }
+ #order-page-section .card.is-view-expanded .row-top,
+ #order-page-section .card.is-view-expanded .main-customer-block,
+ #order-page-section .card.is-view-expanded .product-section { touch-action:manipulation; }
+ @media screen and (max-width:767px) {
+  #order-page-section .admin-card-list-scroll.is-list-mode.has-expanded-card .cards-container.admin-card-view-list {
+   width:100%;min-width:0;max-width:100%;margin:0;
+  }
+  #order-page-section .admin-card-list-scroll.is-list-mode.has-expanded-card .card.is-view-expanded {
+   width:100%;min-width:0;max-width:100%;margin:0 0 16px;
+  }
+ }
  </style>
   </head>
 
@@ -14699,6 +14710,9 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           !!orderNo &&
           ["待確認", "已安排出貨"].includes(orderStatus) &&
           adminWorkflowIsValidDate(expectedShippingDate);
+        const adminPaymentEditable = !!orderNo &&
+          ['待確認','已安排出貨','已寄出'].includes(orderStatus) &&
+          adminWorkflowIsValidDate(expectedShippingDate);
         const canScheduledMarkOrderShipped =
           !!orderNo &&
           orderStatus === "已安排出貨" &&
@@ -14829,7 +14843,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
 	            data-requested-shipping-sort-order="${Number.isFinite(requestedShippingSortOrder) ? escapeHtml(requestedShippingSortOrder) : ""}"
 	            data-created-at="${escapeHtml(createdAt)}"
 	            data-last-updated-at="${escapeHtml(lastUpdatedAt)}"
-	            ${adminWorkflowEditable ? 'data-admin-workflow-editor="true"' : ""}
+	            ${adminPaymentEditable ? 'data-admin-workflow-editor="true"' : ""}
             data-search-text="${escapeHtml(searchText)}"
           >
             <div class="row-top">
@@ -14878,7 +14892,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
               </div>
               <div class="admin-card-list-source" title="${escapeHtml(orderSource || (groupOrderId ? '團體訂單' : '未註明'))}"><span>${escapeHtml(getAdminListSourceLabel(orderSource,groupOrderId))}</span><span class="admin-card-list-line-name" title="LINE 名稱：${escapeHtml(lineDisplayName || '未取得')}">${escapeHtml(lineDisplayName || '—')}</span></div>
               <div class="admin-card-list-product" title="${escapeHtml(listProductSummary)}">${escapeHtml(listProductSummary)}</div>
-              <div class="admin-card-list-payment" ${adminWorkflowEditable ? "role=\"button\" tabindex=\"0\" title=\"修改付款狀態\" aria-label=\"修改付款狀態\" onclick=\"if(event.target.closest('.admin-list-inline-editor'))return;openAdminListQuickEditor(event,this.closest('.card'),'payment')\" onkeydown=\"if(event.target.closest('.admin-list-inline-editor')){event.stopPropagation();return;}handleAdminListQuickEditKey(event,this.closest('.card'),'payment')\"" : ''}>
+              <div class="admin-card-list-payment" ${adminPaymentEditable ? "role=\"button\" tabindex=\"0\" title=\"修改付款狀態\" aria-label=\"修改付款狀態\" onclick=\"if(event.target.closest('.admin-list-inline-editor'))return;openAdminListQuickEditor(event,this.closest('.card'),'payment')\" onkeydown=\"if(event.target.closest('.admin-list-inline-editor')){event.stopPropagation();return;}handleAdminListQuickEditKey(event,this.closest('.card'),'payment')\"" : ''}>
                 <span class="payment-badge ${escapeHtml(paymentClass)}" title="${escapeHtml(paymentLabel)}">${escapeHtml(listPaymentLabel)}</span>
               </div>
               <div class="admin-card-list-amount">$${escapeHtml(finalAmount)}</div>
@@ -14927,8 +14941,9 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
             <details>
               <summary>出貨安排</summary>
               ${
-                adminWorkflowEditable
+                adminPaymentEditable
                   ? buildAdminWorkflowEditorHtml({
+                      paymentOnly: !adminWorkflowEditable,
                       requestedShippingBatchLabel,
                       expectedShippingDate,
                       deliveryTimeSlot,
@@ -16385,7 +16400,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
               ".admin-workflow-date, .admin-workflow-delivery-time-slot, .admin-workflow-payment",
             )
             .forEach((control) => {
-              control.disabled = noteLocked || workflowSaving || shippedSaving;
+              control.disabled = noteLocked || workflowSaving || shippedSaving || (workflowEditor.dataset.paymentOnly === "true" && !control.matches(".admin-workflow-payment"));
             });
           const saveButton = workflowEditor.querySelector(
             ".admin-workflow-save",
@@ -16666,6 +16681,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
       }
 
       function buildAdminWorkflowEditorHtml({
+        paymentOnly = false,
         requestedShippingBatchLabel,
         expectedShippingDate,
         deliveryTimeSlot,
@@ -16692,6 +16708,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           <div
             class="admin-workflow-editor"
             data-admin-workflow-editor="true"
+            data-payment-only="${paymentOnly ? 'true' : 'false'}"
             data-baseline-date="${escapeHtml(expectedShippingDate)}"
             data-baseline-delivery-time-slot="${escapeHtml(normalizeAdminDeliveryTimeSlot(deliveryTimeSlot))}"
             data-baseline-payment="${escapeHtml(paymentState || "")}"
@@ -16708,13 +16725,13 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
                 <label>確定出貨日期</label>
                 <input
                   type="date"
-                  class="admin-workflow-date"
+                  class="admin-workflow-date" ${paymentOnly ? 'disabled' : ''}
                   value="${escapeHtml(expectedShippingDate)}"
                 />
               </div>
               <div class="admin-workflow-field">
                 <label>黑貓配達時段</label>
-                <select class="admin-workflow-delivery-time-slot">
+                <select class="admin-workflow-delivery-time-slot" ${paymentOnly ? 'disabled' : ''}>
                   ${buildAdminDeliveryTimeSlotOptionsHtml(deliveryTimeSlot)}
                 </select>
               </div>
@@ -16854,7 +16871,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
             ".admin-workflow-date, .admin-workflow-delivery-time-slot, .admin-workflow-payment",
           )
           .forEach((control) => {
-            control.disabled = isSaving;
+            control.disabled = isSaving || (editor.dataset.paymentOnly === "true" && !control.matches(".admin-workflow-payment"));
           });
 
         editor.querySelectorAll(".admin-workflow-save").forEach((button) => {
