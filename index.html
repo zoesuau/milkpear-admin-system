@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261018-shipping-mobile-actions-v1">
+<html lang="zh-Hant" data-release-version="20261018-product-management-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261018-shipping-mobile-actions-v1" />
+    <meta name="admin-release" content="20261018-product-management-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261018-shipping-mobile-actions-v1"></script>
-    <script src="./admin-direct-response.js?v=20261018-shipping-mobile-actions-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261018-shipping-mobile-actions-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261018-shipping-mobile-actions-v1"></script>
+    <script src="./customer-config.js?v=20261018-product-management-v1"></script>
+    <script src="./admin-direct-response.js?v=20261018-product-management-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261018-product-management-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261018-product-management-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -5367,7 +5367,149 @@ body.preview-white-cards #order-page-section .card {
    width:100%;min-width:0;max-width:100%;margin:0 0 16px;
   }
  }
- </style>
+ /* Product management: compact rows and shared grade inventory. */
+#product-page-section [hidden] { display:none !important; }
+#product-page-section .product-management-panel { overflow:visible; box-shadow:none; border-radius:14px; }
+#product-page-section .product-management-header {padding:20px 16px 14px;border:0;align-items:center;}
+#product-page-section .product-management-header h2 {font-size:26px;line-height:1.3;white-space:nowrap;color:#1d2934;}
+#product-page-section .product-management-actions {flex-wrap:nowrap;gap:6px;}
+#product-page-section button {font-family:inherit;}
+#product-page-section button:focus-visible, #product-page-section input:focus-visible, #product-page-section select:focus-visible, #product-page-section summary:focus-visible {outline:2px solid #527b62;outline-offset:3px;}
+#product-page-section .product-action-btn {min-height:44px;font-size:14px;}
+.product-header-menu {position:relative;}
+.product-header-menu > summary {list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:center;width:40px;min-height:44px;border-radius:8px;color:#475569;background:#f3f5f4;}
+.product-header-menu > summary::-webkit-details-marker {display:none;}
+.product-header-menu-items {position:absolute;right:0;top:48px;z-index:20;display:grid;gap:6px;padding:8px;background:white;border:1px solid #dce5de;border-radius:10px;box-shadow:0 5px 18px #182c2020;min-width:160px;}
+#product-page-section .product-management-body {padding:0 16px 20px;}
+.product-management-toolbar {display:grid;gap:12px;margin:4px 0 14px;}
+.product-search-box {display:flex;align-items:center;gap:10px;min-height:46px;padding:0 12px;border-radius:10px;background:#f2f4f5;color:#64748b;}
+.product-search-box input {border:0;background:transparent;min-width:0;width:100%;height:46px;font-size:16px;color:#1e293b;}
+.product-search-box button {border:0;background:transparent;min-height:44px;white-space:nowrap;color:#52665a;font-size:13px;cursor:pointer;}
+.product-filter-fields {display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.product-filter-fields select {width:100%;min-width:0;min-height:44px;padding:8px 10px;border:1px solid #d4ded7;border-radius:9px;background:white;font-size:14px;color:#34443a;font-weight:700;}
+.product-filter-result {font-size:12px;color:#64748b;}
+.product-filter-empty {padding:30px 12px;text-align:center;color:#64748b;}
+.product-filter-empty p {margin-bottom:16px;}
+#product-page-section .product-management-feedback:empty {display:none;}
+#product-page-section .product-management-feedback:not(:empty) {padding:10px 12px;margin-bottom:12px;background:#f6f8f6;border-radius:8px;line-height:1.6;}
+#product-page-section .product-card-list {gap:18px;}
+#product-page-section .product-variety-group {border-radius:0;box-shadow:none;overflow:visible;}
+#product-page-section .product-variety-group > summary {padding:12px 0;background:white;color:#52665a;font-size:17px;}
+#product-page-section .product-variety-group.is-selected-group > summary {display:none;}
+#product-page-section .product-variety-group.is-selected-group:has([data-group-name]) > summary {display:flex;}
+#product-page-section .product-variety-body {display:block;padding:0;}
+#product-page-section .product-grade-family {margin:0;padding:0;border:0;border-bottom:1px solid #dee5e0;background:white;border-radius:0;}
+.product-grade-toggle {width:100%;display:flex;gap:12px;align-items:center;justify-content:space-between;min-height:66px;padding:14px 10px;border:0;text-align:left;background:white;color:#1d2934;cursor:pointer;}
+.product-grade-toggle > strong {font-size:22px;white-space:nowrap;}
+.product-grade-toggle > strong span {font-size:17px;}
+.product-grade-overview {display:flex;flex-direction:column;gap:3px;margin-left:auto;text-align:right;font-size:12px;color:#64748b;}
+.product-grade-toggle > i {font-size:14px;color:#64748b;}
+.is-expanded > .product-grade-toggle {background:#f3f7ed;border-radius:9px 9px 0 0;}
+.is-expanded > .product-grade-toggle > i {transform:rotate(180deg);}
+.is-expanded .grade-collapsed-stock {display:none;}
+.product-grade-content {padding:0 6px;}
+.product-grade-stock-summary {display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:12px;row-gap:3px;padding:12px;margin:8px 0 0;border-radius:9px;background:#edf6f0;}
+.product-grade-stock-summary > div {display:flex;gap:10px;align-items:baseline;}
+.product-grade-stock-summary .grade-stock-caption {color:#326349;font-weight:700;font-size:13px;}
+.product-grade-stock-summary strong {color:#245a40;font-size:23px;line-height:1.3;}
+.product-grade-stock-summary p {grid-column:1/-1;grid-row:2;color:#647569;font-size:12px;line-height:1.5;}
+.product-grade-stock-summary .grade-edit-toggle {display:flex;align-items:center;gap:6px;padding:0;border:0;background:transparent;font-size:14px;font-weight:700;min-height:44px;color:#2b6547;cursor:pointer;grid-row:1/3;grid-column:2;}
+#product-page-section .grade-stock-panel {padding:14px;margin:8px 0;background:#f5f8f6;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;}
+.grade-inventory-save {grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid #dfe7e1;padding-top:12px;}
+#product-page-section .product-grade-variants {display:block;margin:0;}
+#product-page-section .product-admin-card {border:0;border-radius:0;background:white;box-shadow:none;border-bottom:1px solid #e6ebe7;overflow:visible;}
+#product-page-section .product-admin-summary {padding:0;display:block;}
+#product-page-section .product-row-button {display:flex;align-items:center;gap:12px;width:100%;min-height:80px;padding:12px 6px;text-align:left;cursor:pointer;border:0;background:white;color:#27332d;border-radius:0;}
+#product-page-section .product-row-button:hover {background:#f7faf8;}
+#product-page-section .product-row-button > .product-card-image {width:56px;height:56px;object-fit:cover;border-radius:7px;flex:0 0 56px;}
+.product-row-identity {flex:1;min-width:0;display:flex;align-items:flex-start;flex-direction:column;gap:6px;}
+#product-page-section .product-row-identity .product-admin-meta {font-size:15px;font-weight:750;line-height:1.5;overflow-wrap:anywhere;}
+#product-page-section .product-row-identity .product-status-active,#product-page-section .product-row-identity .product-status-inactive {font-size:12px;padding:2px 8px;border:0;border-radius:5px;line-height:1.5;font-weight:600;}
+#product-page-section .product-row-identity .product-status-active {background:#edf7f0;color:#276047;}
+#product-page-section .product-row-identity .product-status-inactive {background:#f1f3f4;color:#59646d;}
+#product-page-section .product-admin-price {font-size:20px;font-weight:750;line-height:1.2;color:#32664d;}
+#product-page-section .product-row-button > i {font-size:16px;color:#64748b;flex-shrink:0;}
+#product-page-section .product-admin-edit {padding:16px 12px;background:#f7faf8;border-top:1px solid #dde7e0;gap:14px;}
+#product-page-section .shared-grade-editor .product-admin-edit > .product-field:last-child {display:flex;}
+#product-page-section .product-editor-title {display:flex;align-items:center;justify-content:space-between;}
+#product-page-section .product-editor-save {display:flex;align-items:center;gap:12px;justify-content:space-between;}
+.product-editor-save small {font-size:12px;line-height:1.6;color:#64748b;flex:1;}
+.product-editor-save button {flex-shrink:0;}
+#product-page-section .product-field > input,#product-page-section .product-field > select {width:100%;min-width:0;font-size:16px;min-height:44px;}
+#product-page-section .grade-variant-details summary {padding:12px 0;background:transparent;font-size:14px;font-weight:700;border:0;border-radius:0;}
+#product-page-section .grade-variant-extra {gap:14px;}
+#product-page-section .product-grade-footer {padding:12px 6px 16px;}
+#product-page-section .grade-add-variant {display:inline-flex;align-items:center;gap:8px;border:0;padding:0;background:transparent;min-height:44px;color:#32664d;font-size:15px;font-weight:750;cursor:pointer;}
+.product-grade-footer p {font-size:12px;color:#6c7a72;line-height:1.6;margin-top:2px;}
+.product-grade-footer p i {margin-right:5px;}
+#product-page-section .product-image-editor input[type=file] {font-size:13px;}
+@media(min-width:768px) {
+ #product-page-section .product-management-panel {max-width:1024px;}
+ #product-page-section .product-management-header {padding:24px 28px 16px;}
+ #product-page-section .product-management-body {padding:0 28px 28px;}
+ .product-management-toolbar {grid-template-columns:minmax(240px,1fr) minmax(320px,1fr);align-items:center;}
+ .product-filter-result {grid-column:1/-1;}
+ .product-grade-toggle {padding:16px;}
+ .product-grade-content {padding:0 16px;}
+ .product-grade-stock-summary {grid-template-columns:auto 1fr auto;gap:20px;}
+ .product-grade-stock-summary p {grid-column:2;grid-row:1;}
+ .product-grade-stock-summary .grade-edit-toggle {grid-column:3;grid-row:1;}
+ .product-grade-overview {flex-direction:row;gap:12px;}
+ #product-page-section .product-admin-edit {grid-template-columns:repeat(2,minmax(0,1fr));padding:20px;}
+ #product-page-section .product-row-button {padding:14px 8px;}
+ #product-page-section .product-admin-meta {font-size:16px;}
+ #product-page-section .product-admin-price {font-size:22px;}
+}
+@media(max-width:374px) {
+ #product-page-section .product-management-header h2 {font-size:22px;}
+ #product-page-section .product-management-header,#product-page-section .product-management-body {padding-left:10px;padding-right:10px;}
+ #product-page-section .product-row-button {gap:8px;}
+ #product-page-section .product-row-button>.product-card-image {width:46px;height:46px;flex-basis:46px;}
+ #product-page-section .product-row-identity .product-admin-meta {font-size:14px;}
+ #product-page-section .product-admin-price {font-size:18px;}
+ .product-grade-stock-summary {column-gap:8px;padding:10px;}
+ .product-grade-stock-summary > div {gap:6px;}
+ .product-grade-stock-summary strong {font-size:21px;}
+ .product-grade-stock-summary .grade-edit-toggle {font-size:13px;}
+}
+#product-page-section .product-header-menu,#product-page-section .product-variety-group {margin:0;}
+#productFilterResult {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+#product-page-section .product-admin-meta > span {display:inline-block;white-space:nowrap;}
+@media(max-width:374px) {
+ #product-page-section .product-admin-meta .product-row-separator {display:none;}
+ #product-page-section .product-admin-meta > span {display:block;}
+ .admin-tab-bar:has([data-tab="products"].active) .admin-tab-btn {white-space:nowrap;padding-left:6px;padding-right:6px;font-size:12px;min-height:44px;}
+}
+#product-page-section .product-operations-chip {min-height:40px;justify-content:space-between;padding:8px 10px;border-radius:7px;}
+@media(max-width:767px) {
+ body:has(#product-page-section:not([style*="none"])) {background:#fff;}
+ #product-page-section .product-management-panel {border-radius:0;}
+ #product-page-section .product-management-header {padding:14px 0 10px;}
+ #product-page-section .product-management-body {padding:0 0 20px;}
+ .product-management-toolbar {margin-top:0;}
+ .product-grade-toggle > strong {font-size:26px;}
+ .product-grade-overview {font-size:13px;}
+ .product-grade-stock-summary {grid-template-columns:auto minmax(0,1fr) auto;column-gap:10px;}
+ .product-grade-stock-summary > div {display:block;}
+ .product-grade-stock-summary .grade-stock-caption {display:block;}
+ .product-grade-stock-summary strong {display:block;font-size:30px;}
+ .product-grade-stock-summary p {grid-column:2;grid-row:1;border-left:1px solid #ccdbd1;padding-left:10px;}
+ .product-grade-stock-summary p span {display:block;}
+ .product-grade-stock-summary .grade-edit-toggle {grid-column:3;grid-row:1;font-size:14px;}
+ .product-grade-footer p {font-size:13px;}
+}
+@media(max-width:374px) {
+ .product-grade-toggle > strong {font-size:23px;}
+ .product-grade-overview {font-size:12px;}
+ .product-grade-stock-summary {grid-template-columns:1fr auto;}
+ .product-grade-stock-summary > div {display:flex;align-items:baseline;}
+ .product-grade-stock-summary strong {font-size:24px;}
+ .product-grade-stock-summary p {grid-column:1/-1;grid-row:2;border:0;padding:0;}
+ .product-grade-stock-summary p span {display:inline;}
+ .product-grade-stock-summary .grade-edit-toggle {grid-column:2;grid-row:1/3;}
+}
+
+    </style>
   </head>
 
   <body>
@@ -6193,23 +6335,12 @@ body.preview-white-cards #order-page-section .card {
     <section id="product-page-section" style="display: none">
       <div class="product-management-panel">
         <div class="product-management-header">
-          <h2>商品管理</h2>
-          <div class="product-management-actions">
-            <button type="button" class="product-action-btn secondary" onclick="openProductGroupModal()">新增群組</button>
-            <button
-              type="button"
-              class="product-action-btn secondary"
-              onclick="fetchAdminProductCatalogFromGas()"
-            >
-              重新整理
-            </button>
-            <button
-              type="button"
-              class="product-action-btn primary"
-              onclick="addProductManagementCard()"
-            >
-              新增商品
-            </button>
+          <h2>商品管理</h2><div class="product-management-actions">
+            <button type="button" class="product-action-btn primary" onclick="addProductManagementCard()"><i class="fa-solid fa-plus" aria-hidden="true"></i> 新增商品</button>
+            <details class="product-header-menu"><summary aria-label="更多商品管理操作"><i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i></summary><div class="product-header-menu-items">
+              <button type="button" class="product-action-btn secondary" onclick="this.closest('details').open=false;openProductGroupModal()">新增群組</button>
+              <button type="button" class="product-action-btn secondary" onclick="this.closest('details').open=false;fetchAdminProductCatalogFromGas()">重新整理</button>
+            </div></details>
           </div>
         </div>
         <div class="product-management-body">
@@ -6218,6 +6349,11 @@ body.preview-white-cards #order-page-section .card {
             id="productManagementFeedback"
           ></div>
           <div id="productCatalogReadFeedback" role="status" aria-live="polite" hidden></div>
+          <div class="product-management-toolbar" role="search" aria-label="搜尋商品">
+            <div class="product-search-box"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="productSearchInput" type="search" aria-label="搜尋商品、級別" placeholder="搜尋商品、級別" oninput="changeProductManagementFilter()"><button type="button" id="productSearchClear" hidden onclick="if(!productUiHasDraft()){document.getElementById('productSearchInput').value='';}changeProductManagementFilter()">清除</button></div>
+            <div class="product-filter-fields"><select id="productGroupFilter" aria-label="商品群組篩選" onchange="changeProductManagementFilter()"><option value="">群組：全部</option></select><select id="productStatusFilter" aria-label="商品狀態篩選" onchange="changeProductManagementFilter()"><option value="">狀態：全部</option><option value="上架">狀態：上架</option><option value="僅後台販售">狀態：僅後台販售</option><option value="後台販售，允許超賣">狀態：後台販售，允許超賣</option><option value="停售">狀態：停售</option></select></div>
+            <div id="productFilterResult" class="product-filter-result" role="status" aria-live="polite"></div>
+          </div>
           <div class="product-card-list" id="product-management-list"></div>
           <section class="shipping-batch-management" aria-labelledby="shippingBatchManagementTitle">
             <div class="shipping-batch-management-header">
@@ -9529,6 +9665,214 @@ body.preview-white-cards #order-page-section .card {
         }
       }
 
+// Product management presentation. Mutations use the existing field-save protocol.
+const productManagementView = { query: '', group: '', status: '' };
+const productGradeOpenState = new Map();
+function productUiIcon(name) {
+  return `<i class="fa-solid fa-${name}" aria-hidden="true"></i>`;
+}
+function productUiHasDraft() {
+  return !!document.querySelector('#product-management-list .editing') || productManagementSaveInFlight || productImageSaveInFlight;
+}
+function syncProductManagementFilters() {
+  const select = document.getElementById('productGroupFilter');
+  if (!select) return;
+  const names = getAdminProductGroupNames();
+  select.innerHTML = '<option value="">群組：全部</option>' + names.map(name => `<option value="${escapeHtml(name)}">群組：${escapeHtml(name)}</option>`).join('');
+  if (productManagementView.group && !names.includes(productManagementView.group)) productManagementView.group = '';
+  select.value = productManagementView.group;
+  document.getElementById('productStatusFilter').value = productManagementView.status;
+  document.getElementById('productSearchInput').value = productManagementView.query;
+}
+function changeProductManagementFilter() {
+  if (productUiHasDraft()) {
+    syncProductManagementFilters();
+    setProductManagementFeedback('請先儲存或取消目前編輯，再切換搜尋與篩選。', 'error');
+    return;
+  }
+  productManagementView.query = document.getElementById('productSearchInput').value;
+  productManagementView.group = document.getElementById('productGroupFilter').value;
+  productManagementView.status = document.getElementById('productStatusFilter').value;
+  setProductManagementFeedback('');
+  applyProductManagementFilters();
+}
+function clearProductManagementFilters() {
+  if (productUiHasDraft()) return changeProductManagementFilter();
+  productManagementView.query = productManagementView.group = productManagementView.status = '';
+  syncProductManagementFilters();
+  applyProductManagementFilters();
+}
+function productMatchesManagementFilter(product) {
+  const normalize = value => String(value || '').normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, '');
+  const terms = String(productManagementView.query || '').trim().split(/\s+/).map(normalize).filter(Boolean);
+  return (!productManagementView.group || product.variety === productManagementView.group)
+    && (!productManagementView.status || normalizeAdminProductStatus(product.status) === productManagementView.status)
+    && terms.every(term => normalize([product.variety, product.grade, product.code, product.count, product.productSeries, product.category].join(' ')).includes(term));
+}
+function applyProductManagementFilters() {
+  const list = document.getElementById('product-management-list');
+  if (!list) return;
+  let visibleCount = 0;
+  const productsById = new Map(adminProductCatalog.map(p => [String(p.id), p]));
+  list.querySelectorAll('.product-admin-card').forEach(card => {
+    const product = productsById.get(card.dataset.productId);
+    const matches = product && productMatchesManagementFilter(product);
+    // A refresh must never hide or detach an active draft.
+    card.hidden = !matches && !card.classList.contains('editing');
+    if (!card.hidden) visibleCount++;
+  });
+  list.querySelectorAll('.product-grade-family').forEach(family => {
+    const visible = [...family.querySelectorAll('.product-admin-card')].filter(card => !card.hidden);
+    family.hidden = !visible.length && !family.classList.contains('editing');
+    const matched = family.querySelector('[data-grade-match-count]');
+    if (matched) matched.textContent = `${visible.length} 種販售組合`;
+    // Searches reveal matching rows without changing the user's normal accordion state.
+    const open = Boolean(productManagementView.query.trim()) || productGradeOpenState.get(family.dataset.gradeKey) === true || family.classList.contains('editing') || !!family.querySelector('.product-admin-card.editing');
+    setProductGradeExpanded(family, open);
+  });
+  list.querySelectorAll('.product-variety-group').forEach(group => {
+    const count = [...group.querySelectorAll('.product-admin-card')].filter(card => !card.hidden).length;
+    const selectedEmptyGroup = productManagementView.group === group.dataset.variety && !productManagementView.query.trim() && !productManagementView.status;
+    group.hidden = !count && !selectedEmptyGroup;
+    group.classList.toggle('is-selected-group', productManagementView.group === group.dataset.variety);
+    const label = group.querySelector('.product-variety-count');
+    if (label) label.textContent = `${count} 項商品`;
+  });
+  let empty = document.getElementById('productFilterEmpty');
+  if (!empty) {
+    empty = document.createElement('div'); empty.id = 'productFilterEmpty'; empty.className = 'product-filter-empty';
+    empty.innerHTML = '<p>找不到符合條件的商品</p><button type="button" class="product-action-btn secondary" onclick="clearProductManagementFilters()">清除搜尋與篩選</button>';
+    list.appendChild(empty);
+  }
+  const selectedEmpty = [...list.querySelectorAll('.product-variety-group')].some(group => !group.hidden);
+  empty.hidden = visibleCount > 0 || selectedEmpty || adminProductCatalogLoading || adminProductCatalogReadFailed;
+  document.getElementById('productFilterResult').textContent = `顯示 ${visibleCount} 項商品`;
+  document.getElementById('productSearchClear').hidden = !productManagementView.query;
+}
+function setProductGradeExpanded(family, open) {
+  family.classList.toggle('is-expanded', open);
+  family.querySelector('.product-grade-toggle')?.setAttribute('aria-expanded', String(open));
+  const body = family.querySelector('.product-grade-content');
+  if (body) body.hidden = !open;
+}
+function toggleProductGrade(button) {
+  const family = button.closest('.product-grade-family');
+  if (!family || productManagementSaveInFlight || productImageSaveInFlight) return;
+  if (family.classList.contains('editing') || family.querySelector('.product-admin-card.editing')) {
+    setProductManagementFeedback('請先儲存或取消目前編輯，再收合級別。', 'error'); return;
+  }
+  const open = !family.classList.contains('is-expanded');
+  productGradeOpenState.set(family.dataset.gradeKey, open);
+  setProductGradeExpanded(family, open);
+}
+function renderProductGradeStockSummary(product) {
+  const available = Number.isSafeInteger(product.stock) ? `${Math.max(0, product.stock - (product.adminReservedStock || 0))} 顆` : '未控管';
+  return `<div class="product-grade-stock-summary"><div><span class="grade-stock-caption">前台可售</span><strong>${escapeHtml(available)}</strong></div><p>帳面 ${escapeHtml(product.stock ?? '未控管')} 顆<span> · B級預留 ${escapeHtml(product.adminReservedStock || 0)} 顆</span></p><button type="button" class="grade-edit-toggle" aria-expanded="false" onclick="toggleGradeProductEdit(this)">管理庫存 ${productUiIcon('angle-right')}</button></div>`;
+}
+function renderProductGradeFamilies(products) {
+  const families = new Map();
+  products.forEach(product => {
+    const key = ['牛奶梨','蔗香梨'].includes(product.variety) ? getAdminGradeFamilyKey(product) : product.id;
+    if (!families.has(key)) families.set(key, []);
+    families.get(key).push(product);
+  });
+  return [...families.values()].map((items, index) => {
+    const first = items[0];
+    if (!['牛奶梨','蔗香梨'].includes(first.variety)) return renderProductManagementCard(first);
+    const shared = first.inventoryUnit === 'fruit';
+    const key = getAdminGradeFamilyKey(first);
+    if (!productGradeOpenState.has(key)) productGradeOpenState.set(key, index === 0);
+    const open = productGradeOpenState.get(key);
+    const contentId = 'product-grade-' + encodeURIComponent(first.id);
+    const available = Number.isSafeInteger(first.stock) ? `${Math.max(0, first.stock - (first.adminReservedStock || 0))} 顆` : '未控管';
+    return `<section class="product-grade-family${shared?' shared-grade-editor':''}${open?' is-expanded':''}" data-grade-key="${escapeHtml(key)}" data-product-id="${escapeHtml(first.id)}">
+      <button type="button" class="product-grade-toggle" aria-expanded="${open}" aria-controls="${escapeHtml(contentId)}" onclick="toggleProductGrade(this)"><strong>${escapeHtml(first.grade.replace(/\s+/g,''))} <span>級別</span></strong><span class="product-grade-overview"><span data-grade-match-count>${items.length} 種販售組合</span>${shared?`<span class="grade-collapsed-stock">可售 ${escapeHtml(available)}</span>`:''}</span>${productUiIcon('chevron-down')}</button>
+      <div class="product-grade-content" id="${escapeHtml(contentId)}" ${open?'':'hidden'}>
+      ${shared ? renderProductGradeStockSummary(first) + `<div class="grade-stock-panel"><div><label>帳面剩餘（未扣 B級預留）</label><strong><span data-grade-stock>${escapeHtml(first.stock)}</span> 顆</strong><small>已扣訂單占用；實際在庫量請用盤點核對。</small></div><label>B級預留（顆）<input data-grade-reserve type="number" min="0" step="1" value="${escapeHtml(first.adminReservedStock||0)}" readonly></label><div><label>前台可售</label><strong><span data-grade-available>${escapeHtml(Math.max(0,first.stock-(first.adminReservedStock||0)))}</span> 顆</strong><small>每箱先預留 3 顆供管理員接單，出貨須再確認。</small></div><div class="grade-stock-actions"><button type="button" class="product-action-btn secondary" onclick="openProductInventoryAdjustmentModal('${escapeHtml(first.id)}')">按箱補貨</button><button type="button" class="product-action-btn secondary" onclick="openProductInventoryAdjustmentModal('${escapeHtml(first.id)}','reconcile')">盤點修正</button></div><div class="grade-inventory-save"><button type="button" class="product-action-btn secondary" onclick="cancelGradeInventoryEdit(this)">取消</button><button type="button" class="product-action-btn primary" onclick="saveProductGradeInventory(this)">儲存 B級預留</button></div></div>` : '<p class="product-inventory-hint">目前依各商品盒數計算庫存。</p>'}
+      <div class="product-grade-variants">${items.map(p=>renderProductManagementCard(p,shared)).join('')}</div>
+      ${shared?`<div class="product-grade-footer"><button type="button" class="grade-add-variant" onclick="addGradeProductVariant('${escapeHtml(first.id)}')">${productUiIcon('circle-plus')} 新增販售組合</button><p>${productUiIcon('circle-info')} 此級別的販售組合共用庫存。</p></div>`:''}
+      </div></section>`;
+  }).join('');
+}
+function toggleGradeProductEdit(button) {
+  if (productManagementSaveInFlight || productImageSaveInFlight) return;
+  const family = button.closest('.product-grade-family');
+  if (!family) return;
+  if (family.classList.contains('editing')) { family.querySelector('[data-grade-reserve]').focus(); return; }
+  if (productUiHasDraft()) { setProductManagementFeedback('請先儲存或取消目前編輯，再管理庫存。','error'); return; }
+  family.classList.add('editing');
+  family.gradeReserveBase = adminProductCatalog.find(p=>p.id===family.dataset.productId)?.adminReservedStock || 0;
+  const reserve = family.querySelector('[data-grade-reserve]');
+  reserve.readOnly = false;
+  button.setAttribute('aria-expanded','true');
+  setProductGradeExpanded(family, true);
+  setProductManagementFeedback('');
+  reserve.focus();
+}
+function cancelGradeInventoryEdit(button) {
+  if (productManagementSaveInFlight || productImageSaveInFlight) return;
+  try { if (readPendingProductSave()) { setProductManagementFeedback('這筆儲存尚待確認，請先再次按儲存核對結果。','error'); return; } } catch { setProductManagementFeedback('儲存核對資料無法讀取，編輯內容已保留。','error'); return; }
+  const family = button.closest('.product-grade-family');
+  family.classList.remove('editing');
+  renderProductManagement();
+}
+async function saveProductGradeInventory(button) {
+  if (productManagementSaveInFlight || productImageSaveInFlight) return;
+  const family = button.closest('.product-grade-family');
+  const raw = family.querySelector('[data-grade-reserve]').value.trim();
+  const reserve = Number(raw);
+  if (!raw || !Number.isSafeInteger(reserve) || reserve < 0) { setProductManagementFeedback('B級預留請填 0 以上的整數顆數。','error'); return; }
+  const changes = reserve === family.gradeReserveBase ? [] : [{field:'adminReservedStock', before:family.gradeReserveBase, after:reserve, productId:family.dataset.productId}];
+  if (!changes.length && !readPendingProductSave()) { cancelGradeInventoryEdit(button); return; }
+  await saveProductManagementPayload({productId:family.dataset.productId,changes});
+}
+function renderProductUiFields(product, shared) {
+  const template = document.createElement('template');
+  template.innerHTML = renderProductManagementFields(product, shared);
+  template.content.querySelectorAll('.product-field').forEach(field => {
+    const label = field.querySelector(':scope > label')?.textContent.trim();
+    if (!label) return;
+    field.querySelectorAll('input:not([type="hidden"]),select,textarea').forEach(input => {
+      if (!input.hasAttribute('aria-label')) input.setAttribute('aria-label', label);
+    });
+  });
+  return template.innerHTML;
+}
+function renderProductManagementCard(product, shared = false) {
+  const status = normalizeAdminProductStatus(product.status);
+  const label = [shared || product.grade === product.count ? '' : product.grade, product.productSeries, `${product.count || ''}裝`].filter(Boolean).map(part => `<span>${escapeHtml(part)}</span>`).join('<span aria-hidden="true" class="product-row-separator">・</span>');
+  const operations = adminProductOperations?.byCode?.[normalizeAdminProductCode(product.code)];
+  const complete = adminProductOperations?.complete === true;
+  const booked = adminProductOperationsLoading ? '統計讀取中' : operations ? `已訂 ${Number(operations.bookedQty || 0)} · 已寄 ${Number(operations.shippedQty || 0)}${complete?'':'（待確認）'}` : '查看訂單統計';
+  return `<article class="product-admin-card${status==='上架'?'':' is-inactive'}" data-product-id="${escapeHtml(product.id)}" data-shared="${shared}">
+    <div class="product-admin-summary"><button type="button" class="product-edit-mini-btn product-row-button" aria-expanded="false" aria-label="編輯 ${escapeHtml(getAdminProductDisplayName(product))}" onclick="toggleProductManagementEdit(this)">
+      ${product.imageUrl?`<img class="product-card-image" src="${escapeHtml(product.imageUrl)}" alt="">`:''}<span class="product-row-identity"><span class="product-admin-meta">${label}</span><span class="${status==='上架'?'product-status-active':'product-status-inactive'}">${escapeHtml(status)}</span>${!shared?renderAdminProductAvailabilityBadge(product):''}</span><span class="product-admin-price">$${Number(product.price).toLocaleString("zh-TW")}</span>${productUiIcon('angle-right')}</button></div>
+    <div class="product-admin-edit">
+      <div class="product-field full product-editor-title"><strong>編輯商品</strong><button type="button" class="product-action-btn secondary" onclick="cancelProductManagementEdit(this)">取消</button></div>
+      <div class="product-field full"><button type="button" class="product-chip product-operations-chip" onclick="openProductOperationsModal('${escapeHtml(product.id)}')">${escapeHtml(booked)} ${productUiIcon('angle-right')}</button></div>
+      ${renderProductUiFields(product,shared)}
+      <div class="product-field full product-editor-save">${shared ? '<small>顆數固定；不同顆數請新增販售組合。</small>' : ''}<button type="button" class="product-action-btn primary" onclick="saveProductManagementCard(this)">儲存商品</button></div>
+    </div></article>`;
+}
+function toggleProductManagementEdit(button) {
+  if (productManagementSaveInFlight || productImageSaveInFlight) return;
+  const card = button.closest('.product-admin-card');
+  if (!card) return;
+  if (card.classList.contains('editing')) { card.querySelector('[data-product-field="price"]')?.focus(); return; }
+  if (productUiHasDraft()) { setProductManagementFeedback('請先儲存或取消目前編輯，再編輯其他商品。','error'); return; }
+  card.productEditBase = JSON.parse(JSON.stringify(adminProductCatalog.find(p=>p.id===card.dataset.productId)));
+  card.classList.add('editing');
+  button.setAttribute('aria-expanded','true');
+  setProductManagementFeedback('');
+}
+function cancelProductManagementEdit(button) {
+  if (productManagementSaveInFlight || productImageSaveInFlight) return;
+  try { if (readPendingProductSave()) { setProductManagementFeedback('這筆儲存尚待確認，請先再次按儲存核對結果。','error'); return; } } catch { setProductManagementFeedback('儲存核對資料無法讀取，編輯內容已保留。','error'); return; }
+  const card = button.closest('.product-admin-card');
+  card.classList.remove('editing');
+  renderProductManagement();
+}
+
       function renderProductManagement() {
         if (productManagementSaveInFlight) return;
         const list = document.getElementById("product-management-list");
@@ -9536,6 +9880,7 @@ body.preview-white-cards #order-page-section .card {
 
         renderProductBannerSettings();
         renderShippingBatchManagement();
+        syncProductManagementFilters();
 
         const readFeedback = document.getElementById("productCatalogReadFeedback");
         if (readFeedback) {
@@ -9600,7 +9945,7 @@ body.preview-white-cards #order-page-section .card {
             const summary = draft.querySelector('.product-admin-summary');
             const freshSummary = replacement.querySelector('.product-admin-summary');
             if (summary && freshSummary) {
-              freshSummary.querySelector('.product-edit-mini-btn').innerText = '收合';
+              freshSummary.querySelector('.product-edit-mini-btn').setAttribute('aria-expanded', 'true');
               summary.replaceWith(freshSummary);
             }
             draft.classList.toggle('is-inactive', replacement.classList.contains('is-inactive'));
@@ -9611,7 +9956,12 @@ body.preview-white-cards #order-page-section .card {
           const replacement=[...list.querySelectorAll('.product-grade-family')].find(f=>f.dataset.gradeKey===draft.dataset.gradeKey);
           if(!replacement)continue;
           const current=adminProductCatalog.find(p=>p.id===draft.dataset.productId);
-          if(current){draft.querySelector('[data-grade-stock]').textContent=current.stock;draft.querySelector('[data-grade-available]').textContent=Math.max(0,current.stock-(current.adminReservedStock||0));}
+          if(current){
+            draft.querySelector('[data-grade-stock]').textContent=current.stock;
+            draft.querySelector('[data-grade-available]').textContent=Math.max(0,current.stock-(current.adminReservedStock||0));
+            draft.querySelector('.product-grade-stock-summary').outerHTML=renderProductGradeStockSummary(current);
+            draft.querySelector('.grade-edit-toggle').setAttribute('aria-expanded','true');
+          }
           for (const card of draft.querySelectorAll('.product-admin-card')) {
             const product = adminProductCatalog.find(p=>p.id===card.dataset.productId);
             const badge = card.querySelector('[data-product-availability]');
@@ -9619,6 +9969,7 @@ body.preview-white-cards #order-page-section .card {
           }
           replacement.replaceWith(draft);
         }
+        applyProductManagementFilters();
       }
 
       function getAdminInventoryUnitLabel(product) { return product?.inventoryUnit === 'fruit' ? '顆' : '盒'; }
@@ -9672,41 +10023,6 @@ body.preview-white-cards #order-page-section .card {
         } finally {sharedFruitMigrationInFlight=false;}
       }
 
-      function renderProductGradeFamilies(products) {
-        const families = new Map();
-        products.forEach(product => {
-          const key = ['牛奶梨','蔗香梨'].includes(product.variety) ? getAdminGradeFamilyKey(product) : product.id;
-          if (!families.has(key)) families.set(key, []);
-          families.get(key).push(product);
-        });
-        return [...families.values()].map(items => {
-          const first = items[0];
-          if (!['牛奶梨','蔗香梨'].includes(first.variety)) return renderProductManagementCard(first);
-          const shared = first.inventoryUnit === 'fruit';
-          return `<section class="product-grade-family${shared?' shared-grade-editor':''}" data-grade-key="${escapeHtml(getAdminGradeFamilyKey(first))}" data-product-id="${escapeHtml(first.id)}">
-            <div class="product-grade-family-heading"><strong>${escapeHtml(first.grade.replace(/\s+/g,''))} 級別</strong>
-            <div class="product-grade-family-actions"><span class="grade-variety">${shared ? escapeHtml(first.variety) : '庫存尚未切換為共用顆數'}</span>${shared?'<button type="button" class="product-edit-mini-btn grade-edit-toggle" aria-expanded="false" onclick="toggleGradeProductEdit(this)"><span aria-hidden="true">✏️</span>編輯</button>':''}</div></div>
-            <p class="product-inventory-hint">${shared ? '禮盒版、精裝版及不同顆數共用此級別庫存；每盒按顆數扣除。' : '切換前仍依各商品的盒數計算。'}</p>
-            ${shared?`<div class="grade-stock-panel"><div><label>帳面剩餘（未扣 B級預留）</label><strong><span data-grade-stock>${escapeHtml(first.stock)}</span> 顆</strong><small>已扣訂單占用；實際在庫量請用盤點核對。</small></div><label>B級預留（顆）<input data-grade-reserve type="number" min="0" step="1" value="${escapeHtml(first.adminReservedStock||0)}" readonly></label><div><label>前台可售</label><strong><span data-grade-available>${escapeHtml(Math.max(0,first.stock-(first.adminReservedStock||0)))}</span> 顆</strong><small>每箱先預留 3 顆供管理員接單，出貨須再確認，實際可能為 A級。</small></div><div class="grade-stock-actions"><button type="button" class="product-action-btn secondary" onclick="openProductInventoryAdjustmentModal('${escapeHtml(first.id)}')">＋按箱補貨</button><button type="button" class="product-action-btn secondary" onclick="openProductInventoryAdjustmentModal('${escapeHtml(first.id)}','reconcile')">盤點修正</button></div></div>`:''}
-            <button type="button" class="product-action-btn secondary grade-add-variant" onclick="addGradeProductVariant('${escapeHtml(first.id)}')">＋新增販售組合</button>
-            <div class="product-grade-variants">${items.map(p=>renderProductManagementCard(p,shared)).join('')}</div>
-            ${shared?'<div class="grade-save-row"><button type="button" class="product-action-btn primary" onclick="saveGradeProductFamily(this)">儲存此級別</button><small>已建立商品的顆數固定；不同顆數請新增販售組合，保留原訂單規格。</small></div>':''}
-          </section>`;
-        }).join('');
-      }
-      function toggleGradeProductEdit(button) {
-        if(productManagementSaveInFlight || productImageSaveInFlight)return;
-        const family=button.closest('.product-grade-family');
-        const editing=family.classList.toggle('editing');
-        button.innerHTML=editing?'收合':'<span aria-hidden="true">✏️</span>編輯';
-        button.setAttribute('aria-expanded',String(editing));
-        family.querySelector('[data-grade-reserve]').readOnly=!editing;
-        if(editing && family.gradeReserveBase===undefined)family.gradeReserveBase=adminProductCatalog.find(p=>p.id===family.dataset.productId)?.adminReservedStock||0;
-        family.querySelectorAll('.product-admin-card').forEach(card=>{
-          card.classList.toggle('editing',editing);
-          if(editing && !card.productEditBase)card.productEditBase={...adminProductCatalog.find(p=>p.id===card.dataset.productId)};
-        });
-      }
       async function saveGradeProductFamily(button) {
         const family=button.closest('.product-grade-family');
         if(!family || productManagementSaveInFlight || productImageSaveInFlight)return;
@@ -9726,7 +10042,7 @@ body.preview-white-cards #order-page-section .card {
         });
       }
       function addGradeProductVariant(productId) {
-        if(document.querySelector('.product-grade-family.editing')){
+        if(productUiHasDraft()){
           setProductManagementFeedback('請先儲存或收合級別編輯，再新增販售組合。','error');return;
         }
         const product = adminProductCatalog.find(p => p.id === productId);
@@ -9737,79 +10053,6 @@ body.preview-white-cards #order-page-section .card {
         fields.innerHTML = renderProductManagementFields(draft);
         fields.querySelector('[data-product-field="variety"]').disabled = true;
         fields.querySelector('[data-product-field="grade"]').readOnly = true;
-      }
-
-      function renderProductManagementCard(product, shared = false) {
-        const activeText = normalizeAdminProductStatus(product.status);
-        const activeClass =
-          activeText === "上架"
-            ? "product-status-active"
-            : "product-status-inactive";
-        const stockUnit = getAdminInventoryUnitLabel(product);
-        const reservedStock = Number.isInteger(product.adminReservedStock)
-          ? product.adminReservedStock
-          : 0;
-        const publicStock = Number.isInteger(product.stock)
-          ? Math.max(0, product.stock - reservedStock)
-          : null;
-        const operations =
-          adminProductOperations?.byCode?.[
-            normalizeAdminProductCode(product.code)
-          ] || null;
-        const operationsComplete = adminProductOperations?.complete === true;
-        const bookedText = adminProductOperationsLoading
-          ? "已訂 —統計讀取中"
-          : operations
-            ? `已訂 ${Number(operations.bookedQty || 0)}${operationsComplete ? "" : "＋待確認"}`
-            : "已訂待重試";
-        const shippedText = adminProductOperationsLoading
-          ? "已寄 —統計讀取中"
-          : operations
-            ? `已寄 ${Number(operations.shippedQty || 0)}${operationsComplete ? "" : "＋待確認"}`
-            : "已寄待重試";
-        return `
-            <article class="product-admin-card${activeText === "上架" ? "" : " is-inactive"}" data-product-id="${escapeHtml(product.id)}">
-              <div class="product-admin-summary">
-                <div class="product-admin-topline">
-                  <div class="product-admin-chips">
-                    <span class="${activeClass}">${activeText}</span>
-                    <button
-                      type="button"
-                      class="product-chip product-operations-chip"
-                      title="點選查看已訂與已寄訂單資訊"
-                      aria-label="查看 ${escapeHtml(product.grade || product.code || "")} ${escapeHtml(product.count || "")}的已訂與已寄訂單資訊"
-                      onclick="openProductOperationsModal('${escapeHtml(product.id)}')"
-                    >
-                      <span>${escapeHtml(bookedText)}</span>
-                      <span class="product-operations-chip-divider">｜</span>
-                      <span>${escapeHtml(shippedText)}</span>
-                    </button>
-                    ${renderAdminProductAvailabilityBadge(product)}
-                    ${!shared && reservedStock > 0 ? `<span class="product-chip">後台保留 ${escapeHtml(reservedStock)}｜前台可售 ${escapeHtml(publicStock)}</span>` : ""}
-                    ${product.productSeries ? `<span class="product-chip">${escapeHtml(product.productSeries)}</span>` : ""}
-
-                  </div>
-                  <div class="product-admin-card-actions">
-                    <button type="button" class="product-edit-mini-btn" onclick="toggleProductManagementEdit(this)">✏️編輯</button>
-                  </div>
-                </div>
-                <div class="product-admin-main">
-                  ${product.imageUrl ? `<img class="product-card-image" src="${escapeHtml(product.imageUrl)}" alt="${escapeHtml(getAdminProductDisplayName(product))}">` : ""}
-                  <div>
-                    <div class="product-admin-title">${escapeHtml(product.grade || product.code || "")}</div>
-                  </div>
-                  <div class="product-admin-meta">${escapeHtml(product.count || "")}裝</div>
-                  <div class="product-admin-price">$${formatMoney(product.price)}</div>
-                </div>
-              </div>
-              <div class="product-admin-edit">
-                ${renderProductManagementFields(product, shared)}
-                <div class="product-field full">
-                  <button type="button" class="product-action-btn primary" onclick="saveProductManagementCard(this)">儲存商品</button>
-                </div>
-              </div>
-            </article>
-          `;
       }
 
       function getProductOperationsModalContext() {
@@ -10500,14 +10743,6 @@ body.preview-white-cards #order-page-section .card {
         feedback.innerText = message || "";
       }
 
-      function toggleProductManagementEdit(button) {
-        const card = button?.closest(".product-admin-card");
-        if (!card) return;
-        const isEditing = card.classList.toggle("editing");
-        if (isEditing) card.productEditBase = JSON.parse(JSON.stringify(adminProductCatalog.find(p => p.id === card.dataset.productId)));
-        button.innerText = isEditing ? "收合" : "編輯";
-      }
-
       function getAdminProductGroupNames(selected = "") {
         return [...new Set(["牛奶梨", "蔗香梨", "日本蜜柑", ...(adminSiteSettings.productGroups || []), ...adminProductCatalog.map(product => product.variety), selected].filter(Boolean))];
       }
@@ -10666,6 +10901,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
       }
 
       function addProductManagementCard() {
+        if (productUiHasDraft()) { setProductManagementFeedback('請先儲存或取消目前編輯，再新增商品。','error'); return; }
         const draft = {
           id: "",
           code: "",
@@ -11404,7 +11640,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         if (!before) return;
         await saveProductWithSelectedImage(card, () => {
           product.imageUrl = readProductManagementCard(card).imageUrl;
-          return saveProductManagementPayload({productId:product.id,changes:productManagementChanges(before, product)});
+          return saveProductManagementPayload({productId:product.id,changes:productManagementChanges(before, product).filter(change => card.dataset.shared !== 'true' || change.field !== 'adminReservedStock')});
         });
       }
 
@@ -11470,6 +11706,10 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           // Only conflicting fields are rebased for an explicit second save.
           // Unchanged draft fields must not overwrite another operator's edits.
           conflicts.filter(c=>(c.productId||pending.productId)===card.dataset.productId).forEach(c => { card.productEditBase[c.field]=c.current; if(c.field==='adminReservedStock' && card.closest('.product-grade-family'))card.closest('.product-grade-family').gradeReserveBase=c.current; });
+        }
+        for (const family of document.querySelectorAll('.product-grade-family.editing')) {
+          const conflict = conflicts.find(c => (c.productId || pending.productId) === family.dataset.productId && c.field === 'adminReservedStock');
+          if (conflict) family.gradeReserveBase = conflict.current;
         }
         setProductManagementFeedback(conflicts.length
           ? (result.state==='review_required' ? '前次儲存結果無法完整確認，目前狀態如下：' : '未儲存：') + conflicts.map(c => `${fieldNames[c.field] || c.field}已改為「${c.current}」，你的修改為「${c.requested}」`).join('；') + '。輸入已保留，確認仍要套用後再按儲存。'

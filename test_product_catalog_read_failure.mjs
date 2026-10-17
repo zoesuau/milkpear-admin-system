@@ -47,6 +47,8 @@ const elements={
 context.document.getElementById=id=>elements[id];
 context.renderProductBannerSettings=()=>{};
 context.renderShippingBatchManagement=()=>{};
+const filterStart=html.indexOf('function syncProductManagementFilters()');
+vm.runInContext(html.slice(filterStart,html.indexOf('function changeProductManagementFilter()',filterStart)),context);
 const renderStart=html.indexOf('      function renderProductManagement()');
 vm.runInContext(html.slice(renderStart,html.indexOf('      function ',renderStart+20)),context);
 context.renderProductManagement();

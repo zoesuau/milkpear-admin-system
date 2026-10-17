@@ -12,7 +12,7 @@ function section(start, end) {
 
 const management = section(
   "function renderProductManagement()",
-  "function renderProductManagementCard(product, shared = false)",
+  "function getAdminInventoryUnitLabel(product)",
 );
 assert.match(management, /const varieties = \["牛奶梨", "蔗香梨", "日本蜜柑"\]/);
 assert.doesNotMatch(
@@ -23,9 +23,15 @@ assert.doesNotMatch(
 
 const card = section(
   "function renderProductManagementCard(product, shared = false)",
-  "function getProductOperationsModalContext()",
+  "function toggleProductManagementEdit(button)",
 );
-assert.match(card, /product-admin-meta">\$\{escapeHtml\(product\.count \|\| ""\)\}裝<\/div>/);
+assert.match(card, /product-row-button/);
+assert.match(card, /product-row-identity/);
+assert.match(card, /productUiHasDraft|renderProductUiFields/);
+assert.match(card, /product\.count/);
+assert.match(html, /id="productGroupFilter"/);
+assert.match(html, /function productMatchesManagementFilter/);
+
 assert.doesNotMatch(card, /盒免運/, "collapsed cards must not show shipping-rule text");
 
 const fields = section(
@@ -54,6 +60,6 @@ assert.doesNotMatch(readCard, /getValue\("(?:id|code)"\)/);
 
 console.log("product management group UI tests passed");
 
-assert.match(management, /data-grade-reserve/);
-assert.match(management, /儲存此級別/);
-assert.match(management, /新增販售組合/);
+assert.match(html, /data-grade-reserve/);
+assert.match(html, /儲存 B級預留/);
+assert.match(html, /新增販售組合/);
