@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261017-admin-ux-desktop-table-v1">
+<html lang="zh-Hant" data-release-version="20261017-admin-table-inline-source-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261017-admin-ux-desktop-table-v1" />
+    <meta name="admin-release" content="20261017-admin-table-inline-source-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261017-admin-ux-desktop-table-v1"></script>
-    <script src="./admin-direct-response.js?v=20261017-admin-ux-desktop-table-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261017-admin-ux-desktop-table-v1"></script>
-    <script src="./admin-mutation-recovery.js?v=20261017-admin-ux-desktop-table-v1"></script>
+    <script src="./customer-config.js?v=20261017-admin-table-inline-source-v1"></script>
+    <script src="./admin-direct-response.js?v=20261017-admin-table-inline-source-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261017-admin-table-inline-source-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261017-admin-table-inline-source-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -5138,7 +5138,66 @@ body.preview-white-cards #order-page-section .card {
   border-color:#dce4e0;
 }
 
-</style>
+
+ #order-page-section .admin-card-list-header:not([hidden]),
+ #order-page-section .cards-container.admin-card-view-list .card:not(.is-view-expanded) {
+  grid-template-columns:34px 140px 130px 150px 80px minmax(150px,1fr) 80px 84px 64px;
+ }
+ #order-page-section .admin-card-list-header:not([hidden]),
+ #order-page-section .cards-container.admin-card-view-list { min-width:1100px; }
+ #order-page-section .cards-container.admin-card-view-list .card:not(.is-view-expanded) .admin-card-list-source { grid-column:5;font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+ #order-page-section .admin-card-list-source > span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+ #order-page-section .admin-card-list-source .admin-card-list-line-name { margin-top:3px;color:#475569;font-size:12px;font-weight:700; }
+ #order-page-section .cards-container.admin-card-view-list .card:not(.is-view-expanded) .admin-card-list-product { grid-column:6; }
+ #order-page-section .cards-container.admin-card-view-list .card:not(.is-view-expanded) .admin-card-list-payment { grid-column:7; }
+ #order-page-section .cards-container.admin-card-view-list .card:not(.is-view-expanded) .admin-card-list-amount { grid-column:8; }
+ #order-page-section .cards-container.admin-card-view-list .card:not(.is-view-expanded) .admin-card-view-expand { grid-column:9; }
+ #order-page-section .admin-card-list-date[role="button"],
+ #order-page-section .admin-card-list-payment[role="button"] { cursor:pointer;border-radius:6px; }
+ #order-page-section .admin-card-list-date[role="button"]:hover,
+ #order-page-section .admin-card-list-payment[role="button"]:hover { background:#edf3ef; }
+ #order-page-section .admin-card-list-date[role="button"]:focus-visible,
+ #order-page-section .admin-card-list-payment[role="button"]:focus-visible { outline:2px solid #4f7f63;outline-offset:2px; }
+ #order-page-section .order-date-status .state-badge { cursor:pointer; }
+ #order-page-section:has(.admin-list-inline-editor[data-field="date"]) .admin-card-list-header:not([hidden]),
+ #order-page-section:has(.admin-list-inline-editor[data-field="date"]) .cards-container.admin-card-view-list .card:not(.is-view-expanded) {
+  grid-template-columns:34px 140px 290px 150px 80px minmax(150px,1fr) 80px 84px 64px;
+ }
+ #order-page-section:has(.admin-list-inline-editor[data-field="payment"]) .admin-card-list-header:not([hidden]),
+ #order-page-section:has(.admin-list-inline-editor[data-field="payment"]) .cards-container.admin-card-view-list .card:not(.is-view-expanded) {
+  grid-template-columns:34px 140px 130px 150px 80px minmax(150px,1fr) 330px 84px 64px;
+ }
+ #order-page-section:has(.admin-list-inline-editor[data-field="date"]) .cards-container.admin-card-view-list,
+ #order-page-section:has(.admin-list-inline-editor[data-field="date"]) .admin-card-list-header:not([hidden]) { min-width:1260px; }
+ #order-page-section:has(.admin-list-inline-editor[data-field="payment"]) .cards-container.admin-card-view-list,
+ #order-page-section:has(.admin-list-inline-editor[data-field="payment"]) .admin-card-list-header:not([hidden]) { min-width:1350px; }
+ #order-page-section .is-inline-editing > :not(.admin-list-inline-editor):not(.admin-list-requested-date) { display:none; }
+ #order-page-section .admin-card-list-payment.is-inline-editing { justify-self:stretch; }
+ #order-page-section .admin-list-inline-editor { display:flex;align-items:center;gap:5px;position:relative; }
+ #order-page-section .admin-list-inline-editor .admin-workflow-editor { display:flex;align-items:center;gap:5px;flex:1;min-width:0;margin:0;padding:0;border:0;background:transparent; }
+ #order-page-section .admin-list-inline-editor .admin-workflow-grid { display:block;flex:1;min-width:0; }
+ #order-page-section .admin-list-inline-editor .admin-workflow-field { display:none; }
+ #order-page-section .admin-list-inline-editor .admin-workflow-field label { display:none; }
+ #order-page-section .admin-list-inline-editor[data-field="date"] .admin-workflow-field:has(.admin-workflow-date),
+ #order-page-section .admin-list-inline-editor[data-field="payment"] .admin-workflow-field:has(.admin-workflow-payment) { display:block; }
+ #order-page-section .admin-list-inline-editor .admin-workflow-save[data-send-notification="true"] { display:none; }
+ #order-page-section .admin-list-inline-editor .admin-workflow-actions { margin:0;gap:0; }
+ #order-page-section .admin-list-inline-editor .admin-workflow-feedback { position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%); }
+ #order-page-section .admin-list-inline-editor .admin-workflow-feedback.is-error { clip-path:none;width:100%;height:auto;left:0;bottom:100%;padding:4px;background:#fff2f2;border:1px solid #d99;z-index:3; }
+ #order-page-section .admin-list-inline-editor input,
+ #order-page-section .admin-list-inline-editor select { height:34px;font-size:13px;padding:0 5px;width:100%; }
+ #order-page-section .admin-list-inline-editor .admin-workflow-save,
+ #order-page-section .admin-list-inline-cancel { min-width:44px;height:34px;padding:0 6px;border:1px solid #c7d7ce;border-radius:7px;background:white;color:#365944;cursor:pointer;font-size:12px;white-space:nowrap; }
+ #order-page-section .admin-list-inline-editor .admin-workflow-save:disabled { background:#e5eae7;color:#7b8b80;cursor:default; }
+ #order-page-section .admin-card-list-date { display:flex;flex-direction:column;align-items:stretch;gap:1px; }
+ #order-page-section .admin-list-requested-date { display:block;align-self:stretch;order:-1;padding:0;border:0;border-radius:0;background:transparent;color:#824c5d;white-space:normal;overflow-wrap:anywhere; }
+ #order-page-section .admin-list-requested-date .admin-list-requested-label { display:block;color:#9a7b83;font-size:11px;font-weight:500;line-height:15px; }
+ #order-page-section .admin-list-requested-date strong { display:block;color:#824c5d;font-size:14px;font-weight:800;line-height:20px; }
+ #order-page-section .admin-card-list-date:has(> .admin-list-requested-date) > span,
+ #order-page-section .admin-card-list-date:has(> .admin-list-requested-date) > strong { display:none; }
+ #order-page-section .admin-card-list-status { min-width:0; }
+ #order-page-section .admin-card-list-status .group-child-badge { max-width:100%; }
+ </style>
   </head>
 
   <body>
@@ -5374,6 +5433,7 @@ body.preview-white-cards #order-page-section .card {
         <span>收件人／電話</span>
         <span>出貨日</span>
         <span>狀態</span>
+        <span>來源</span>
         <span>商品摘要</span>
         <span>付款</span>
         <span class="admin-card-list-header-amount">金額</span>
@@ -11897,6 +11957,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           !!card.querySelector(
             [
               '.admin-note-editor[data-open="true"]',
+              '.admin-list-inline-editor',
               '.admin-workflow-editor[data-saving="true"]',
               '.admin-note-editor[data-saving="true"]',
               '.admin-mark-shipped-panel[data-saving="true"]',
@@ -11993,27 +12054,95 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
       }
 
       function handleAdminListRowClick(event, card) {
-        if (
-          !card ||
-          adminCardViewMode !== "list" ||
-          card.classList.contains("is-view-expanded")
-        ) {
-          return false;
-        }
-        if (
-          event?.target?.closest?.(
-            "button, input, select, textarea, a, summary, details, [contenteditable='true']",
-          )
-        ) {
-          return false;
-        }
+        if (!card || !['list','compact'].includes(adminCardViewMode)) return false;
+        if (event?.target?.closest?.("button, input, select, textarea, a, summary, details, [contenteditable='true']")) return false;
+        const expanded = card.classList.contains('is-view-expanded');
+        if (!expanded && adminCardViewMode !== 'list') return false;
+        if (expanded && !event?.target?.closest?.('.row-top, .main-customer-block, .product-section, .order-note, .discount-badge')) return false;
         const now = Date.now();
         const previousTapAt = Number(card.dataset.listRowTapAt || 0);
         card.dataset.listRowTapAt = String(now);
         if (!previousTapAt || now - previousTapAt > 500) return false;
         delete card.dataset.listRowTapAt;
         event?.preventDefault();
-        return expandAdminCardFromListRow(card);
+        if (expanded && card.querySelector('.admin-workflow-save:not(:disabled)')) {
+          const status = document.getElementById('adminCardViewStatus');
+          if (status) status.innerText = '請先儲存或取消目前的修改';
+          return false;
+        }
+        return expanded ? toggleAdminCardViewExpanded(card) : expandAdminCardFromListRow(card);
+      }
+
+      function openAdminListQuickEditor(event, card, field) {
+        event?.preventDefault();
+        event?.stopPropagation();
+        if (!card || adminCardViewMode !== 'list' || !['date','payment'].includes(field)) return false;
+        const selector = field === 'date' ? '.admin-workflow-date' : '.admin-workflow-payment';
+        const input = card.querySelector(selector);
+        if (!input || input.disabled) return false;
+        const anotherDraft = [...document.querySelectorAll('#cards-container .card')].some(other => other !== card && (adminCardHasBlockingWork(other) || other.querySelector('.admin-workflow-save:not(:disabled)')));
+        if (adminBatchProcessing || adminCreateOrderSubmitting || anotherDraft) {
+          const status = document.getElementById('adminCardViewStatus');
+          if (status) status.innerText = '請先完成或取消目前的編輯／處理';
+          return false;
+        }
+        if (card.querySelector('.admin-list-inline-editor')) return false;
+        const editor = input.closest('.admin-workflow-editor');
+        if (!editor || adminWorkflowIsDirty(editor) || adminCardHasBlockingWork(card)) return false;
+        const placeholder = document.createComment('inline workflow original location');
+        editor.before(placeholder);
+        const panel = document.createElement('div');
+        panel.className = 'admin-list-inline-editor';
+        panel.dataset.field = field;
+        panel.setAttribute('role','group');
+        panel.setAttribute('aria-label',field === 'date' ? '編輯出貨日期' : '編輯付款狀態');
+        const cell = card.querySelector(field === 'date' ? '.admin-card-list-date' : '.admin-card-list-payment');
+        if (!cell) { placeholder.replaceWith(editor); return false; }
+        cell.classList.add('is-inline-editing');
+        cell.append(panel);
+        panel.append(editor);
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'admin-list-inline-cancel';
+        cancel.textContent = '取消';
+        cancel.addEventListener('click', event => {
+          event.stopPropagation();
+          if (editor.dataset.saving === 'true') return;
+          input.value = field === 'date' ? editor.dataset.baselineDate || '' : editor.dataset.baselinePayment || '';
+          adminWorkflowRefreshDirtyState(editor);
+          placeholder.replaceWith(editor);
+          panel.remove();
+          cell.classList.remove('is-inline-editing');
+          card.querySelector(field === 'date' ? '.admin-card-list-date' : '.admin-card-list-payment')?.focus();
+        });
+        panel.append(cancel);
+        input.setAttribute('aria-label',field === 'date' ? '確定出貨日期' : '付款狀態');
+        input.focus();
+        try { input.showPicker?.(); } catch { /* Focused control remains available when native picker cannot open. */ }
+        return true;
+      }
+
+      function handleAdminListQuickEditKey(event, card, field) {
+        if (!['Enter',' '].includes(event?.key)) return false;
+        return openAdminListQuickEditor(event,card,field);
+      }
+
+      function getAdminListRequestedShippingLabel({requestedShippingStartDate,requestedShippingEndDate,requestedShippingBatchLabel}) {
+        const start = String(requestedShippingStartDate || '').trim();
+        const end = String(requestedShippingEndDate || '').trim();
+        const shortDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${Number(value.slice(5,7))}/${Number(value.slice(8,10))}` : value;
+        if (start && end && start !== end) {
+          return start.slice(0,4) === end.slice(0,4) ? `${shortDate(start)}～${shortDate(end)}` : `${start}～${end}`;
+        }
+        return shortDate(start || end) || String(requestedShippingBatchLabel || '').trim() || '未指定';
+      }
+
+      function getAdminListSourceLabel(source,groupOrderId) {
+        const value=String(source || '').trim();
+        if (String(groupOrderId || '').trim() || value === '團體訂單') return '團體訂單';
+        if (['管理端','管理員新增','管理員建單','管理員新增訂單'].includes(value)) return '管理員新增';
+        if (/line/i.test(value)) return 'LINE 表單';
+        return value || '未註明';
       }
 
       function handleAdminListRowKeydown(event, card) {
@@ -14737,17 +14866,19 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
                 <strong>${escapeHtml(recipientName || "未提供")}</strong>
                 <span>${escapeHtml(recipientPhone || "未提供")}</span>
               </div>
-              <div class="admin-card-list-date">
-                <span>${escapeHtml(shippingDateMeta.label)}</span>
-                <strong>${escapeHtml(shippingDateMeta.value)}</strong>
+              <div class="admin-card-list-date" ${adminWorkflowEditable ? "role=\"button\" tabindex=\"0\" title=\"安排出貨日期\" aria-label=\"安排出貨日期\" onclick=\"if(event.target.closest('.admin-list-inline-editor'))return;openAdminListQuickEditor(event,this.closest('.card'),'date')\" onkeydown=\"if(event.target.closest('.admin-list-inline-editor')){event.stopPropagation();return;}handleAdminListQuickEditKey(event,this.closest('.card'),'date')\"" : ''}>
+                <span>${escapeHtml(orderStatus === '待確認' ? '預計出貨' : shippingDateMeta.label)}</span>
+                <strong>${escapeHtml(orderStatus === '待確認' ? expectedShippingDate || '未安排' : shippingDateMeta.value)}</strong>
+                ${!expectedShippingDate && orderStatus !== '已寄出' ? `<small class="admin-list-requested-date" title="${escapeHtml(getAdminListRequestedShippingLabel({requestedShippingStartDate,requestedShippingEndDate,requestedShippingBatchLabel}))}"><span class="admin-list-requested-label">希望出貨</span><strong>${escapeHtml(getAdminListRequestedShippingLabel({requestedShippingStartDate,requestedShippingEndDate,requestedShippingBatchLabel}))}</strong></small>` : ''}
               </div>
               <div class="admin-card-list-status">
                 <span class="state-badge ${escapeHtml(statusMeta.badgeClass)}" title="${escapeHtml(statusMeta.badgeText)}">${escapeHtml(listStatusLabel)}</span>
                 ${groupChildBadgeHtml}
                 ${shouldShowOrderChangeAlert ? `<span class="admin-card-list-change" title="${escapeHtml(listChangeTitle)}">資料異動</span>` : ""}
               </div>
+              <div class="admin-card-list-source" title="${escapeHtml(orderSource || (groupOrderId ? '團體訂單' : '未註明'))}"><span>${escapeHtml(getAdminListSourceLabel(orderSource,groupOrderId))}</span><span class="admin-card-list-line-name" title="LINE 名稱：${escapeHtml(lineDisplayName || '未取得')}">${escapeHtml(lineDisplayName || '—')}</span></div>
               <div class="admin-card-list-product" title="${escapeHtml(listProductSummary)}">${escapeHtml(listProductSummary)}</div>
-              <div class="admin-card-list-payment">
+              <div class="admin-card-list-payment" ${adminWorkflowEditable ? "role=\"button\" tabindex=\"0\" title=\"修改付款狀態\" aria-label=\"修改付款狀態\" onclick=\"if(event.target.closest('.admin-list-inline-editor'))return;openAdminListQuickEditor(event,this.closest('.card'),'payment')\" onkeydown=\"if(event.target.closest('.admin-list-inline-editor')){event.stopPropagation();return;}handleAdminListQuickEditKey(event,this.closest('.card'),'payment')\"" : ''}>
                 <span class="payment-badge ${escapeHtml(paymentClass)}" title="${escapeHtml(paymentLabel)}">${escapeHtml(listPaymentLabel)}</span>
               </div>
               <div class="admin-card-list-amount">$${escapeHtml(finalAmount)}</div>
