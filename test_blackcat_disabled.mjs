@@ -5,8 +5,11 @@ const html=fs.readFileSync(new URL('./index.html',import.meta.url),'utf8');
 let message='';const c={window:{},setEzcatExportFeedback:x=>message=x};vm.createContext(c);
 vm.runInContext(fs.readFileSync(new URL('./customer-config.js',import.meta.url),'utf8'),c);
 vm.runInContext(fs.readFileSync(new URL('./blackcat-shipping.js',import.meta.url),'utf8'),c);
+assert.equal(c.window.ORDER_SYSTEM_CONFIG.features.blackcatDirectShipping,true);
+const enabledConfig = c.window.ORDER_SYSTEM_CONFIG;
+c.window.ORDER_SYSTEM_CONFIG = {...enabledConfig,features:{...enabledConfig.features,blackcatDirectShipping:false}};
 await c.window.openBlackCatShippingModal();assert.match(message,/尚未開放/);
-assert.equal(c.window.ORDER_SYSTEM_CONFIG.features.blackcatDirectShipping,false);
+c.window.ORDER_SYSTEM_CONFIG = enabledConfig;
 assert.equal(c.window.ORDER_SYSTEM_CONFIG.features.adminDirectResponse,true);
 assert.match(html,/id="shippingBlackCatDirectPanel"[^>]*display:none[^>]*hidden/);
 const ctx={shippingManifestDateMode:'today',shippingManifestRemoteError:'',shippingManifestRemoteRangeKey:'2026-10-19|2026-10-19',shippingManifestSearchQuery:'',shippingManifestSortMode:'original',shippingManifestPrioritySenderKey:'',shippingManifestSenderFilterMode:'all',shippingManifestSenderFilterKey:'',latestAdminOrders:[],getShippingManifestOrderBoxCount:()=>1,normalizeAdminDateValue:String,getShippingManifestDateRange:()=>({startDate:'2026-10-19',endDate:'2026-10-19'}),loadCompleteShippingManifestOrders:async source=>{assert.equal(source,'manifest_retry');return true;},document:{getElementById:()=>null}};
@@ -18,4 +21,11 @@ assert.deepEqual(await ids(),['A','B','C']);ctx.shippingManifestSenderFilterKey=
 ctx.shippingManifestSenderFilterMode='exclude';assert.deepEqual(await ids(),['B','C']);assert.match((await ctx.getBlackCatManifestScope('2026-10-19')).summary,/已排除寄件人/);
 ctx.shippingManifestSearchQuery='C';assert.deepEqual(await ids(),['C']);ctx.loadCompleteShippingManifestOrders=async()=>false;ctx.shippingManifestRemoteError='HTTP_401';await assert.rejects(ctx.getBlackCatManifestScope('2026-10-19'),/ADMIN_SESSION_REQUIRED/);
 ctx.shippingManifestRemoteError='HTTP_403';await assert.rejects(ctx.getBlackCatManifestScope('2026-10-19'),/ADMIN_ACCESS_DENIED/);
-console.log('PASS hidden/disabled release, direct invocation makes no request, existing direct response stays enabled, formal sender include/exclude/search scope and authentication errors');
+console.log('PASS enabled config + rollback-off guard, existing direct response, formal sender include/exclude/search scope and authentication errors');
+
+const elements = {shippingEzcatPrepareButton:{},shippingBlackCatDirectPanel:{style:{}},shippingBlackCatPrepareButton:{}};
+Object.assign(c,{document:{getElementById:id=>elements[id]},getShippingManifestDateRange:()=>({startDate:'2026-10-19',endDate:'2026-10-19'}),adminWorkflowIsValidDate:()=>true,ezcatExportSubmitting:false,formatShippingManifestDate:x=>x});
+vm.runInContext(html.slice(html.indexOf('      function syncEzcatPrepareButton('),html.indexOf('      function getEzcatInvalidCharacterDetails(')),c);
+c.syncEzcatPrepareButton();assert.equal(elements.shippingBlackCatDirectPanel.hidden,false);assert.equal(elements.shippingBlackCatPrepareButton.disabled,false);assert.equal(elements.shippingEzcatPrepareButton.disabled,false);
+c.getShippingManifestDateRange=()=>({startDate:'2026-10-19',endDate:'2026-10-20'});c.syncEzcatPrepareButton();assert.equal(elements.shippingBlackCatPrepareButton.disabled,true);
+console.log('PASS enabled panel, single-date requirement, existing CSV control preserved');
