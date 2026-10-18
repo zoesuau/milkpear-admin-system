@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261018-product-thumbnail-v2">
+<html lang="zh-Hant" data-release-version="20261018-blackcat-disabled-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261018-product-thumbnail-v2" />
+    <meta name="admin-release" content="20261018-blackcat-disabled-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261018-product-thumbnail-v2"></script>
-    <script src="./admin-direct-response.js?v=20261018-product-thumbnail-v2"></script>
-    <script src="./admin-diagnostics.js?v=20261018-product-thumbnail-v2"></script>
-    <script src="./admin-mutation-recovery.js?v=20261018-product-thumbnail-v2"></script>
+    <script src="./customer-config.js?v=20261018-blackcat-disabled-v1"></script>
+    <script src="./admin-direct-response.js?v=20261018-blackcat-disabled-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261018-blackcat-disabled-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261018-blackcat-disabled-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -3949,6 +3949,7 @@
         .admin-tab-bar,
         .shipping-print-control-panel,
         .shipping-blackcat-operations,
+        #shippingBlackCatDirectPanel,
         .shipping-manifest-load-status,
         .top-filter-panel,
         .admin-pagination,
@@ -6169,6 +6170,12 @@ body.preview-white-cards #order-page-section .card {
         </div>
       </div>
 
+      <section class="shipping-ezcat-export-panel" id="shippingBlackCatDirectPanel" aria-labelledby="shippingBlackCatDirectTitle" style="display:none;margin-bottom:16px" hidden>
+        <h3 id="shippingBlackCatDirectTitle">黑貓建單與託運單 PDF</h3>
+        <p>選擇出貨訂單，一次取得單號、回填訂單與下載 PDF。補印會重新取得單號。</p>
+        <button type="button" class="shipping-ezcat-export-button" id="shippingBlackCatPrepareButton" onclick="openBlackCatShippingModal()" disabled>準備黑貓託運單</button>
+        <div class="shipping-operation-note">原有 CSV 匯出與單號匯入保留於下方，供既有 ezcat 流程使用。</div>
+      </section>
       <div class="shipping-blackcat-operations">
         <section
           class="shipping-ezcat-export-panel"
@@ -19689,12 +19696,34 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           orderStatus: manifest.orderStatus,
           adminNote: manifest.adminNote,
           trackingNo: manifest.trackingNo,
+          blackcatLabel: candidate?.blackcatLabel || manifest.blackcatLabel || null,
           packageSpecs: Array.isArray(candidate?.packageSpecs)
             ? candidate.packageSpecs.slice()
             : Array.isArray(manifest.packageSpecs)
               ? manifest.packageSpecs.slice()
               : [],
         };
+      }
+
+      // Carrier selection must come from the complete, currently filtered manifest.
+      async function getBlackCatManifestScope(date) {
+        const range = getShippingManifestDateRange();
+        if (shippingManifestDateMode === "pending" || range.startDate !== date || range.endDate !== date) {
+          throw new Error("BLACKCAT_MANIFEST_SCOPE_CHANGED");
+        }
+        if (await loadCompleteShippingManifestOrders("manifest_retry") === false) {
+          const accessCode = ({ HTTP_401: "ADMIN_SESSION_REQUIRED", HTTP_403: "ADMIN_ACCESS_DENIED", GAS_NON_JSON_RESPONSE: "ADMIN_SERVICE_UNAVAILABLE", GAS_TIMEOUT: "ADMIN_SERVICE_UNAVAILABLE" })[shippingManifestRemoteError] || shippingManifestRemoteError;
+          throw new Error(["ADMIN_SESSION_REQUIRED", "ADMIN_SESSION_VALIDATION_FAILED", "ADMIN_ACCESS_DENIED", "ADMIN_SERVICE_UNAVAILABLE"].includes(accessCode)
+            ? accessCode : "BLACKCAT_MANIFEST_SCOPE_UNAVAILABLE");
+        }
+        const current = getShippingManifestDateRange();
+        if (shippingManifestDateMode === "pending" || current.startDate !== date || current.endDate !== date ||
+            shippingManifestRemoteRangeKey !== `${date}|${date}`) throw new Error("BLACKCAT_MANIFEST_SCOPE_CHANGED");
+        const orders = getShippingManifestOrdersForRange(date, date);
+        return { orderNos: orders.map(order => order.orderNo),
+          summary: [shippingManifestSearchQuery.trim() ? `搜尋：${shippingManifestSearchQuery.trim()}` : "未設定搜尋條件",
+            getShippingManifestSenderFilterSummary(getShippingManifestBaseOrdersForRange(date, date)),
+            getShippingManifestOrderingSummary(orders)].filter(Boolean).join("｜") };
       }
 
       // One bounded attempt per range/session. Never retry exports or mutations.
@@ -20305,6 +20334,8 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
       }
 
       function buildShippingTrackingNumberSlotsHtml(order) {
+        const label = typeof window !== "undefined" && window.ORDER_SYSTEM_CONFIG?.features?.blackcatDirectShipping === true ? order?.blackcatLabel : null;
+        if (label && !label.currentNumbers?.length) return `<strong class="shipping-label-warning">${escapeHtml(label.message)}</strong>`;
         const trackingNumbers = getActiveShippingTrackingNumbersFromStoredValue(
           order?.trackingNo,
         );
@@ -20319,6 +20350,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         );
         return `
           <div class="shipping-tracking-list">
+            ${label && trackingNumbers.length ? "<strong>目前應貼單號</strong>" : ""}
             ${Array.from({ length: slotCount }, (_, index) => {
               const trackingNumber = trackingNumbers[index] || "";
               const packageSize =
@@ -20605,6 +20637,11 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           !!startDate &&
           startDate === endDate &&
           adminWorkflowIsValidDate(startDate);
+        const blackcatEnabled = typeof window !== "undefined" && window.ORDER_SYSTEM_CONFIG?.features?.blackcatDirectShipping === true;
+        const directPanel = document.getElementById("shippingBlackCatDirectPanel");
+        const directButton = document.getElementById("shippingBlackCatPrepareButton");
+        if (directPanel) { directPanel.hidden = !blackcatEnabled; directPanel.style.display = blackcatEnabled ? "" : "none"; }
+        if (directButton) directButton.disabled = !blackcatEnabled || !validSingleDate;
         button.disabled = !validSingleDate || ezcatExportSubmitting;
         setEzcatExportFeedback(
           validSingleDate
@@ -26236,5 +26273,6 @@ ${adminNote}
         }
       }
     </script>
+    <script src="./blackcat-shipping.js?v=20261018-blackcat-disabled-v1"></script>
   </body>
 </html>

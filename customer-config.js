@@ -14,7 +14,8 @@ window.ORDER_SYSTEM_CONFIG = Object.freeze({
     "adminOrderSnapshot": true,
     "adminReadObservabilityLevel": "DEBUG",
     "groupOrders": true,
-    "adminDirectResponse": true
+    "adminDirectResponse": true,
+    "blackcatDirectShipping": false
   },
   "line": {
     "liffId": "2010333281-Ra5txFF3",
