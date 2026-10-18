@@ -2,6 +2,12 @@
 (() => {
   "use strict";
   const messages = {
+    BLACKCAT_EZCAT_WAITING: "已改用 ezcat，請匯出 CSV 並匯回新單號；這裡先不要重新取號。",
+    BLACKCAT_EZCAT_TRANSFERRED: "已改用 ezcat，這次舊 PDF 停止開啟，舊單請勿貼箱。",
+    BLACKCAT_EZCAT_BUSY: "背景還在處理，請稍後重新讀取結果，再改用 ezcat。",
+    BLACKCAT_EZCAT_UNKNOWN: "還不能確認是否已取得完整單號，請先核對建單結果，再改用 ezcat。",
+    BLACKCAT_EZCAT_SUPERSEDED: "這批有訂單已進行其他列印，請先讀取最新紀錄，不能轉交舊批次。",
+    BLACKCAT_EZCAT_HANDOFF_REQUIRED: "請先在黑貓列印結果選「改用 ezcat 處理」，再匯出 CSV。",
     BLACKCAT_CONFIRMED_NOT_CREATED: "已向黑貓確認，這些訂單還沒有單號。現在可以重新勾選列印，系統不會自動送出。",
     BLACKCAT_RESOLUTION_CONFLICT: "已有人完成這次確認，請重新讀取結果，不要重複輸入。",
     BLACKCAT_RESOLUTION_NOT_ALLOWED: "現在不能手動確認這次結果，請先重新讀取列印紀錄。",
@@ -44,7 +50,7 @@
     ORDER_CANCELLED: "訂單已取消",
     BLACKCAT_STORAGE_UNAVAILABLE: "這個瀏覽器無法記住剛才的操作，這次還沒送出。請找協助設定系統的人，檢查瀏覽器是否允許儲存資料。",
   };
-  const states = { needs_reprint: "已取號，資料已變更，需補印", queued: "等待處理", preparing: "正在檢查資料", sending: "正在向黑貓建單", accepted: "已取得單號", finishing: "正在儲存單號、準備宅配單", ready: "單號已存好，宅配單可以開啟", attention: "已有單號，宅配單還沒完成", rejected: "尚未建單成功", unknown: "下載列印單中，請先不要重印" };
+  const states = { ezcat: "已改用 ezcat 處理", needs_reprint: "已取號，資料已變更，需補印", queued: "等待處理", preparing: "正在檢查資料", sending: "正在向黑貓建單", accepted: "已取得單號", finishing: "正在儲存單號、準備宅配單", ready: "單號已存好，宅配單可以開啟", attention: "已有單號，宅配單還沒完成", rejected: "尚未建單成功", unknown: "下載列印單中，請先不要重印" };
   const activeStates = ["queued", "preparing", "sending", "accepted", "finishing"];
   let view = { epoch: 0, busy: false, date: "", candidates: [], config: null, batches: [], batch: null, selected: new Map() };
   let previousFocus = null;
@@ -99,10 +105,13 @@
     node.setAttribute("role", error ? "alert" : "status");
     node.setAttribute("aria-live", error ? "assertive" : "polite");
     if (retryMode) {
-      node.innerHTML = `<strong class="bc-failure-title">⚠ 宅配單${retryMode === "open" ? "開啟" : "下載"}失敗</strong><p>${esc(text)}</p><strong>下一步：按下方按鈕重試，成功後會自動開啟 PDF。</strong><div class="bc-actions"><button type="button" id="blackcatRetryPdf" class="bc-retry">${retryMode === "open" ? "重新開啟 PDF（單號不變）" : "重試下載並開啟 PDF（單號不變）"}</button></div>`;
+      node.innerHTML = `<strong class="bc-failure-title">⚠ 宅配單${retryMode === "open" ? "開啟" : "下載"}失敗</strong><p>${esc(text)}</p><strong>下一步：按下方按鈕重試，成功後會自動開啟 PDF。</strong><div class="bc-actions"><button type="button" id="blackcatRetryPdf" class="bc-retry">再試一次</button>${handoffButton(view.batch, "blackcatRetryHandoff")}</div>`;
+      if (byId("blackcatRetryHandoff")) byId("blackcatRetryHandoff").onclick = () => confirmHandoff(view.batch);
+      if (byId("blackcatHandoff")) byId("blackcatHandoff").hidden = true;
       const retry = view.pdfRetry;
       byId("blackcatRetryPdf").onclick = () => {
-        if (view.busy || downloadFlights.size || view.batch?.batchId !== retry.batchId || !view.batch.pdfReady) return;
+        if (view.busy || downloadFlights.size || view.batch?.batchId !== retry.batchId || (!view.batch.pdfReady && retry.mode !== "process")) return;
+        if (retry.mode === "process") return resumeBatch(retry.batchId);
         if (retry.mode === "open") return reopenPdf(retry.batchId);
         preparePdfWindow();
         download(retry.batchId).catch(() => {}); // download renders its own actionable error.
@@ -159,9 +168,73 @@
     style.textContent = `#blackcatModal .modal{width:min(980px,96vw);max-width:980px;max-height:92vh;display:flex;flex-direction:column}#blackcatModal .modal-body{overflow:auto}#blackcatModal h3{margin:0 0 10px}#blackcatModal button,#blackcatModal input,#blackcatModal select{font:inherit}#blackcatModal button{cursor:pointer;padding:9px 12px;border-radius:8px;border:1px solid #cbd5d0;background:#fff}#blackcatModal button:disabled{opacity:.5;cursor:default}#blackcatModal .bc-primary{background:#246741;color:white;border-color:#246741}#blackcatModal .bc-controls{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}#blackcatModal label{display:flex;gap:6px;align-items:center;white-space:nowrap}#blackcatModal input,#blackcatModal select{padding:7px;border:1px solid #b9c9bf;border-radius:6px;max-width:100%;width:auto;min-width:0}#blackcatModal .bc-order,#blackcatModal .bc-batch{padding:12px 0;border-top:1px solid #dce4df}#blackcatModal .bc-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}#blackcatModal .bc-detail{font-size:14px;line-height:1.7;overflow-wrap:anywhere;color:#42554a}#blackcatModal .bc-error,#blackcatModal .is-error{color:#a02e28}#blackcatModal .bc-summary{padding:12px;background:#edf6ef;border-radius:8px;white-space:pre-line}#blackcatModal .bc-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}#blackcatModal .modal-header{display:flex;justify-content:space-between;padding:16px}#blackcatModal .modal-body{padding:0 16px 16px}#blackcatModal input[type=checkbox]{width:18px;height:18px;flex:0 0 18px;accent-color:#246741}#blackcatModal .bc-check{white-space:normal;cursor:pointer}#blackcatModal .bc-reprint{padding:12px;margin-top:12px;background:#fff4d7;border:1px solid #d9b56c;border-radius:8px}#blackcatModal .bc-reprint label{white-space:normal;align-items:flex-start}#blackcatModal .bc-status{font-size:13px;color:#627469}#blackcatModal .bc-defaults{padding:12px;background:#f2f6f3;border-radius:8px}#blackcatModal [hidden]{display:none!important}@media(max-width:520px){#blackcatModal .modal{width:100%;max-height:96vh}#blackcatModal .bc-controls label{width:100%;justify-content:space-between}}`;
     style.textContent += `#blackcatFeedback.is-error{background:#fff1f0;border:2px solid #c0392b;border-left-width:7px;color:#78261e;padding:18px;line-height:1.7;margin-bottom:16px}#blackcatFeedback .bc-failure-title{display:block;font-size:22px;line-height:1.4}#blackcatFeedback p{margin:10px 0}#blackcatFeedback .bc-retry{background:#a82b20;border-color:#a82b20;color:#fff;font-weight:700;min-height:46px}#blackcatFeedback .bc-actions{margin-bottom:0}`;
     style.textContent += `#blackcatIssuedDialog{position:fixed;inset:0;margin:auto;max-height:calc(100dvh - 40px);overflow:auto;width:min(460px,calc(100vw - 40px));box-sizing:border-box;border:1px solid #d9b56c;border-radius:12px;padding:22px;color:#263d30;background:#fff;box-shadow:0 16px 60px #0003}#blackcatIssuedDialog::backdrop{background:#0006}#blackcatIssuedDialog p{white-space:pre-line;line-height:1.7;overflow-wrap:anywhere}#blackcatIssuedDialog h3{margin:0 0 12px}#blackcatIssuedDialog button{font:inherit;padding:10px 14px;border:1px solid #bccabf;border-radius:8px;background:#fff;cursor:pointer}#blackcatIssuedConfirm{background:#246741!important;color:#fff}#blackcatIssuedDialog .bc-confirm-actions{display:flex;justify-content:flex-end;gap:10px}`;
+    style.textContent += `
+#blackcatCandidates{display:grid;gap:12px;margin:12px 0 16px}
+#blackcatModal .bc-order-card{padding:16px;border:1px solid #cfddd3;border-radius:12px;background:#fff;min-width:0}
+#blackcatModal .bc-order-card.bc-issued{background:#fffaf0;border-color:#e5c886}
+#blackcatModal .bc-order-card:has(input:checked){border-color:#397650;box-shadow:inset 0 0 0 1px #397650;background:#f4faf5}
+#blackcatModal .bc-card-heading{align-items:flex-start;gap:10px;margin-bottom:12px}
+#blackcatModal .bc-card-heading .bc-check{flex:1;min-width:0;align-items:flex-start;gap:10px}
+#blackcatModal .bc-card-heading input{margin:3px 0 0}
+#blackcatModal .bc-card-name{display:block;font-size:17px;line-height:1.4;overflow-wrap:anywhere}
+#blackcatModal .bc-card-id{display:block;font-size:13px;line-height:1.6;color:#526557;overflow-wrap:anywhere}
+#blackcatModal .bc-order-card .bc-status{padding:4px 8px;border-radius:6px;background:#e9f2eb;color:#30563d;font-weight:700;max-width:100%;overflow-wrap:anywhere}
+#blackcatModal .bc-issued .bc-status{background:#f9ebc8;color:#78500d}
+#blackcatModal .bc-card-body{display:grid;gap:8px;padding-left:28px}
+#blackcatModal .bc-card-field{display:grid;grid-template-columns:70px minmax(0,1fr);gap:8px;line-height:1.65;font-size:14px;color:#344d3e}
+#blackcatModal .bc-card-field>span:first-child{color:#617166}
+#blackcatModal .bc-card-field>span:last-child{overflow-wrap:anywhere;white-space:pre-line}
+#blackcatModal .bc-card-facts{display:flex;flex-wrap:wrap;gap:6px 18px;padding:8px 0;border-top:1px solid #dfe8e1;border-bottom:1px solid #dfe8e1;font-size:14px;color:#344d3e}
+#blackcatModal .bc-card-tracking{padding:9px 12px;border-radius:8px;background:#edf2ed;font-size:14px;line-height:1.7;overflow-wrap:anywhere}
+#blackcatModal .bc-card-tracking strong{display:block;letter-spacing:.03em}
+#blackcatModal .bc-card-warning{color:#9b391b;background:#fff0dd}
+#blackcatModal .bc-order-card .bc-error{margin-top:10px;padding:10px;border-radius:8px;background:#fff0ed;line-height:1.6}
+@media(max-width:520px){#blackcatModal .bc-order-card{padding:12px}#blackcatModal .bc-card-body{padding-left:0}#blackcatModal .bc-card-heading .bc-status{margin-left:28px}#blackcatModal .bc-card-heading{flex-direction:column}#blackcatModal .bc-card-field{grid-template-columns:60px minmax(0,1fr)}}
+`;
+    style.textContent += `
+#blackcatModal .bc-shipping-info{margin:14px 0 12px;padding:16px;border:1px solid #dce6df;border-radius:12px;background:#f5f8f5}
+#blackcatModal .bc-section-title{margin:0;font-size:15px;font-weight:700;color:#2d4937}
+#blackcatModal .bc-date-grid{display:grid;grid-template-columns:1fr 1fr .65fr;gap:16px;margin:12px 0}
+#blackcatModal .bc-date-grid>div{display:grid;gap:5px;min-width:0}
+#blackcatModal .bc-date-label{font-size:13px;color:#617166}
+#blackcatModal .bc-date-grid strong{font-size:21px;line-height:1.3;color:#243e2e;font-variant-numeric:tabular-nums}
+#blackcatModal .bc-info-note{margin:0;font-size:12px;line-height:1.7;color:#65756a}
+#blackcatModal .bc-scope{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px 16px;margin:0 0 6px;font-size:14px;line-height:1.6;color:#344d3e}
+#blackcatModal .bc-scope strong{font-size:15px}
+#blackcatModal .bc-scope-filter{margin:0;color:#617166;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+#blackcatModal .bc-sender-details{margin:12px 0 18px;border-bottom:1px solid #e2e9e4;padding-bottom:12px}
+#blackcatModal .bc-sender-details summary{cursor:pointer;color:#54695b;font-size:13px;font-weight:600}
+#blackcatModal .bc-sender-details .bc-detail{margin:10px 0 0;white-space:pre-line}
+#blackcatModal .bc-selection-toolbar{align-items:center;padding-top:4px}
+#blackcatModal:has(#blackcatSelection:not([hidden])) #blackcatFeedback:not(.is-error){background:transparent;padding:0;margin:0 0 10px;color:#54695b;font-size:14px;line-height:1.7}
+@media(max-width:520px){#blackcatModal .bc-shipping-info{padding:12px}#blackcatModal .bc-date-grid{grid-template-columns:1fr 1fr;gap:12px}#blackcatModal .bc-date-grid strong{font-size:18px}#blackcatModal .bc-date-grid>div:last-child{grid-column:1/-1;display:flex;align-items:baseline;gap:10px}#blackcatModal .bc-date-grid>div:last-child strong{font-size:15px}}
+`;
+    style.textContent += `
+#blackcatModal .bc-ezcat-result-card{margin:14px 0;padding:18px;border:1px solid #d3e2d8;border-radius:12px;background:#fff}
+#blackcatModal .bc-ezcat-result-card>strong{font-size:18px;color:#263e2f}
+#blackcatModal .bc-label-heading{margin:18px 0 6px;font-size:14px;color:#526557}
+#blackcatModal .bc-label-numbers{display:grid;gap:8px}
+#blackcatModal .bc-label-numbers strong{font-size:26px;line-height:1.4;letter-spacing:.04em;color:#205b37;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+#blackcatModal .bc-ezcat-result-card .bc-detail{margin:6px 0 14px}
+#blackcatModal .bc-old-label-warning{margin:0;font-weight:700;font-size:16px;color:#8b4217}
+#blackcatModal .bc-ezcat-explanation{margin:14px 0;color:#617166;font-size:13px}
+#blackcatModal .bc-ezcat-explanation summary{cursor:pointer}
+@media(max-width:520px){#blackcatModal .bc-ezcat-result-card{padding:14px}#blackcatModal .bc-label-numbers strong{font-size:23px}}
+#blackcatImportDialog .bc-ezcat-result-card{margin:14px 0;padding:18px;border:1px solid #d3e2d8;border-radius:12px;background:#fff}
+#blackcatImportDialog .bc-ezcat-result-card>strong{font-size:18px;color:#263e2f}
+#blackcatImportDialog .bc-label-heading{margin:18px 0 6px;font-size:14px;color:#526557}
+#blackcatImportDialog .bc-label-numbers{display:grid;gap:8px}
+#blackcatImportDialog .bc-label-numbers strong{font-size:26px;line-height:1.4;letter-spacing:.04em;color:#205b37;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+#blackcatImportDialog .bc-ezcat-result-card .bc-detail{margin:6px 0 14px}
+#blackcatImportDialog .bc-old-label-warning{margin:0;font-weight:700;font-size:16px;color:#8b4217}
+#blackcatImportDialog .bc-ezcat-explanation{margin:14px 0;color:#617166;font-size:13px}
+#blackcatImportDialog .bc-ezcat-explanation summary{cursor:pointer}
+@media(max-width:520px){#blackcatImportDialog .bc-ezcat-result-card{padding:14px}#blackcatImportDialog .bc-label-numbers strong{font-size:23px}}
+`;
+    style.textContent += `#blackcatImportDialog{position:fixed;inset:0;margin:auto;width:min(620px,calc(100vw - 32px));max-height:90dvh;overflow:auto;box-sizing:border-box;border:1px solid #d3e2d8;border-radius:18px;padding:20px;color:#263e2f;background:white;box-shadow:0 16px 60px #0003}#blackcatImportDialog::backdrop{background:#0006}#blackcatImportDialog .bc-import-header{display:flex;align-items:center;justify-content:space-between;gap:12px}#blackcatImportDialog h3{margin:0;font-size:20px}#blackcatImportDialog button{font:inherit;padding:10px 14px;border:1px solid #bccabf;border-radius:8px;background:white;cursor:pointer}#blackcatImportDialog .bc-card-id{font-size:13px;color:#526557;overflow-wrap:anywhere}#blackcatImportDialog .bc-detail{font-size:14px;line-height:1.7;color:#42554a}#blackcatImportDialog .bc-ezcat-explanation p{line-height:1.7}`;
     document.head.appendChild(style);
     const modal = document.createElement("div"); modal.id = "blackcatModal"; modal.className = "modal-overlay";
-    modal.innerHTML = `<div class="modal modal-container" role="dialog" aria-modal="true" aria-labelledby="blackcatTitle"><div class="modal-header"><h3 id="blackcatTitle">列印宅配單</h3><button type="button" id="blackcatClose" aria-label="關閉黑貓建單">關閉</button></div><div class="modal-body"><div id="blackcatFeedback" class="bc-summary" role="status" aria-live="polite"></div><div id="blackcatSelection"><p id="blackcatSender" class="bc-detail"></p><div class="bc-controls bc-defaults"><span>出貨日 <strong id="blackcatShipmentDate"></strong></span><span>希望配達日 <strong id="blackcatDeliveryDate"></strong></span><span>溫層 <strong>常溫</strong></span></div><p class="bc-detail">日期與常溫由系統帶入，週日順延。A4 二聯；代收金額只放在每筆訂單的第一件。</p><div class="bc-actions"><button type="button" id="blackcatSelectNew">全選未建單</button><button type="button" id="blackcatClearSelection">全部取消</button><button type="button" id="blackcatReload">重新整理訂單</button></div><div id="blackcatCandidates"></div><div id="blackcatSummary" class="bc-summary"></div><div class="bc-actions"><button type="button" id="blackcatSubmit" class="bc-primary">列印宅配單</button></div></div><div id="blackcatResult" hidden></div><div class="bc-actions"><button type="button" id="blackcatRecover" hidden>查詢本次結果</button></div><section id="blackcatUnfinished" hidden></section><details><summary>最近列印紀錄</summary><div id="blackcatHistory"></div></details></div></div>`;
+    modal.innerHTML = `<div class="modal modal-container" role="dialog" aria-modal="true" aria-labelledby="blackcatTitle"><div class="modal-header"><h3 id="blackcatTitle">列印宅配單</h3><button type="button" id="blackcatClose" aria-label="關閉黑貓建單">關閉</button></div><div class="modal-body"><div id="blackcatFeedback" class="bc-summary" role="status" aria-live="polite"></div><div id="blackcatSelection"><section class="bc-shipping-info" aria-labelledby="blackcatShippingInfoTitle"><h4 class="bc-section-title" id="blackcatShippingInfoTitle">本次出貨資訊</h4><div class="bc-date-grid"><div><span class="bc-date-label">出貨日</span><strong id="blackcatShipmentDate"></strong></div><div><span class="bc-date-label">希望配達日</span><strong id="blackcatDeliveryDate"></strong></div><div><span class="bc-date-label">溫層</span><strong>常溫</strong></div></div><p class="bc-info-note">系統自動帶入，遇週日順延。</p></section><div id="blackcatSender"></div><div class="bc-actions bc-selection-toolbar"><button type="button" id="blackcatSelectNew">全選未建單</button><button type="button" id="blackcatClearSelection">全部取消</button><button type="button" id="blackcatReload">重新整理訂單</button></div><div id="blackcatCandidates"></div><div id="blackcatSummary" class="bc-summary"></div><div class="bc-actions"><button type="button" id="blackcatSubmit" class="bc-primary">列印宅配單</button></div></div><div id="blackcatResult" hidden></div><div class="bc-actions"><button type="button" id="blackcatRecover" hidden>查詢本次結果</button></div><section id="blackcatUnfinished" hidden></section><details><summary>最近列印紀錄</summary><div id="blackcatHistory"></div></details></div></div>`;
     document.body.appendChild(modal);
     const issuedDialog = document.createElement("dialog");
     issuedDialog.id = "blackcatIssuedDialog";
@@ -195,7 +268,7 @@
       catch (e) { feedback(explain(e.message), true); }
     };
     document.addEventListener("keydown", (event) => {
-      if (issuedDialog.open) return;
+      if (issuedDialog.open || byId("blackcatImportDialog")?.open) return;
       if (event.key === "Escape" && modal.classList.contains("open")) { event.preventDefault(); close(); }
     });
     modal.addEventListener("keydown", (event) => {
@@ -249,7 +322,7 @@
       view.defaults = result.defaults;
       byId("blackcatShipmentDate").textContent = view.defaults.shipmentDate;
       byId("blackcatDeliveryDate").textContent = view.defaults.deliveryDate;
-      byId("blackcatSender").textContent = `沿用出貨總表篩選：${scope.summary}｜符合 ${view.candidates.length} 筆\n訂單出貨日期：${view.date}｜${view.config.environment === "production" ? "正式站" : view.config.environment === "test" ? "測試站" : "未設定站台"}｜寄件：${view.config.senderName || "未設定"} ${view.config.senderPhone || ""} ${view.config.senderAddress || ""}`;
+      byId("blackcatSender").innerHTML = `<div class="bc-scope"><strong>選擇訂單 · ${view.candidates.length} 筆</strong><span>訂單出貨日期：${esc(view.date)}</span></div><p class="bc-scope-filter">沿用出貨總表篩選：${esc(scope.summary)}</p><details class="bc-sender-details"><summary>寄件資料與列印設定 · ${view.config.environment === "production" ? "正式站" : view.config.environment === "test" ? "測試站" : "未設定站台"}</summary><p class="bc-detail">寄件人：${esc(view.config.senderName || "未設定")}　${esc(view.config.senderPhone || "")}<br>寄件地址：${esc(view.config.senderAddress || "未設定")}<br>紙張：A4 二聯<br>同一筆訂單有多件包裹時，代收金額只列在第一件。</p></details>`;
       const list = byId("blackcatCandidates");
       list.innerHTML = view.candidates.length ? view.candidates.map((c, i) => {
         const blocked = c.errors.length || c.pendingBatchId || (!c.hasHistory && c.alreadyShipped);
@@ -258,7 +331,7 @@
           ? previousSelected.has(c.orderNo) && prior.hasHistory === c.hasHistory && prior.fingerprint === c.fingerprint && prior.trackingFingerprint === c.trackingFingerprint
           : !c.hasHistory);
         if (checked) view.selected.set(c.orderNo, c.hasHistory ? "reprint" : "initial");
-        return `<div class="bc-order"><div class="bc-row"><label class="bc-check"><input type="checkbox" data-bc-selection="${i}" aria-label="勾選 ${esc(c.recipientName)} ${esc(c.orderNo)}" ${blocked ? "disabled" : ""} ${checked ? "checked" : ""}><strong>${esc(c.recipientName)}｜${esc(c.orderNo)}</strong></label><span class="bc-status">${c.needsReprint ? "已取號・資料已變更，需補印" : c.pendingBatchId ? "列印尚未完成" : c.hasHistory ? "已建單／曾匯出" : preserveSelection && !prior ? "新增訂單・未建單" : "未建單"}</span></div><div class="bc-detail">${esc(c.recipientPhone)}｜${esc(c.recipientAddress)}<br>${c.packageSpecs.length} 件包裹（${esc(c.packageSpecs.map((x) => x === "2" ? "90 cm" : "120 cm").join("、"))}）｜代收 $${Number(c.codAmount || 0).toLocaleString()}｜配達${({ 1: "13 時前", 2: "14–18 時", 4: "不指定" })[c.deliveryTimeSlot] || "待確認"}<br>${esc(c.note || "")}${c.trackingNumbers.length ? `<br>${c.needsReprint ? "舊單請勿貼箱：" : "現有單號："}${esc(c.trackingNumbers.join("、"))}` : c.hasHistory ? "<br>曾匯出 CSV，請先核對 ezcat 是否已建單。" : ""}</div>${blocked ? `<div class="bc-error">${c.pendingBatchId ? "這筆還沒完成，請到「尚未完成的列印」查看。" : c.errors.length ? c.errors.map((e) => esc(messages[e] || e)).join("、") : "已寄出且無單號，請先核對歷史資料。"}</div>` : ""}</div>`;
+        return `<div class="bc-order bc-order-card${c.hasHistory ? " bc-issued" : ""}"><div class="bc-row bc-card-heading"><label class="bc-check"><input type="checkbox" data-bc-selection="${i}" aria-label="勾選 ${esc(c.recipientName)} ${esc(c.orderNo)}" ${blocked ? "disabled" : ""} ${checked ? "checked" : ""}><span><strong class="bc-card-name">${esc(c.recipientName)}</strong><span class="bc-card-id">${esc(c.orderNo)}</span></span></label><span class="bc-status">${c.manualPending ? "已改用 ezcat・待匯回新號" : c.manualSource ? "ezcat 單號已匯回" : c.needsReprint ? "已取號・資料已變更，需補印" : c.pendingBatchId ? "列印尚未完成" : c.hasHistory ? "已建單／曾匯出" : preserveSelection && !prior ? "新增訂單・未建單" : "未建單"}</span></div><div class="bc-card-body"><div class="bc-card-field"><span>電話</span><span>${esc(c.recipientPhone)}</span></div><div class="bc-card-field"><span>收件地址</span><span>${esc(c.recipientAddress)}</span></div>${c.note ? `<div class="bc-card-field"><span>商品備註</span><span>${esc(c.note)}</span></div>` : ""}<div class="bc-card-facts"><span>${c.packageSpecs.length} 件包裹（${esc(c.packageSpecs.map((x) => x === "2" ? "90 cm" : "120 cm").join("、"))}）</span><span>代收 $${Number(c.codAmount || 0).toLocaleString()}</span><span>配達${({ 1: "13 時前", 2: "14–18 時", 4: "不指定" })[c.deliveryTimeSlot] || "待確認"}</span></div>${c.trackingNumbers.length ? `<div class="bc-card-tracking${c.needsReprint ? " bc-card-warning" : ""}">${c.needsReprint ? "舊單請勿貼箱，需補印" : "現有單號"}<strong>${esc(c.trackingNumbers.join("、"))}</strong></div>` : c.hasHistory ? '<div class="bc-card-tracking bc-card-warning">曾匯出 CSV，請先核對 ezcat 是否已建單。</div>' : ""}</div>${blocked ? `<div class="bc-error">${c.pendingBatchId ? "這筆還沒完成，請到「尚未完成的列印」查看。" : c.errors.length ? c.errors.map((e) => esc(messages[e] || e)).join("、") : "已寄出且無單號，請先核對歷史資料。"}</div>` : ""}</div>`;
       }).join("") : '<p class="bc-detail">目前出貨總表篩選條件沒有符合的訂單。</p>';
       list.querySelectorAll("[data-bc-selection]").forEach((node) => { node.onchange = () => {
         const c = view.candidates[Number(node.dataset.bcSelection)];
@@ -294,17 +367,17 @@
     const otherPending = hasPending && pendingWork?.batchId !== view.batch?.batchId;
     byId("blackcatSubmit").disabled = view.busy || view.loading || !!view.accessIssue || !view.config?.ready || !chosen.length || parcels > 100 || hasPending;
     byId("blackcatSubmit").textContent = view.busy || downloadFlights.size ? "宅配單生成中…" : "列印宅配單";
-    const working = view.busy || view.loading || downloadFlights.size > 0;
+    const working = view.busy || view.loading || !!view.ezcatBusy || downloadFlights.size > 0;
     const blocked = !!view.accessIssue;
     const retryingPdf = view.pdfRetry?.batchId === view.batch?.batchId && !!view.pdfRetry;
-    if (byId("blackcatRetryPdf")) byId("blackcatRetryPdf").disabled = working || otherPending || !view.batch?.pdfReady;
+    if (byId("blackcatRetryPdf")) byId("blackcatRetryPdf").disabled = working || otherPending || (!view.batch?.pdfReady && view.pdfRetry?.mode !== "process");
     if (byId("blackcatDownloadHelp")) byId("blackcatDownloadHelp").hidden = blocked || retryingPdf || !(view.batch?.pdfReady || activeStates.includes(view.batch?.state));
     byId("blackcatHistory").querySelectorAll("[data-bc-history]").forEach((button) => { button.disabled = working; });
     ["blackcatReload", "blackcatSelectNew", "blackcatClearSelection"].forEach((id) => { byId(id).disabled = working; });
     if (byId("blackcatDownload")) { byId("blackcatDownload").disabled = blocked || working || otherPending || !view.batch?.pdfReady || pdfOpened(view.batch?.batchId); byId("blackcatDownload").textContent = working || activeStates.includes(view.batch?.state) ? "宅配單生成中…" : "列印宅配單"; }
     const resumable = !!view.batch && (view.batch.retryable || activeStates.includes(view.batch.state));
     const reviewing = view.batch?.state === "unknown" && !otherPending && !pendingWork?.resolution && !byId("blackcatResult").hidden;
-    byId("blackcatRecover").hidden = blocked || reviewing || ((!hasPending && !resumable) || (!otherPending && !byId("blackcatResult").hidden && (!!view.batch?.pdfReady || (working && activeStates.includes(view.batch?.state)))));
+    byId("blackcatRecover").hidden = blocked || retryingPdf || reviewing || ((!hasPending && !resumable) || (!otherPending && !byId("blackcatResult").hidden && (!!view.batch?.pdfReady || (working && activeStates.includes(view.batch?.state)))));
     byId("blackcatRecover").disabled = working;
     byId("blackcatUnfinished")?.querySelectorAll("button").forEach(button => { button.disabled = working; });
     byId("blackcatResolution")?.querySelectorAll("input,select,textarea,button").forEach(node => { node.disabled = working || otherPending || !!pendingWork?.resolution; });
@@ -313,6 +386,8 @@
       byId("blackcatOpenPdf").disabled = blocked || working || otherPending;
       byId("blackcatOpenPdf").textContent = working ? "PDF 開啟中…" : "開啟 PDF";
     }
+    if (byId("blackcatHandoffSubmit")) byId("blackcatHandoffSubmit").disabled = working || otherPending || !!pendingWork?.handoff;
+    ["blackcatHandoffStart", "blackcatRetryHandoff", "blackcatHandoffCancel", "blackcatEzcatExport", "blackcatEzcatImport", "blackcatEzcatRefresh", "blackcatEzcatFile"].forEach(id => { if (byId(id)) byId(id).disabled = working || otherPending || blocked; });
     if (byId("blackcatDownloadNote")) {
       byId("blackcatDownloadNote").hidden = blocked || retryingPdf || !view.batch?.pdfReady || pdfOpened(view.batch?.batchId);
       byId("blackcatDownloadNote").textContent = "下載或開啟未成功，再按「列印宅配單」即可，單號不變。";
@@ -320,7 +395,7 @@
     byId("blackcatRecover").textContent = working ? "宅配單生成中…" : "繼續剛才的列印";
   }
   function renderHistory() {
-    const unfinished = view.batches.filter(b => !["ready", "rejected", "needs_reprint"].includes(b.state));
+    const unfinished = view.batches.filter(b => !["ready", "rejected", "needs_reprint", "ezcat"].includes(b.state));
     const pendingNode = byId("blackcatUnfinished");
     pendingNode.hidden = !unfinished.length;
     pendingNode.innerHTML = '<h3>尚未完成的列印</h3><p class="bc-detail">還沒完成的宅配單會留在這裡，換電腦也能繼續。已取得的單號不會變。</p>' + unfinished.map((b, i) => `<div class="bc-batch bc-row"><div class="bc-detail"><strong>${esc(states[b.state] || b.state)}</strong>${b.state === "unknown" ? "<br>尚未確認是否取得單號，請找協助處理的人向黑貓確認。" : ""}<br>${esc(b.shipmentDate)}｜${b.orderCount} 筆／${b.packageCount} 件<br>${esc(b.orders.map(o => o.recipientName).join("、"))}</div>${view.batch?.batchId === b.batchId && !byId("blackcatResult").hidden ? '<span class="bc-status">目前查看</span>' : `<button type="button" data-bc-resume="${i}">${b.state === "unknown" ? "核對建單結果" : "繼續剛才的列印"}</button>`}</div>`).join("");
@@ -328,13 +403,13 @@
       const b = unfinished[Number(button.dataset.bcResume)];
       if (b.state === "unknown") readHistoryBatch(b.batchId); else resumeBatch(b.batchId);
     }; });
-    const history = view.batches.filter(b => ["ready", "rejected", "needs_reprint"].includes(b.state)).slice(0, 20);
+    const history = view.batches.filter(b => ["ready", "rejected", "needs_reprint", "ezcat"].includes(b.state)).slice(0, 20);
     const node = byId("blackcatHistory");
-    node.innerHTML = history.length ? history.map((b, i) => `<div class="bc-batch bc-row"><div class="bc-detail">${esc(b.shipmentDate)}｜${b.orderCount} 筆／${b.packageCount} 件<br>${esc(b.downloadError === "BLACKCAT_LABEL_CHANGED" ? "已取號，資料已變更，需補印" : b.downloadError === "BLACKCAT_PDF_SUPERSEDED" ? "舊 PDF 已停止下載" : states[b.state] || b.state)}</div><button type="button" data-bc-history="${i}">${b.state === "rejected" ? "查看結案" : "開啟 PDF"}</button></div>`).join("") : '<p class="bc-detail">尚無 API 建單紀錄。</p>';
+    node.innerHTML = history.length ? history.map((b, i) => `<div class="bc-batch bc-row"><div class="bc-detail">${esc(b.shipmentDate)}｜${b.orderCount} 筆／${b.packageCount} 件<br>${esc(b.downloadError === "BLACKCAT_LABEL_CHANGED" ? "已取號，資料已變更，需補印" : b.downloadError === "BLACKCAT_PDF_SUPERSEDED" ? "舊 PDF 已停止下載" : states[b.state] || b.state)}</div><button type="button" data-bc-history="${i}">${b.state === "ezcat" ? "查看 ezcat 進度" : b.state === "rejected" ? "查看結案" : "開啟 PDF"}</button></div>`).join("") : '<p class="bc-detail">尚無 API 建單紀錄。</p>';
     node.querySelectorAll("[data-bc-history]").forEach((button) => { button.onclick = () => {
       if (view.busy || downloadFlights.size) return;
       const b = history[Number(button.dataset.bcHistory)];
-      readHistoryBatch(b.batchId, b.state !== "rejected");
+      readHistoryBatch(b.batchId, !["rejected", "ezcat"].includes(b.state));
     }; });
   }
   async function readHistoryBatch(batchId, autoOpen = false) {
@@ -408,6 +483,154 @@
     };
   }
 
+  function importedLabelCard(o, numbers) {
+    return `<div class="bc-ezcat-result-card"><strong>${esc(o.recipientName)}</strong><div class="bc-card-id">${esc(o.orderNo)}</div><p class="bc-label-heading">已更新宅配單號</p><div class="bc-label-numbers">${numbers.map(n => `<strong>${esc(n)}</strong>`).join("")}</div><p class="bc-detail">請確認紙上的單號相同。</p><p class="bc-old-label-warning">舊單請作廢</p></div>`;
+  }
+  function showImportedLabels(orders) {
+    const updated = (Array.isArray(orders) ? orders : []).filter(o => o.orderNo && Array.isArray(o.trackingNumbers) && o.trackingNumbers.length && o.trackingNumbers.every(n => /^\d{12}$/.test(n)));
+    if (!updated.length) return;
+    mount();
+    let dialog = byId("blackcatImportDialog");
+    if (!dialog) {
+      dialog = document.createElement("dialog"); dialog.id = "blackcatImportDialog";
+      dialog.setAttribute("aria-labelledby", "blackcatImportTitle");
+      document.body.appendChild(dialog);
+    }
+    const focusBefore = document.activeElement;
+    dialog.innerHTML = '<div class="bc-import-header"><h3 id="blackcatImportTitle">新單號已更新</h3><button type="button" id="blackcatImportClose" autofocus>關閉</button></div>' + updated.map(o => importedLabelCard(o, o.trackingNumbers)).join("") + '<details class="bc-ezcat-explanation"><summary>其他說明</summary><p>請使用 ezcat 列印的新宅配單。舊單請勿貼箱；系統不會通知黑貓取消舊託運資料。</p></details>';
+    byId("blackcatImportClose").onclick = () => dialog.close();
+    dialog.onclose = () => focusBefore?.focus();
+    if (!dialog.open) dialog.showModal();
+    byId("blackcatImportClose").focus();
+  }
+  function handoffButton(batch, id = "blackcatHandoffStart") {
+    return batch?.canHandoff ? `<button type="button" id="${id}">改用 ezcat 手動匯出列印</button>` : "";
+  }
+  function confirmHandoff(batch) {
+    if (view.busy || view.ezcatBusy || downloadFlights.size || view.batch?.batchId !== batch.batchId) return;
+    const host = byId("blackcatHandoff");
+    host.hidden = false;
+    host.innerHTML = `<p>這次 ${batch.orderCount} 筆訂單改用 ezcat 列印，舊單請作廢。</p><div class="bc-actions"><button type="button" id="blackcatHandoffSubmit" class="bc-primary">確認並下載 CSV</button><button type="button" id="blackcatHandoffCancel">取消</button></div><details><summary>其他說明</summary><p class="bc-detail">確認後停止這次的背景處理與舊 PDF。系統不會通知黑貓取消舊託運資料。</p></details>`;
+    byId("blackcatHandoffCancel").onclick = () => { renderHandoff(batch); updateSummary(); };
+    byId("blackcatHandoffSubmit").onclick = async () => {
+      if (view.busy || view.ezcatBusy || downloadFlights.size) return;
+      try {
+        const work = pending();
+        if (work && work.batchId !== batch.batchId) throw new Error("BLACKCAT_ORDER_BUSY");
+        pending({ batchId: batch.batchId, handoff: { batchId: batch.batchId, handoffKey: crypto.randomUUID(), confirmed: true } });
+        await recover();
+        if (view.batch?.batchId === batch.batchId && view.batch.state === "ezcat" && byId("blackcatModal").classList.contains("open")) await exportHandoffCsv(batch.batchId);
+      } catch (e) { feedback(explain(e.message), true); }
+    };
+    byId("blackcatHandoffSubmit").focus();
+    updateSummary();
+  }
+  function handoffPendingOrders(batch) {
+    return batch.orders.filter(o => o.manualLabel && !o.manualLabel.currentNumbers?.length);
+  }
+  async function exportHandoffCsv(batchId) {
+    if (view.busy || view.ezcatBusy || downloadFlights.size) return;
+    view.ezcatBusy = true; const epoch = view.epoch; updateSummary();
+    feedback("正在準備這次訂單的 CSV，請稍候…");
+    try {
+      const { batch } = await api("adminReadBlackCatBatch", { batchId });
+      if (batch.state !== "ezcat") throw new Error("BLACKCAT_EZCAT_SUPERSEDED");
+      const orders = handoffPendingOrders(batch);
+      if (!orders.length) { if (epoch === view.epoch) showBatch(batch); return; }
+      const range = { startDate: batch.sourceDate, endDate: batch.sourceDate };
+      const candidates = (await api("adminReadEzcatExportCandidates", range)).candidates;
+      const selections = orders.map(o => {
+        const c = candidates.find(c => c.orderNo === o.orderNo);
+        if (!c || c.errors?.length) throw new Error("ORDER_NOT_EXPORTABLE");
+        return { orderNo: o.orderNo, mode: c.requiresReexportApproval ? "reexport" : "initial", reason: c.requiresReexportApproval ? "rebuild_tracking" : "" };
+      });
+      if (epoch !== view.epoch) return;
+      const savedKey = `${key()}:ezcat-csv:${batchId}`;
+      let saved; try { saved = JSON.parse(sessionStorage.getItem(savedKey) || "null"); } catch (_) { /* Revalidate below. */ }
+      const signature = JSON.stringify(orders.map(o => { const c = candidates.find(c => c.orderNo === o.orderNo); return [o.orderNo,c.fingerprint]; }));
+      let file;
+      if (saved?.signature === signature && orders.every(o => candidates.find(c => c.orderNo === o.orderNo).lastExportBatchId === saved.batchId)) {
+        file = await api("adminDownloadEzcatExportBatch", { batchId: saved.batchId });
+      } else {
+        file = await api("adminCreateEzcatExportBatch", { ...range, selections });
+      }
+      if (!file.csvBase64 || !file.batch?.fileName) throw new Error("EZCAT_EXPORT_CREATE_FAILED");
+      try { sessionStorage.setItem(savedKey, JSON.stringify({ signature, batchId: file.batch.batchId })); } catch (_) { /* CSV can still be delivered; metadata is revalidated next time. */ }
+      if (epoch !== view.epoch) return;
+      downloadEzcatBase64File(file.csvBase64, file.batch.fileName, file.mimeType || "text/csv");
+      const latest = await api("adminReadBlackCatBatch", { batchId });
+      if (epoch !== view.epoch) return;
+      showBatch(latest.batch);
+      feedback("CSV 已下載。請到 ezcat 匯入並列印，再回這裡按「匯入新單號」。");
+    } catch (e) {
+      if (epoch === view.epoch && !showAccessProblem(e.message, () => exportHandoffCsv(batchId))) feedback("CSV 尚未下載完成。請按「下載 CSV」再試一次；不用重新選訂單。" + (e.message === "ORDER_NOT_EXPORTABLE" ? " 訂單資料不完整，請先到訂單作業修正。" : ""), true);
+    } finally { view.ezcatBusy = false; if (epoch === view.epoch) updateSummary(); }
+  }
+  function parseHandoffImport(fileName, size, buffer, batch) {
+    if (!/\.csv$/i.test(fileName) || size > 5 * 1024 * 1024) throw new Error("FILE_INVALID");
+    const rows = parseShippingTrackingCsv(decodeShippingTrackingCsv(buffer).text);
+    const headers = (rows[0] || []).map(s => String(s).replace(/^\uFEFF/, "").trim());
+    const oi = headers.indexOf("訂單編號"), ti = headers.indexOf("託運單號");
+    if (oi < 0 || ti < 0) throw new Error("FILE_INVALID");
+    const allowed = new Set(handoffPendingOrders(batch).map(o => o.orderNo)), grouped = new Map();
+    for (const row of rows.slice(1)) {
+      const orderNo = String(row[oi] || "").trim();
+      if (!allowed.has(orderNo)) continue;
+      const number = normalizeShippingTrackingNumber(row[ti]);
+      if (!/^\d{12}$/.test(number)) throw new Error("FILE_INVALID");
+      if (!grouped.has(orderNo)) grouped.set(orderNo, new Set());
+      grouped.get(orderNo).add(number);
+    }
+    if (!grouped.size) throw new Error("FILE_NO_MATCH");
+    return [...grouped].map(([orderNo,numbers]) => ({ orderNo, trackingNos: [...numbers] }));
+  }
+  async function importHandoffFile(batchId, file) {
+    if (!file || view.busy || view.ezcatBusy || downloadFlights.size) return;
+    view.ezcatBusy = true; const epoch = view.epoch; updateSummary(); feedback("正在核對並更新這次訂單的單號…");
+    let written = false;
+    try {
+      const { batch } = await api("adminReadBlackCatBatch", { batchId });
+      if (batch.state !== "ezcat") throw new Error("BLACKCAT_EZCAT_SUPERSEDED");
+      if (!handoffPendingOrders(batch).length) { if (epoch === view.epoch) showBatch(batch); return; }
+      const entries = parseHandoffImport(file.name, file.size, await file.arrayBuffer(), batch);
+      if (epoch !== view.epoch) return;
+      const result = await api("adminImportTrackingNumbers", { entries }); written = true;
+      if (typeof refreshAdminOrdersAfterBatch === "function" && await refreshAdminOrdersAfterBatch() === false) throw new Error("MANIFEST_SYNC");
+      if (typeof loadCompleteShippingManifestOrders === "function" && await loadCompleteShippingManifestOrders() === false) throw new Error("MANIFEST_SYNC");
+      const latest = await api("adminReadBlackCatBatch", { batchId });
+      if (epoch !== view.epoch) return;
+      showBatch(latest.batch);
+      if (result.conflicts?.length || result.unmatched?.length) {
+        const details = (result.conflicts || []).map(c => `${c.orderNo}：${typeof formatShippingTrackingConflictReason === "function" ? formatShippingTrackingConflictReason(c.reason) : explain(c.reason)}`).join("；");
+        feedback(`部分訂單尚未更新。已成功的單號顯示在下方；請核對剩下的訂單後重新匯入。${details}`, true);
+      }
+    } catch (e) {
+      if (epoch === view.epoch && byId("blackcatEzcatRefresh")) byId("blackcatEzcatRefresh").hidden = false;
+      if (epoch === view.epoch && !showAccessProblem(e.message, () => importHandoffFile(batchId, file))) feedback(written ? "單號已送出更新，但畫面還沒同步。請按「重新查看單號」，確認後再貼單。" : e.message === "FILE_NO_MATCH" ? "這份檔案沒有這次待更新的訂單。請選擇 ezcat 剛匯出的貨態檔。" : e.message === "FILE_INVALID" || /ENCODING|HEADER/.test(e.message) ? "檔案格式不對。請選擇 5MB 以下、包含「訂單編號、託運單號」的 ezcat 貨態 CSV。" : "還沒確認新單號是否更新。請按「重新查看單號」；未完成的訂單可再匯入同一份檔案。", true);
+    } finally { view.ezcatBusy = false; if (epoch === view.epoch) updateSummary(); }
+  }
+  function renderHandoff(batch) {
+    if (batch.state === "ezcat") {
+      const remaining = handoffPendingOrders(batch), completed = batch.orders.every(o => o.manualLabel?.currentNumbers?.length);
+      byId("blackcatResult").innerHTML = (remaining.length ? `<section class="bc-summary"><strong>到 ezcat 匯入 CSV 並列印</strong><p>印好後，把 ezcat 的貨態檔匯回這裡，就會顯示要貼的新單號。</p><div class="bc-actions"><button type="button" id="blackcatEzcatExport">下載 CSV</button><button type="button" class="bc-primary" id="blackcatEzcatImport">匯入新單號</button><button type="button" id="blackcatEzcatRefresh" hidden>重新查看單號</button></div><input type="file" id="blackcatEzcatFile" accept=".csv,text/csv" hidden></section>` : "") + batch.orders.map(o => {
+        const numbers = o.manualLabel?.currentNumbers || [];
+        return numbers.length ? importedLabelCard(o,numbers) : `<div class="bc-ezcat-result-card"><strong>${esc(o.recipientName)}</strong><div class="bc-card-id">${esc(o.orderNo)}</div><p class="bc-detail">${o.manualLabel ? "等待匯入新單號" : "已有較新的操作，請查看出貨總表。"}</p><p class="bc-old-label-warning">舊單請作廢</p></div>`;
+      }).join("") + '<details class="bc-ezcat-explanation"><summary>其他說明</summary><p>舊 PDF 已停止使用，系統不會通知黑貓取消舊託運資料。貨態檔中的其他訂單不會在這裡更新。</p></details>';
+      if (remaining.length) {
+        byId("blackcatEzcatExport").onclick = () => exportHandoffCsv(batch.batchId);
+        byId("blackcatEzcatImport").onclick = () => byId("blackcatEzcatFile").click();
+        byId("blackcatEzcatFile").onchange = event => { const file = event.target.files?.[0]; event.target.value = ""; importHandoffFile(batch.batchId,file); };
+        byId("blackcatEzcatRefresh").onclick = () => readHistoryBatch(batch.batchId);
+      }
+      feedback(completed ? "新單號已更新" : "沿用這次訂單，不用重新選擇。");
+      return;
+    }
+    if (!batch.canHandoff) return;
+    const old = byId("blackcatHandoff"); if (old) old.remove();
+    byId("blackcatResult").insertAdjacentHTML("beforeend", `<section id="blackcatHandoff" class="bc-actions">${handoffButton(batch)}</section>`);
+    byId("blackcatHandoffStart").onclick = () => confirmHandoff(batch);
+  }
+
   async function submit() {
     if (view.busy || view.loading || view.accessIssue || downloadFlights.size) return;
     try {
@@ -428,6 +651,11 @@
     const epoch = ++view.epoch; view.busy = true; byId("blackcatSubmit").disabled = true; byId("blackcatRecover").disabled = true; updateSummary();
     try {
       let work = pending(); if (!work) return;
+      if (work.handoff) {
+        feedback("正在改用 ezcat，請稍候。重按只會確認同一次轉交，不會重新取號。");
+        await api("adminHandoffBlackCatToEzcat", work.handoff);
+        work = { batchId: work.batchId }; pending(work);
+      }
       if (work.resolution) {
         feedback("正在儲存確認結果，請稍候。重按不會重複儲存，也不會重新取號。");
         await api("adminResolveBlackCatBatch", work.resolution);
@@ -456,16 +684,17 @@
         }
       }
       if (epoch !== view.epoch) return;
-      if (["ready", "needs_reprint"].includes(result.batch.state) && typeof refreshAdminOrdersAfterBatch === "function") {
+      if (["ready", "needs_reprint", "ezcat"].includes(result.batch.state) && typeof refreshAdminOrdersAfterBatch === "function") {
         try {
           if (await refreshAdminOrdersAfterBatch() === false) throw new Error("refresh");
           if (typeof loadCompleteShippingManifestOrders === "function" && await loadCompleteShippingManifestOrders() === false) throw new Error("manifest");
         } catch (error) { view.batch.pdfReady = false; view.batch.retryable = true; throw manifestRefreshFailure(error); }
       }
       if (result.batch.state === "ready" && result.batch.pdfReady && (!result.batch.downloadOfferedAt || work.downloadPending)) await download(result.batch.batchId);
-      if (["ready", "rejected", "needs_reprint"].includes(result.batch.state)) pending(null);
+      if (["ready", "rejected", "needs_reprint", "ezcat"].includes(result.batch.state)) pending(null);
     } catch (e) {
       if (epoch !== view.epoch) return;
+      if (["BLACKCAT_EZCAT_BUSY", "BLACKCAT_EZCAT_UNKNOWN", "BLACKCAT_EZCAT_SUPERSEDED", "BLACKCAT_ORDER_CHANGED", "REQUEST_INVALID"].includes(e.message) && pending()?.handoff) pending({ batchId: pending().batchId });
       if (e.message === "BLACKCAT_RESOLUTION_CONFLICT" && pending()?.batchId) {
         const work = pending(); pending({ batchId: work.batchId });
         try { const latest = await api("adminReadBlackCatBatch", { batchId: work.batchId }); showBatch(latest.batch); } catch (_) { /* Keep recovery available. */ }
@@ -484,6 +713,7 @@
     }
   }
   function showBatch(batch) {
+    if (batch.state === "ezcat" && pending()?.batchId === batch.batchId) pending(null);
     view.batch = batch; byId("blackcatSelection").hidden = true; byId("blackcatResult").hidden = false;
     view.batches = [batch, ...view.batches.filter((b) => b.batchId !== batch.batchId)];
     renderHistory();
@@ -498,6 +728,10 @@
     byId("blackcatOpenPdf").onclick = () => reopenPdf(batch.batchId);
     if (batch.resolution) byId("blackcatResult").insertAdjacentHTML("beforeend", `<p class="bc-detail">核對紀錄：${esc(batch.resolution.actor)}｜${esc(batch.resolution.outcome === "created" ? "已確認有單號，繼續使用原單號" : "已確認沒有單號，可以重新勾選列印")}<br>${esc(batch.resolution.evidence)}</p>`);
     if (batch.state === "unknown") renderResolution(batch);
+    renderHandoff(batch);
+    if (batch.state === "attention" && batch.canHandoff && batch.retryable && !batch.pdfReady && !accessProblem(batch.error)) {
+      feedback("單號已保留。可以再試一次，或改用 ezcat 手動匯出列印。", true, "process");
+    }
     if (accessProblem(invalid || batch.error)) showAccessProblem(invalid || batch.error, () => resumeBatch(batch.batchId));
     updateSummary();
   }
@@ -617,4 +851,5 @@
   }
 
   window.openBlackCatShippingModal = open;
+  window.showBlackCatImportedLabels = showImportedLabels;
 })();
