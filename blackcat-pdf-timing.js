@@ -30,6 +30,17 @@
     // Client/server clock difference is included. Never treat this estimate as
     // an exact cross-clock SLA result or as the PDF viewer's first paint.
     if (timing.storedAt) timing.estimatedStoredToOpenMs = timing.clientOpenRequestedAt - timing.storedAt;
+    // Bounded, allowlisted service durations only. Inclusive elapsedMs values
+    // overlap; selfMs excludes child stages. No job/order IDs or payloads.
+    const work = input.work, names = ['lock.wait', 'config.read', 'orders.read', 'orders.candidates', 'journal.total', 'journal.index', 'journal.read', 'journal.write', 'journal.flush', 'journal.verify', 'process.claim', 'carrier.ParsingAddress', 'carrier.PrintOBT', 'carrier.DownloadOBT', 'receipt.store', 'tracking.total', 'tracking.write', 'snapshot.read', 'snapshot.queue', 'artifact.lookup', 'pdf.store', 'pdf.verify', 'pdf.current'];
+    const duration = value => Number.isFinite(value) && value >= 0 && value <= 86400000;
+    if (work && work.schema === 1 && duration(work.elapsedMs) && Array.isArray(work.stages)) {
+      timing.work = { schema: 1, elapsedMs: work.elapsedMs, stages: work.stages.slice(0, 32).filter(stage => stage && names.includes(stage.name)
+        && Number.isInteger(stage.calls) && stage.calls >= 1 && stage.calls <= 10000
+        && Number.isInteger(stage.failures) && stage.failures >= 0 && stage.failures <= stage.calls
+        && duration(stage.elapsedMs) && duration(stage.selfMs) && stage.selfMs <= stage.elapsedMs)
+        .map(stage => ({ name: stage.name, calls: stage.calls, elapsedMs: stage.elapsedMs, selfMs: stage.selfMs, failures: stage.failures })) };
+    }
     active.delivery = timing; publish();
   });
   document.addEventListener('click', event => {
