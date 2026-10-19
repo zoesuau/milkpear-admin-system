@@ -85,7 +85,9 @@
     const adminSessionToken = token();
     if (!adminSessionToken) throw new Error("ADMIN_SESSION_REQUIRED");
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    // Processing includes carrier + storage time. Keep this response available
+    // for direct PDF delivery; timing out never authorizes another batch.
+    const timeout = setTimeout(() => controller.abort(), action === "adminProcessBlackCatBatch" && data?.deliverPdf === true ? 120000 : 30000);
     try {
     const options = { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, signal: controller.signal, body: JSON.stringify({ action, adminSessionToken, ...data }) };
     const isRead = ["adminReadShippingManifest", "adminReadEzcatExportCandidates", "adminReadBlackCatCandidates", "adminReadBlackCatBatch"].includes(action);
@@ -672,6 +674,7 @@
     const epoch = ++view.epoch; view.busy = true; byId("blackcatSubmit").disabled = true; byId("blackcatRecover").disabled = true; updateSummary();
     try {
       let work = pending(); if (!work) return;
+      let result;
       if (work.handoff) {
         feedback("正在改用 ezcat，請稍候。重按只會確認同一次轉交，不會重新取號。");
         await api("adminHandoffBlackCatToEzcat", work.handoff);
@@ -686,18 +689,30 @@
         feedback("正在處理本次訂單，請稍候。重按不會重新取號；可以關閉視窗，回來查詢本次結果。");
         const response = await api("adminCreateBlackCatBatch", work.body);
         work = { batchId: response.batch.batchId }; pending(work);
+        result = response; // The durable creation reply already contains this job.
       }
       if (epoch !== view.epoch) return;
-      let result = await api("adminReadBlackCatBatch", { batchId: work.batchId });
+      if (!result) result = await api("adminReadBlackCatBatch", { batchId: work.batchId });
       showBatch(result.batch);
       if (activeStates.includes(result.batch.state) || result.batch.retryable) {
         const beforeProcessUpdatedAt = result.batch.updatedAt;
         // Only the backend can claim a queued job. A lost processing response is never a reason to create another job.
-        let processError = null;
-        api("adminProcessBlackCatBatch", { batchId: work.batchId }).catch(e => { processError = e; });
-        for (let count = 0; count < 100 && epoch === view.epoch; count += 1) {
+        // Persist intent before requesting an offer: a lost successful response
+        // must still expose the same PDF on recovery, even when offeredAt exists.
+        work = { ...work, downloadPending: true }; pending(work);
+        try {
+          result = await api("adminProcessBlackCatBatch", { batchId: work.batchId, deliverPdf: true });
+        } catch (error) {
+          if (accessProblem(error.message)) throw error;
+          // Read this job only. Never replay processing or create after timeout.
+          result = await api("adminReadBlackCatBatch", { batchId: work.batchId });
+        }
+        if (epoch !== view.epoch) return;
+        showBatch(result.batch);
+        // A cron worker may already own the lease, or an older backend may not
+        // support direct delivery. The existing same-batch recovery remains.
+        for (let count = 0; activeStates.includes(result.batch.state) && count < 100 && epoch === view.epoch; count += 1) {
           await new Promise((resolve) => setTimeout(resolve, 2500));
-          if (processError && accessProblem(processError.message)) throw processError;
           result = await api("adminReadBlackCatBatch", { batchId: work.batchId });
           if (epoch !== view.epoch) return;
           showBatch(result.batch);
@@ -705,6 +720,14 @@
         }
       }
       if (epoch !== view.epoch) return;
+      if (result.pdfBase64 && result.batch.batchId === work.batchId && result.batch.state === "ready" && result.batch.pdfReady) {
+        // Server has verified durable tracking + snapshot publication and fresh
+        // post-file/post-audit guards. Do not put UI rendering RPCs in this path.
+        await download(work.batchId, result);
+        if (epoch === view.epoch) refreshViewsAfterPdf();
+        return;
+      }
+      if (result.batch.state === "ready" && result.batch.downloadError) throw new Error(result.batch.downloadError);
       if (["ready", "needs_reprint", "ezcat"].includes(result.batch.state) && typeof refreshAdminOrdersAfterBatch === "function") {
         try {
           await refreshPdfOrderViews();
@@ -740,7 +763,7 @@
     renderHistory();
     const invalid = batch.downloadError || (batch.orders.some((o) => o.needsReprint) ? "BLACKCAT_LABEL_CHANGED" : "");
     feedback(`${invalid === "BLACKCAT_LABEL_CHANGED" ? "已取號，資料已變更，需補印" : invalid === "BLACKCAT_PDF_SUPERSEDED" ? "舊 PDF 已停止下載" : states[batch.state] || batch.state}｜${batch.orderCount} 筆訂單、${batch.packageCount} 件包裹${invalid || batch.error ? `\n${explain(invalid || batch.error)}` : ""}`, !!invalid || ["unknown", "rejected", "attention", "needs_reprint"].includes(batch.state));
-    byId("blackcatResult").innerHTML = `<p class="bc-detail">只處理下列訂單；其他訂單單號不變。</p>` + batch.orders.map((o) => `<div class="bc-order"><strong>${esc(o.recipientName)}｜${esc(o.orderNo)}</strong><div class="bc-detail">${o.trackingNumbers.length ? `<strong>${o.needsReprint || o.superseded ? "舊單請勿貼箱：" : o.syncState === "done" ? "目前應貼單號：" : "已有單號，還沒確認存入訂單："}${esc(o.trackingNumbers.join("、"))}</strong>` : "尚未取得可確認的單號"}${o.mode === "reprint" && o.trackingNumbers.length ? `<br>補印已重新取號。舊號 ${esc(o.replacedNumbers.join("、") || "無已回填單號")} 請勿再貼。` : ""}<br>${o.needsReprint ? explain("BLACKCAT_LABEL_CHANGED") : o.syncState === "done" ? "單號已存進訂單" : "單號還沒存進訂單"}${o.error ? `<br>${esc(explain(o.error))}` : ""}</div></div>`).join("") + `<div id="blackcatDownloadHelp" class="bc-actions" ${batch.pdfReady || activeStates.includes(batch.state) ? "" : "hidden"}><button type="button" class="bc-primary" id="blackcatDownload">列印宅配單</button><button type="button" id="blackcatOpenPdf" hidden>開啟 PDF</button></div><p id="blackcatDownloadNote" class="bc-detail" ${batch.pdfReady ? "" : "hidden"}>下載或開啟未成功，再按「列印宅配單」即可，單號不變。</p>`;
+    byId("blackcatResult").innerHTML = `<p class="bc-detail">只處理下列訂單；其他訂單單號不變。</p>` + batch.orders.map((o) => `<div class="bc-order"><strong>${esc(o.recipientName)}｜${esc(o.orderNo)}</strong><div class="bc-detail">${o.trackingNumbers.length ? `<strong>${o.needsReprint || o.superseded ? "舊單請勿貼箱：" : o.syncState === "done" ? "目前應貼單號：" : "已有單號，還沒確認存入訂單："}${esc(o.trackingNumbers.join("、"))}</strong>` : "尚未取得可確認的單號"}${o.mode === "reprint" && o.trackingNumbers.length ? `<br>補印已重新取號。舊號 ${esc(o.replacedNumbers.join("、") || "無已回填單號")} 請勿再貼。` : ""}<br>${o.needsReprint ? explain("BLACKCAT_LABEL_CHANGED") : o.syncState === "done" ? "單號已存進訂單" : "單號還沒存進訂單"}${o.error ? `<br>${esc(explain(o.error))}` : ""}</div></div>`).join("") + `<div id="blackcatDownloadHelp" class="bc-actions" ${batch.pdfReady || activeStates.includes(batch.state) ? "" : "hidden"}><button type="button" class="bc-primary" id="blackcatDownload">列印宅配單</button><button type="button" id="blackcatOpenPdf" hidden>開啟 PDF</button></div><p id="blackcatViewRefreshStatus" class="bc-detail" role="status" hidden></p><p id="blackcatDownloadNote" class="bc-detail" ${batch.pdfReady ? "" : "hidden"}>下載或開啟未成功，再按「列印宅配單」即可，單號不變。</p>`;
     byId("blackcatDownload").onclick = () => {
       if (view.busy || downloadFlights.size || !batch.pdfReady || pdfOpened(batch.batchId)) return;
       preparePdfWindow();
@@ -787,6 +810,22 @@
       results.find(r => r.status === "rejected" || r.value === false);
     if (failure) throw manifestRefreshFailure(failure.reason);
   }
+  function refreshViewsAfterPdf() {
+    // Authoritative synchronization happened before the PDF response. A failed
+    // display refresh must be visible, but must not trigger reprint or hide it.
+    const status = byId("blackcatViewRefreshStatus");
+    if (status) { status.hidden = false; status.textContent = "PDF 已開啟，正在更新畫面上的訂單與出貨總表…"; }
+    return refreshPdfOrderViews().then(() => {
+      if (status) { status.hidden = true; status.textContent = ""; }
+    }, () => {
+      if (status) {
+        status.hidden = false;
+        status.innerHTML = 'PDF 已開啟，單號已存好。畫面清單還沒更新，請按 <button type="button">重新整理畫面清單</button>；不用重新列印。';
+        const retry = status.querySelector?.("button");
+        if (retry) retry.onclick = () => { retry.disabled = true; return refreshViewsAfterPdf(); };
+      }
+    });
+  }
   function closePdfPlaceholder() {
     try { if (pdfWindow && !pdfWindow.closed) pdfWindow.close(); } catch (_) { /* Browser may deny access. */ }
     pdfWindow = null;
@@ -803,6 +842,10 @@
     pdfWindow = null;
     if (!opened) throw new Error("BLACKCAT_PDF_OPEN_BLOCKED");
     rememberPdfOpened(batchId);
+    try {
+      if (result.pdfTiming && typeof window.dispatchEvent === "function" && typeof CustomEvent === "function")
+        window.dispatchEvent(new CustomEvent("blackcat-pdf-delivery", { detail: result.pdfTiming }));
+    } catch (_) { /* Timing diagnostics must never change delivery. */ }
   }
 
   async function reopenPdf(batchId) {
@@ -843,7 +886,7 @@
     }
   }
 
-  function download(batchId) {
+  function download(batchId, preparedPdf) {
     if (pdfOpened(batchId)) { closePdfPlaceholder(); return Promise.resolve(); }
     if (downloadFlights.has(batchId)) return downloadFlights.get(batchId);
     const task = (async () => {
@@ -851,7 +894,8 @@
       pending({ batchId, downloadPending: true });
       feedback("正在準備宅配單，請稍候。再下載一次也不會換號。");
       try {
-        const result = await api("adminDownloadBlackCatPdf", { batchId });
+        const result = preparedPdf || await api("adminDownloadBlackCatPdf", { batchId });
+        if (preparedPdf && (result.batch?.batchId !== batchId || !result.batch?.pdfReady)) throw new Error("BLACKCAT_PDF_NOT_READY");
         await downloadEzcatBase64File(result.pdfBase64, result.fileName, "application/pdf");
         openPdf(result, batchId);
         if (pending()?.batchId === batchId) pending(null);

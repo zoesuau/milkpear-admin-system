@@ -18,6 +18,20 @@
     if (Array.isArray(prior)) records = prior.slice(-5);
   } catch (_) {}
   publish();
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') window.addEventListener('blackcat-pdf-delivery', event => {
+    if (!active) return;
+    const input = event.detail || {}, timing = {};
+    // Only server/client timestamps; no payload, order, file ID or credentials.
+    for (const key of ['storedAt', 'storageReturnedAt', 'fileVerifiedAt', 'journalConfirmedAt', 'checkedAt'])
+      if (Number.isFinite(input[key]) && input[key] > 0) timing[key] = input[key];
+    timing.storedClock = input.storedClock === 'drive-created-time' ? 'drive-created-time' : 'storage-call-return';
+    timing.clientOpenRequestedAt = Date.now();
+    if (timing.storedAt && timing.checkedAt >= timing.storedAt) timing.serverPostStoreMs = timing.checkedAt - timing.storedAt;
+    // Client/server clock difference is included. Never treat this estimate as
+    // an exact cross-clock SLA result or as the PDF viewer's first paint.
+    if (timing.storedAt) timing.estimatedStoredToOpenMs = timing.clientOpenRequestedAt - timing.storedAt;
+    active.delivery = timing; publish();
+  });
   document.addEventListener('click', event => {
     try {
       const button = event.target?.closest('button');
