@@ -707,10 +707,10 @@
       if (epoch !== view.epoch) return;
       if (["ready", "needs_reprint", "ezcat"].includes(result.batch.state) && typeof refreshAdminOrdersAfterBatch === "function") {
         try {
-          if (await refreshAdminOrdersAfterBatch() === false) throw new Error("refresh");
-          if (typeof loadCompleteShippingManifestOrders === "function" && await loadCompleteShippingManifestOrders() === false) throw new Error("manifest");
+          await refreshPdfOrderViews();
         } catch (error) { view.batch.pdfReady = false; view.batch.retryable = true; throw manifestRefreshFailure(error); }
       }
+      if (epoch !== view.epoch) return;
       if (result.batch.state === "ready" && result.batch.pdfReady && (!result.batch.downloadOfferedAt || work.downloadPending)) await download(result.batch.batchId);
       if (["ready", "rejected", "needs_reprint", "ezcat"].includes(result.batch.state)) pending(null);
     } catch (e) {
@@ -775,6 +775,18 @@
       return new Error("ADMIN_SESSION_REQUIRED");
     return new Error("BLACKCAT_MANIFEST_REFRESH_PENDING");
   }
+  async function refreshPdfOrderViews() {
+    // These read separate authoritative endpoints and can render in either
+    // order. Wait for BOTH before the final server-side PDF authorization;
+    // settling failures too prevents a late read from racing the next retry.
+    const readers = [];
+    if (typeof refreshAdminOrdersAfterBatch === "function") readers.push(() => refreshAdminOrdersAfterBatch());
+    if (typeof loadCompleteShippingManifestOrders === "function") readers.push(() => loadCompleteShippingManifestOrders());
+    const results = await Promise.allSettled(readers.map(read => Promise.resolve().then(read)));
+    const failure = results.find(r => r.status === "rejected" && accessProblem(r.reason?.message)) ||
+      results.find(r => r.status === "rejected" || r.value === false);
+    if (failure) throw manifestRefreshFailure(failure.reason);
+  }
   function closePdfPlaceholder() {
     try { if (pdfWindow && !pdfWindow.closed) pdfWindow.close(); } catch (_) { /* Browser may deny access. */ }
     pdfWindow = null;
@@ -802,8 +814,8 @@
     updateSummary();
     try {
       // Refresh the displayed manifest too: a ready PDF must not race a stale order view.
-      if (typeof refreshAdminOrdersAfterBatch === "function" && await refreshAdminOrdersAfterBatch() === false) throw manifestRefreshFailure();
-      if (typeof loadCompleteShippingManifestOrders === "function" && await loadCompleteShippingManifestOrders() === false) throw manifestRefreshFailure();
+      await refreshPdfOrderViews();
+      if (epoch !== view.epoch) return;
       // Always revalidate current addresses/numbers; never open a cached stale label.
       const result = await api("adminDownloadBlackCatPdf", { batchId });
       if (epoch !== view.epoch) return;
