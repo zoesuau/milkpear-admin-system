@@ -14,7 +14,7 @@ function fixture(){
  markAdminSessionVerified(){},createAdminDiagnosticRequestId:()=>`adminReadEzcatExportCandidates_${String(++id).padStart(32,'0')}`,
  window:{setTimeout:(fn,ms)=>{assert.equal(ms,30000);timers.set(id,fn);return id},clearTimeout:i=>timers.delete(i)},
  fetch:(_url,options)=>new Promise((resolve,reject)=>calls.push({options,resolve,reject})),
- shippingManifestLoadRequestId:0,shippingManifestDateMode:'today',shippingManifestRemoteRangeKey:'',shippingManifestRemoteCandidates:[],shippingManifestRemoteBatches:[],
+ shippingManifestLoadRequestId:0,shippingManifestReadFlight:null,shippingManifestDateMode:'today',shippingManifestRemoteRangeKey:'',shippingManifestRemoteCandidates:[],shippingManifestRemoteBatches:[],
  ezcatExportLoadRequestId:0,ezcatExportSubmitting:false,ezcatExportSelections:new Map(),
  ADMIN_LINE_SESSION_TOKEN_KEY:'token',sessionStorage:{getItem:()=>token},getShippingManifestDateRange:()=>range,
  adminWorkflowIsValidDate:()=>true,renderShippingManifest(){},mapShippingManifestRemoteOrder:x=>x,

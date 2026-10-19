@@ -22,6 +22,7 @@ assert.ok(
 );
 
 const context = {
+  getProductGroupConfig: () => null,
   adminProductCatalogLoading: false,
   adminProductCatalog: [
     {
@@ -61,7 +62,8 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(
-  `${html.match(/function getAdminProductShippingRule\([\s\S]*?\n      \}/)[0]}
+  `${html.slice(html.indexOf("function parseGroupShippingRule("), html.indexOf("function encodeGroupShippingRule("))}
+${html.match(/function getAdminProductShippingRule\([\s\S]*?\n      \}/)[0]}
 ${html.slice(functionsStart, functionsEnd)}
 ${html.slice(trackingFunctionStart, trackingFunctionEnd)}
 this.getPackageSpecs = getShippingManifestOrderPackageSpecs;

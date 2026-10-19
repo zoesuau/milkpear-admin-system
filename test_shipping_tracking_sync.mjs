@@ -108,7 +108,7 @@ assert.match(element("shippingManifestLoadStatus").innerHTML, /重新載入/);
 
 context.shippingManifestRemoteError = "GAS_TIMEOUT";
 context.render();
-assert.match(element("shippingManifestLoadStatus").innerHTML, /30 秒/);
+assert.match(element("shippingManifestLoadStatus").innerHTML, /讀取出貨清單等太久/);
 assert.equal(element("shippingManifestPrintButton").disabled, true);
 context.shippingManifestRemoteError = "HTTP_404";
 context.render();

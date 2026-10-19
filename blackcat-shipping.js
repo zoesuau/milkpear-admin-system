@@ -86,13 +86,19 @@
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     try {
-    const response = await fetch(GAS_ORDERS_API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, signal: controller.signal, body: JSON.stringify({ action, adminSessionToken, ...data }) });
+    const options = { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, signal: controller.signal, body: JSON.stringify({ action, adminSessionToken, ...data }) };
+    const isRead = ["adminReadShippingManifest", "adminReadEzcatExportCandidates", "adminReadBlackCatCandidates", "adminReadBlackCatBatch"].includes(action);
+    if (isRead && window.ORDER_SYSTEM_CONFIG?.features?.adminDirectResponse === true &&
+        !window.AdminDirectResponse?.enabledFor?.(action)) throw Error("SHIPPING_READ_SERVICE_NOT_READY");
+    const response = isRead && window.AdminDirectResponse?.enabledFor?.(action)
+      ? await window.AdminDirectResponse.request(options, 30000)
+      : await fetch(GAS_ORDERS_API_URL, options);
     let result;
     try { result = await response.json(); }
     catch (_) { throw new Error(response.status === 401 ? "ADMIN_SESSION_REQUIRED" : response.status === 403 ? "BLACKCAT_ACCESS_DENIED" : "BLACKCAT_SERVICE_UNAVAILABLE"); }
     if (response.status === 401) throw new Error("ADMIN_SESSION_REQUIRED");
     if (response.status === 403) throw new Error("BLACKCAT_ACCESS_DENIED");
-    if (!response.ok || result?.ok !== true || result.action !== action) throw new Error(result?.errorCode || "BLACKCAT_NETWORK_UNCONFIRMED");
+    if (!response.ok || result?.ok !== true || result.action !== action) throw new Error(result?.errorCode || (isRead ? result?.error || "SHIPPING_READ_RESPONSE_INVALID" : "BLACKCAT_NETWORK_UNCONFIRMED"));
     return result;
     } finally { clearTimeout(timeout); }
   }
@@ -123,6 +129,10 @@
     feedback(`單號已保留，不會重新取號。${blocked ? "瀏覽器未能開啟 PDF 分頁，請先允許開啟分頁。" : "這次未能完成取得 PDF，請直接重試。"}\n不需要重新勾選訂單或補印。`, true, mode);
   }
   function accessProblem(code) {
+    if (code === "SHIPPING_READ_SERVICE_NOT_READY")
+      return { title: "出貨清單服務需要檢查", step: "請找協助設定系統的人處理，再按「重新讀取訂單」。不用修改訂單，也不用補印。", retryLabel: "重新讀取訂單" };
+    if (/^SHIPPING_READ_/.test(code))
+      return { title: code === "SHIPPING_READ_TIMEOUT" ? "讀取出貨清單等太久了" : code === "SHIPPING_READ_BUSY" ? "系統正在忙，請稍後再試" : "出貨清單暫時讀取失敗", step: "請確認網路正常，再按「重新讀取訂單」。這只會重新讀取資料，不會建單或更換單號。若仍失敗，請把這個畫面交給協助設定系統的人。", retryLabel: "重新讀取訂單" };
     if (["ADMIN_SESSION_REQUIRED", "ADMIN_SESSION_VALIDATION_FAILED", "ADMIN_AUTH_RESTART_REQUIRED"].includes(code))
       return { title: "請重新登入 LINE", step: "請用平常管理訂單的 LINE 帳號重新登入，再回來繼續剛才的列印。不用重新勾選訂單，也不用補印。", login: true };
     if (["BLACKCAT_ACCESS_DENIED", "ADMIN_ACCESS_DENIED"].includes(code))
@@ -135,6 +145,8 @@
       return { title: "列印途中，系統設定被改過", step: "請先找協助設定系統的人，確認剛才使用的黑貓帳號、寄件資料及宅配單存放位置。處理好後再繼續，不要重新勾選補印。" };
     if (["BLACKCAT_FOLDER_NOT_PRIVATE", "BLACKCAT_FOLDER_UNAVAILABLE", "BLACKCAT_FILE_UNAVAILABLE", "BLACKCAT_FILE_LOCATION_INVALID"].includes(code))
       return { title: "目前無法讀取或存放宅配單", step: "請找協助設定系統的人，檢查宅配單檔案和資料夾是否還在、系統是否可以使用。不要把資料夾改成公開分享。處理好後再按下方按鈕，不用補印。" };
+    if (/^BLACKCAT_MANIFEST_HTTP_[45]\d{2}$/.test(code) || code === "BLACKCAT_MANIFEST_RESPONSE_INVALID")
+      return { title: "出貨清單連線異常", step: "系統沒有收到正確的出貨清單。請按下方「重新讀取訂單」；如果仍失敗，請把這個畫面交給協助設定系統的人。", retryLabel: "重新讀取訂單" };
     if (["BLACKCAT_MANIFEST_SCOPE_UNAVAILABLE", "BLACKCAT_MANIFEST_SCOPE_CHANGED"].includes(code))
       return { title: "還沒讀到完整的訂單清單", step: "請確認出貨總表的日期和搜尋內容，再按「重新整理訂單」。清單讀取失敗時，不會改選整天的訂單。" };
     if (["BLACKCAT_JOURNAL_INVALID", "BLACKCAT_JOURNAL_WRITE_UNCONFIRMED", "BLACKCAT_DUPLICATE_ARTIFACT", "BLACKCAT_OPERATION_FAILED", "BLACKCAT_PREPARATION_FAILED", "BLACKCAT_ENDPOINT_FORBIDDEN", "BLACKCAT_SENDER_ADDRESS_INVALID"].includes(code))
@@ -147,7 +159,7 @@
     feedback("", true);
     view.accessIssue = code;
     const node = byId("blackcatFeedback");
-    node.innerHTML = `<strong class="bc-failure-title">⚠ ${esc(issue.title)}</strong><p>${esc(issue.step)}</p><p>剛才已存好的訂單選擇和單號會保留；再試一次不會換新單號。</p><div class="bc-detail">協助處理時可提供這個代碼：${esc(code)}</div><div class="bc-actions">${issue.login ? '<button type="button" id="blackcatLogin" class="bc-retry">重新登入</button>' : ''}<button type="button" id="blackcatAccessRetry">處理好了，再試一次</button></div>`;
+    node.innerHTML = `<strong class="bc-failure-title">⚠ ${esc(issue.title)}</strong><p>${esc(issue.step)}</p><p>剛才已存好的訂單選擇和單號會保留；再試一次不會換新單號。</p><div class="bc-detail">協助處理時可提供這個代碼：${esc(code)}</div><div class="bc-actions">${issue.login ? '<button type="button" id="blackcatLogin" class="bc-retry">重新登入</button>' : ''}<button type="button" id="blackcatAccessRetry">${esc(issue.retryLabel || "處理好了，再試一次")}</button></div>`;
     byId("blackcatAccessRetry").onclick = () => {
       if (view.busy || view.loading || downloadFlights.size) return;
       view.accessIssue = null;
@@ -300,8 +312,8 @@
   async function loadCandidates(preserveSelection = false) {
     if (view.busy || view.loading || downloadFlights.size) return;
     const epoch = ++view.epoch;
-    const previousCandidates = new Map(view.candidates.map((c) => [c.orderNo, c]));
-    const previousSelected = new Map(view.selected);
+    const previousCandidates = new Map((preserveSelection ? view.candidates : []).map((c) => [c.orderNo, c]));
+    const previousSelected = new Map(preserveSelection ? view.selected : []);
     view.loading = true; view.selected.clear(); view.candidates = []; view.config = null;
     byId("blackcatCandidates").innerHTML = "";
     byId("blackcatSender").textContent = "尚未確認目前篩選範圍與寄件設定。";
@@ -355,7 +367,15 @@
       feedback(view.config.ready ? "勾選本次要出貨的訂單，即可取號並下載 PDF；已建單的訂單預設不勾選。" : "宅配單功能還沒設定好，目前不會送出。請找協助設定系統的人處理。", !view.config.ready);
       byId("blackcatRecover").hidden = !pending();
       if (!view.config.ready) showAccessProblem("BLACKCAT_NOT_CONFIGURED", () => loadCandidates(true));
-    } catch (e) { if (epoch === view.epoch && !showAccessProblem(e.message, () => loadCandidates(true))) feedback(explain(e.message), true); }
+    } catch (e) {
+      if (epoch === view.epoch) {
+        // Keep selection intent across failed reads. Retry intersects it with fresh
+        // scoped candidates and fingerprints before it can become printable again.
+        view.candidates = [...previousCandidates.values()];
+        view.selected = previousSelected;
+        if (!showAccessProblem(e.message, () => loadCandidates(true))) feedback(explain(e.message), true);
+      }
+    }
     finally { if (epoch === view.epoch) { view.loading = false; updateSummary(); } }
   }
   function updateSummary() {

@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261018-blackcat-ezcat-v2">
+<html lang="zh-Hant" data-release-version="20261019-shipping-read-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261018-blackcat-ezcat-v2" />
+    <meta name="admin-release" content="20261019-shipping-read-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261018-blackcat-ezcat-v2"></script>
-    <script src="./admin-direct-response.js?v=20261018-blackcat-ezcat-v2"></script>
-    <script src="./admin-diagnostics.js?v=20261018-blackcat-ezcat-v2"></script>
-    <script src="./admin-mutation-recovery.js?v=20261018-blackcat-ezcat-v2"></script>
+    <script src="./customer-config.js?v=20261019-shipping-read-v1"></script>
+    <script src="./admin-direct-response.js?v=20261019-shipping-read-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261019-shipping-read-v1"></script>
+    <script src="./admin-mutation-recovery.js?v=20261019-shipping-read-v1"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
@@ -7431,6 +7431,7 @@ body.preview-white-cards #order-page-section .card {
       let shippingManifestRemoteBatches = [];
       let shippingManifestRemoteRangeKey = "";
       let shippingManifestLoadRequestId = 0;
+      let shippingManifestReadFlight = null;
       let ezcatExportLoadRequestId = 0;
       const ADMIN_EZCAT_READ_TIMEOUT_MS = 30000;
       const adminEzcatCandidateRequests = new Map();
@@ -7591,6 +7592,11 @@ body.preview-white-cards #order-page-section .card {
         if (url === GAS_ORDERS_API_URL && options.method === "POST" &&
             ["adminCancelOrder", "adminUpdateGroupOrder", "adminBatchMarkGroupOrderPaid", "adminSetGroupCodAmount", "adminCloseGroupOrder"].includes(mutationAction)) {
           return fetchAdminMutationResponse(url, options);
+        }
+        if (url === GAS_ORDERS_API_URL && options.method === "POST" &&
+            ["adminReadShippingManifest", "adminReadEzcatExportCandidates", "adminReadBlackCatCandidates", "adminReadBlackCatBatch"].includes(mutationAction)) {
+          if (window.AdminDirectResponse?.enabledFor?.(mutationAction)) return window.AdminDirectResponse.request(options, timeoutMs);
+          if (window.ORDER_SYSTEM_CONFIG?.features?.adminDirectResponse === true) throw Error("SHIPPING_READ_SERVICE_NOT_READY");
         }
         const controller = typeof AbortController === "undefined" ? null : new AbortController();
         let timer;
@@ -19735,6 +19741,14 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           throw new Error("BLACKCAT_MANIFEST_SCOPE_CHANGED");
         }
         if (await loadCompleteShippingManifestOrders("manifest_retry") === false) {
+          if (/^HTTP_[45]\d{2}$/.test(shippingManifestRemoteError) &&
+              !["HTTP_401", "HTTP_403"].includes(shippingManifestRemoteError)) {
+            throw new Error("BLACKCAT_MANIFEST_" + shippingManifestRemoteError);
+          }
+          if (["不支援的 action", "GAS_NON_JSON_RESPONSE"].includes(shippingManifestRemoteError)) {
+            throw new Error("BLACKCAT_MANIFEST_RESPONSE_INVALID");
+          }
+          if (/^SHIPPING_READ_[A-Z_]+$/.test(shippingManifestRemoteError)) throw new Error(shippingManifestRemoteError);
           const accessCode = ({ HTTP_401: "ADMIN_SESSION_REQUIRED", HTTP_403: "ADMIN_ACCESS_DENIED", GAS_NON_JSON_RESPONSE: "ADMIN_SERVICE_UNAVAILABLE", GAS_TIMEOUT: "ADMIN_SERVICE_UNAVAILABLE" })[shippingManifestRemoteError] || shippingManifestRemoteError;
           throw new Error(["ADMIN_SESSION_REQUIRED", "ADMIN_SESSION_VALIDATION_FAILED", "ADMIN_ACCESS_DENIED", "ADMIN_SERVICE_UNAVAILABLE"].includes(accessCode)
             ? accessCode : "BLACKCAT_MANIFEST_SCOPE_UNAVAILABLE");
@@ -19782,14 +19796,42 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
 
       function getEzcatReadErrorMessage(error) {
         const code = error?.name === "AbortError" ? "GAS_TIMEOUT" : String(error?.message || error || "");
-        if (code === "ADMIN_SESSION_REQUIRED") return "登入已過期，請重新登入後再讀取。";
+        if (["ADMIN_SESSION_REQUIRED", "ADMIN_SESSION_VALIDATION_FAILED"].includes(code)) return "登入已過期，請重新登入後再讀取。";
+        if (["ADMIN_ACCESS_DENIED", "HTTP_403"].includes(code)) return "這個帳號沒有讀取權限，請用平常管理訂單的 LINE 帳號登入。";
+        if (code === "SHIPPING_READ_SERVICE_NOT_READY") return "出貨清單服務需要檢查，請找協助設定系統的人處理後，再按「重新載入」。";
+        if (code === "SHIPPING_READ_BUSY") return "系統正在忙，請稍後按「重新載入」。訂單與單號不會改變。";
+        if (["SHIPPING_READ_TIMEOUT", "GAS_TIMEOUT"].includes(code)) return "讀取出貨清單等太久了，請按「重新載入」。訂單與單號不會改變。";
+        if (/^SHIPPING_READ_/.test(code)) return "出貨清單暫時讀取失敗，請確認網路後按「重新載入」。訂單與單號不會改變。";
         if (code === "GAS_TIMEOUT") return "讀取超過 30 秒，已停止等待；請重新載入。";
         if (/^HTTP_[45]\d{2}$/.test(code)) return `讀取服務暫時無法回應（${code.slice(5)}），請重新載入。`;
         if (code === "GAS_NON_JSON_RESPONSE") return "收到非預期的回應，請重新載入。";
         return "無法讀取出貨清單，請重新載入。";
       }
 
+      // Share the read AND its application to the UI. Sharing only fetch() lets
+      // simultaneous callers invalidate each other and report a false failure.
       async function loadCompleteShippingManifestOrders(requestSource = "manifest_retry") {
+        const range = getShippingManifestDateRange();
+        const key = JSON.stringify([
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
+          shippingManifestDateMode === "pending" ? "pending" : "date",
+          range.startDate, range.endDate,
+        ]);
+        if (shippingManifestReadFlight?.key === key &&
+            shippingManifestReadFlight.requestId === shippingManifestLoadRequestId) {
+          return shippingManifestReadFlight.promise;
+        }
+        const promise = readAndApplyShippingManifestOrders(requestSource);
+        const flight = { key, requestId: shippingManifestLoadRequestId, promise };
+        shippingManifestReadFlight = flight;
+        const cleanup = () => {
+          if (shippingManifestReadFlight === flight) shippingManifestReadFlight = null;
+        };
+        promise.then(cleanup, cleanup);
+        return promise;
+      }
+
+      async function readAndApplyShippingManifestOrders(requestSource) {
         const requestId = ++shippingManifestLoadRequestId;
         const { startDate, endDate } = getShippingManifestDateRange();
         const isPendingDateMode = shippingManifestDateMode === "pending";
@@ -19833,11 +19875,12 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           if (!isPendingDateMode) {
             payload = await fetchAdminEzcatCandidates(startDate, endDate, adminSessionToken, requestSource);
           } else {
-            const response = await fetch(GAS_ORDERS_API_URL, {
+            const response = await fetchWithTimeout(GAS_ORDERS_API_URL, {
               method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
               body: JSON.stringify({ action: manifestAction, adminSessionToken, startDate, endDate,
                 mode: "pending", requestId: `pending-${Date.now()}` }),
-            });
+            }, ADMIN_EZCAT_READ_TIMEOUT_MS, true);
+            if (!response.ok) throw new Error(`HTTP_${response.status}`);
             payload = await response.json();
           }
           if (
@@ -19855,7 +19898,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
               : !Array.isArray(payload.candidates))
           ) {
             throw new Error(
-              String(payload?.errorCode || "SHIPPING_MANIFEST_READ_FAILED"),
+              String(payload?.errorCode || payload?.error || "SHIPPING_MANIFEST_READ_FAILED"),
             );
           }
           shippingManifestRemoteRangeKey = rangeKey;
@@ -26316,6 +26359,6 @@ ${adminNote}
         }
       }
     </script>
-    <script src="./blackcat-shipping.js?v=20261018-blackcat-ezcat-v2"></script>
+    <script src="./blackcat-shipping.js?v=20261019-shipping-read-v1"></script>
   </body>
 </html>

@@ -2,6 +2,8 @@
   'use strict';
   const endpoint = 'https://sanheyuan-admin-response.zoe-quokka.workers.dev/request';
   const actions = new Set(['adminAuth', 'adminValidateSession', 'adminReadOrderSnapshot', 'adminReadOrders', 'adminReadProductCatalog']);
+  const shippingReads = new Set(['adminReadShippingManifest', 'adminReadEzcatExportCandidates', 'adminReadBlackCatCandidates', 'adminReadBlackCatBatch']);
+  shippingReads.forEach(action => actions.add(action));
   const config = window.ORDER_SYSTEM_CONFIG || {};
   const enabled = config.customerId === 'sanheyuan' && config.environment === 'production' &&
     config.adminDirectResponseUrl === endpoint && config.features?.adminDirectResponse === true;
@@ -24,8 +26,23 @@
               headers: { 'content-type': 'text/plain;charset=utf-8' }, body: options.body,
               credentials: 'omit', cache: 'no-store', redirect: 'error', signal: controller.signal });
             const text = await response.text();
+            if (shippingReads.has(payload.action) && !response.ok) {
+              let failure; try { failure = JSON.parse(text); } catch {}
+              const code = failure?.errorCode || failure?.error || '';
+              // HTTP 401/403 from the Worker is distinct from its upstream OAuth failure (502).
+              if (response.status === 401) throw Error('ADMIN_SESSION_REQUIRED');
+              if (response.status === 403) throw Error('ADMIN_ACCESS_DENIED');
+              if (response.status === 429) throw Error('SHIPPING_READ_BUSY');
+              if (/^(?:API_CONFIGURATION_REQUIRED|API_CREDENTIAL_|DIRECT_RESPONSE_|ACTION_DENIED)/.test(code)) throw Error('SHIPPING_READ_SERVICE_NOT_READY');
+              if (response.status === 504 || code === 'API_EXECUTION_TIMEOUT') throw Error('SHIPPING_READ_TIMEOUT');
+              throw Error('SHIPPING_READ_CONNECTION_FAILED');
+            }
             let value;
             try { value = JSON.parse(text); } catch { throw Error('GAS_NON_JSON_RESPONSE'); }
+            if (shippingReads.has(payload.action) && value?.ok === false &&
+                ['ACTION_DENIED', '不支援的 action', 'DIRECT_RESPONSE_DISABLED'].includes(value.errorCode || value.error)) {
+              throw Error('SHIPPING_READ_SERVICE_NOT_READY');
+            }
             if (value?.action !== payload.action || typeof value.ok !== 'boolean' ||
                 (payload.action === 'adminAuth' && value.ok === true &&
                   !(value.allowed === false || (value.allowed === true && typeof value.adminSessionToken === 'string' && value.adminSessionToken.trim())))) {
@@ -40,6 +57,14 @@
           }),
         ]);
       } catch (failure) {
+        if (shippingReads.has(payload.action)) {
+          const raw = String(failure?.message || '');
+          const code = /^(SHIPPING_READ_[A-Z_]+|ADMIN_SESSION_REQUIRED|ADMIN_ACCESS_DENIED)$/.test(raw) ? raw
+            : failure?.name === 'AbortError' || raw === 'GAS_TIMEOUT' ? 'SHIPPING_READ_TIMEOUT'
+            : ['GAS_NON_JSON_RESPONSE', 'GAS_AUTH_RESPONSE_INVALID'].includes(raw) ? 'SHIPPING_READ_RESPONSE_INVALID'
+            : 'SHIPPING_READ_CONNECTION_FAILED';
+          const error = new Error(code); error.attempts = 1; error.elapsedMs = Date.now() - started; throw error;
+        }
         const error = new Error(/^(GAS_TIMEOUT|GAS_NON_JSON_RESPONSE|GAS_AUTH_RESPONSE_INVALID)$/.test(failure?.message)
           ? failure.message : failure?.name === 'AbortError' ? 'GAS_TIMEOUT' : 'NETWORK_ERROR');
         error.attempts = 1; error.elapsedMs = Date.now() - started;
