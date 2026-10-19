@@ -26,6 +26,7 @@
     BLACKCAT_LABEL_CHANGED: "已取得單號，但託運資料已變更。舊單請勿貼箱，請關閉視窗後重新勾選訂單補印，重新取得單號。",
     BLACKCAT_ORDER_CHANGED: "訂單資料已變更，請重新讀取清單後核對。",
     BLACKCAT_ORDER_INVALID: "部分訂單資料需要修正，請重新讀取清單。",
+    BLACKCAT_ORDER_NUMBER_INVALID: "這筆訂單編號無法用於宅配單，請找管理員檢查編號，再重新整理訂單；目前尚未取號。",
     BLACKCAT_ORDER_BUSY: "這些訂單正在處理，請到「尚未完成的列印」查看，不要重複勾選。",
     BLACKCAT_REPRINT_REQUIRED: "這筆訂單已有單號或匯出紀錄，請明確選擇補印（重新取號）。",
     BLACKCAT_REPRINT_NOT_REQUIRED: "這筆訂單尚未建單，請選擇首次建單。",
