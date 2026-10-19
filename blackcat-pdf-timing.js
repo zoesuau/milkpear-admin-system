@@ -32,8 +32,10 @@
     if (timing.storedAt) timing.estimatedStoredToOpenMs = timing.clientOpenRequestedAt - timing.storedAt;
     // Bounded, allowlisted service durations only. Inclusive elapsedMs values
     // overlap; selfMs excludes child stages. No job/order IDs or payloads.
-    const work = input.work, names = ['lock.wait', 'config.read', 'orders.read', 'orders.candidates', 'journal.total', 'journal.index', 'journal.read', 'journal.write', 'journal.flush', 'journal.verify', 'process.claim', 'carrier.ParsingAddress', 'carrier.PrintOBT', 'carrier.DownloadOBT', 'receipt.store', 'tracking.total', 'tracking.write', 'snapshot.read', 'snapshot.queue', 'artifact.lookup', 'pdf.store', 'pdf.verify', 'pdf.current'];
+    const work = input.work, names = ['lock.wait', 'config.read', 'orders.read', 'orders.candidates', 'journal.total', 'journal.snapshot', 'journal.index', 'journal.read', 'journal.write', 'journal.flush', 'journal.verify', 'process.claim', 'carrier.ParsingAddress', 'carrier.PrintOBT', 'carrier.DownloadOBT', 'receipt.store', 'tracking.total', 'tracking.write', 'snapshot.read', 'snapshot.queue', 'artifact.lookup', 'pdf.store', 'pdf.verify', 'pdf.current'];
     const duration = value => Number.isFinite(value) && value >= 0 && value <= 86400000;
+    if (input.continuation?.mode === 'single-request' && duration(input.continuation.handoffMs))
+      timing.continuation = { mode: 'single-request', handoffMs: input.continuation.handoffMs };
     if (work && work.schema === 1 && duration(work.elapsedMs) && Array.isArray(work.stages)) {
       timing.work = { schema: 1, elapsedMs: work.elapsedMs, stages: work.stages.slice(0, 32).filter(stage => stage && names.includes(stage.name)
         && Number.isInteger(stage.calls) && stage.calls >= 1 && stage.calls <= 10000

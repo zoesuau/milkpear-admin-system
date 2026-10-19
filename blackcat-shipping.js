@@ -87,7 +87,7 @@
     const controller = new AbortController();
     // Processing includes carrier + storage time. Keep this response available
     // for direct PDF delivery; timing out never authorizes another batch.
-    const timeout = setTimeout(() => controller.abort(), action === "adminProcessBlackCatBatch" && data?.deliverPdf === true ? 120000 : 30000);
+    const timeout = setTimeout(() => controller.abort(), (action === "adminProcessBlackCatBatch" && data?.deliverPdf === true) || (action === "adminCreateBlackCatBatch" && data?.processNow === true) ? 120000 : 30000);
     try {
     const options = { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, signal: controller.signal, body: JSON.stringify({ action, adminSessionToken, ...data }) };
     const isRead = ["adminReadShippingManifest", "adminReadEzcatExportCandidates", "adminReadBlackCatCandidates", "adminReadBlackCatBatch"].includes(action);
@@ -101,7 +101,11 @@
     catch (_) { throw new Error(response.status === 401 ? "ADMIN_SESSION_REQUIRED" : response.status === 403 ? "BLACKCAT_ACCESS_DENIED" : "BLACKCAT_SERVICE_UNAVAILABLE"); }
     if (response.status === 401) throw new Error("ADMIN_SESSION_REQUIRED");
     if (response.status === 403) throw new Error("BLACKCAT_ACCESS_DENIED");
-    if (!response.ok || result?.ok !== true || result.action !== action) throw new Error(result?.errorCode || (isRead ? result?.error || "SHIPPING_READ_RESPONSE_INVALID" : "BLACKCAT_NETWORK_UNCONFIRMED"));
+    if (!response.ok || result?.ok !== true || result.action !== action) {
+      const error = new Error(result?.errorCode || (isRead ? result?.error || "SHIPPING_READ_RESPONSE_INVALID" : "BLACKCAT_NETWORK_UNCONFIRMED"));
+      if (action === "adminCreateBlackCatBatch" && result?.action === action && /^BC-[a-f0-9]{32}$/.test(result?.batchId || "")) error.batchId = result.batchId;
+      throw error;
+    }
     return result;
     } finally { clearTimeout(timeout); }
   }
@@ -687,8 +691,11 @@
       }
       if (!work.batchId) {
         feedback("正在處理本次訂單，請稍候。重按不會重新取號；可以關閉視窗，回來查詢本次結果。");
-        const response = await api("adminCreateBlackCatBatch", work.body);
-        work = { batchId: response.batch.batchId }; pending(work);
+        // Persist delivery intent with the stable creation key before this
+        // combined request. Even a lost ready reply resumes the same PDF.
+        work = { ...work, downloadPending: true }; pending(work);
+        const response = await api("adminCreateBlackCatBatch", { ...work.body, processNow: true });
+        work = { batchId: response.batch.batchId, downloadPending: true }; pending(work);
         result = response; // The durable creation reply already contains this job.
       }
       if (epoch !== view.epoch) return;
@@ -701,7 +708,11 @@
         // must still expose the same PDF on recovery, even when offeredAt exists.
         work = { ...work, downloadPending: true }; pending(work);
         try {
-          result = await api("adminProcessBlackCatBatch", { batchId: work.batchId, deliverPdf: true });
+          // A new backend already processed this job in the creation request.
+          // Do not immediately replay a failed finish, or dispatch another RPC.
+          if (!result.processedInline) {
+            result = await api("adminProcessBlackCatBatch", { batchId: work.batchId, deliverPdf: true });
+          }
         } catch (error) {
           if (accessProblem(error.message)) throw error;
           // Read this job only. Never replay processing or create after timeout.
@@ -737,6 +748,7 @@
       if (result.batch.state === "ready" && result.batch.pdfReady && (!result.batch.downloadOfferedAt || work.downloadPending)) await download(result.batch.batchId);
       if (["ready", "rejected", "needs_reprint", "ezcat"].includes(result.batch.state)) pending(null);
     } catch (e) {
+      if (/^BC-[a-f0-9]{32}$/.test(e.batchId || "") && pending()?.body) pending({ batchId: e.batchId, downloadPending: true });
       if (epoch !== view.epoch) return;
       if (["BLACKCAT_EZCAT_BUSY", "BLACKCAT_EZCAT_UNKNOWN", "BLACKCAT_EZCAT_SUPERSEDED", "BLACKCAT_ORDER_CHANGED", "REQUEST_INVALID"].includes(e.message) && pending()?.handoff) pending({ batchId: pending().batchId });
       if (e.message === "BLACKCAT_RESOLUTION_CONFLICT" && pending()?.batchId) {
