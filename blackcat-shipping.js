@@ -17,6 +17,10 @@
     BLACKCAT_RESOLUTION_FILE_REQUIRED: "請向黑貓取得這次宅配單的檔案編號（FileNo）。",
     BLACKCAT_MANIFEST_REFRESH_PENDING: "單號已存好，但出貨總表還沒更新。請按「繼續剛才的列印」，等清單更新好再開啟 PDF，單號不會變。",
     BLACKCAT_DISPATCH_UNAVAILABLE: "取號保護紀錄暫時無法確認，系統已停止送出。請找協助設定系統的人檢查，不要補印。",
+    BLACKCAT_LEDGER_MISSING: "找不到這次列印的保護紀錄。請找協助設定系統的人還原紀錄，不要刪除重做或補印。",
+    BLACKCAT_LEDGER_CONFLICT: "剛才的列印正在由另一個程序處理。請稍後再試一次，單號不會重新取得。",
+    BLACKCAT_LEDGER_CAPACITY: "列印紀錄暫時無法存入。請找協助設定系統的人檢查儲存用量，處理好後繼續剛才的列印。",
+    BLACKCAT_LEDGER_CONFIG_REQUIRED: "列印保護設定或版本不一致，已暫停取號。請找協助設定系統的人處理，不要補印。",
     BLACKCAT_PDF_RESPONSE_UNAVAILABLE: "單號與宅配單已保留，下載回覆未完成。請按「再試一次」；不會重新取號。",
     BLACKCAT_PDF_NOT_READY: "單號已保留，宅配單檔案還沒準備好。請按「繼續剛才的列印」，單號不會變。",
     ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入。",
@@ -53,7 +57,7 @@
     ORDER_CANCELLED: "訂單已取消",
     BLACKCAT_STORAGE_UNAVAILABLE: "這個瀏覽器無法記住剛才的操作，這次還沒送出。請找協助設定系統的人，檢查瀏覽器是否允許儲存資料。",
   };
-  const states = { ezcat: "已改用 ezcat 處理", needs_reprint: "已取號，資料已變更，需補印", queued: "等待處理", preparing: "正在檢查資料", sending: "正在向黑貓建單", accepted: "已取得單號", finishing: "正在儲存單號、準備宅配單", ready: "單號已存好，宅配單可以開啟", attention: "已有單號，宅配單還沒完成", rejected: "尚未建單成功", unknown: "下載列印單中，請先不要重印" };
+  const states = { ezcat: "已改用 ezcat 處理", needs_reprint: "已取號，資料已變更，需補印", queued: "等待處理", preparing: "正在檢查資料", sending: "正在向黑貓建單", accepted: "已取得單號", finishing: "正在儲存單號、準備宅配單", ready: "單號已存好，宅配單可以開啟", attention: "已有單號，宅配單還沒完成", rejected: "尚未建單成功", unknown: "需要核對宅配單結果，請先不要重印" };
   const activeStates = ["queued", "preparing", "sending", "accepted", "finishing"];
   let view = { epoch: 0, busy: false, date: "", candidates: [], config: null, batches: [], batch: null, selected: new Map() };
   let previousFocus = null;
@@ -171,6 +175,10 @@
       return { title: "出貨清單連線異常", step: "系統沒有收到正確的出貨清單。請按下方「重新讀取訂單」；如果仍失敗，請把這個畫面交給協助設定系統的人。", retryLabel: "重新讀取訂單" };
     if (["BLACKCAT_MANIFEST_SCOPE_UNAVAILABLE", "BLACKCAT_MANIFEST_SCOPE_CHANGED"].includes(code))
       return { title: "還沒讀到完整的訂單清單", step: "請確認出貨總表的日期和搜尋內容，再按「重新整理訂單」。清單讀取失敗時，不會改選整天的訂單。" };
+    if (["BLACKCAT_LEDGER_MISSING", "BLACKCAT_LEDGER_CAPACITY", "BLACKCAT_LEDGER_CONFIG_REQUIRED"].includes(code))
+      return { title: "列印保護紀錄需要檢查", step: explain(code) };
+    if (code === "BLACKCAT_LEDGER_CONFLICT")
+      return { title: "列印紀錄正在更新", step: "請稍後按「再試一次」。如果一直出現這個提示，請找協助設定系統的人核對紀錄，不要補印。", retryLabel: "再試一次" };
     if (["BLACKCAT_DISPATCH_UNAVAILABLE", "BLACKCAT_JOURNAL_INVALID", "BLACKCAT_JOURNAL_WRITE_UNCONFIRMED", "BLACKCAT_DUPLICATE_ARTIFACT", "BLACKCAT_OPERATION_FAILED", "BLACKCAT_PREPARATION_FAILED", "BLACKCAT_ENDPOINT_FORBIDDEN", "BLACKCAT_SENDER_ADDRESS_INVALID"].includes(code))
       return { title: "系統需要檢查，請先暫停列印", step: "請把這個畫面交給協助設定系統的人，確認剛才的列印紀錄。還沒確認前，不要重新勾選、補印或刪除紀錄。處理好後再按下方按鈕。" };
     return null;
