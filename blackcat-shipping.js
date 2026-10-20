@@ -16,6 +16,8 @@
     BLACKCAT_RESOLUTION_EVIDENCE_REQUIRED: "請填寫核對窗口、日期與案件編號或核對依據（5–500 字）。",
     BLACKCAT_RESOLUTION_FILE_REQUIRED: "請向黑貓取得這次宅配單的檔案編號（FileNo）。",
     BLACKCAT_MANIFEST_REFRESH_PENDING: "單號已存好，但出貨總表還沒更新。請按「繼續剛才的列印」，等清單更新好再開啟 PDF，單號不會變。",
+    BLACKCAT_DISPATCH_UNAVAILABLE: "取號保護紀錄暫時無法確認，系統已停止送出。請找協助設定系統的人檢查，不要補印。",
+    BLACKCAT_PDF_RESPONSE_UNAVAILABLE: "單號與宅配單已保留，下載回覆未完成。請按「再試一次」；不會重新取號。",
     BLACKCAT_PDF_NOT_READY: "單號已保留，宅配單檔案還沒準備好。請按「繼續剛才的列印」，單號不會變。",
     ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入。",
     BLACKCAT_NOT_CONFIGURED: "宅配單功能還沒設定好，請找協助設定系統的人處理。不用重新勾選訂單。",
@@ -90,7 +92,7 @@
     const timeout = setTimeout(() => controller.abort(), (action === "adminProcessBlackCatBatch" && data?.deliverPdf === true) || (action === "adminCreateBlackCatBatch" && data?.processNow === true) ? 120000 : 30000);
     try {
     const options = { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, signal: controller.signal, body: JSON.stringify({ action, adminSessionToken, ...data }) };
-    const isRead = ["adminReadShippingManifest", "adminReadEzcatExportCandidates", "adminReadBlackCatCandidates", "adminReadBlackCatBatch"].includes(action);
+    const isRead = ["adminReadShippingManifest", "adminReadEzcatExportCandidates", "adminReadBlackCatCandidates", "adminReadBlackCatBatch", "adminDownloadBlackCatPdf"].includes(action);
     if (isRead && window.ORDER_SYSTEM_CONFIG?.features?.adminDirectResponse === true &&
         !window.AdminDirectResponse?.enabledFor?.(action)) throw Error("SHIPPING_READ_SERVICE_NOT_READY");
     const response = isRead && window.AdminDirectResponse?.enabledFor?.(action)
@@ -106,7 +108,20 @@
       if (action === "adminCreateBlackCatBatch" && result?.action === action && /^BC-[a-f0-9]{32}$/.test(result?.batchId || "")) error.batchId = result.batchId;
       throw error;
     }
+    if (action === "adminDownloadBlackCatPdf" &&
+        (result.batch?.batchId !== data.batchId || result.batch?.pdfReady !== true ||
+         typeof result.pdfBase64 !== "string" || !result.pdfBase64.startsWith("JVBERi0") || result.pdfBase64.length > 14 * 1024 * 1024)) {
+      throw new Error("BLACKCAT_PDF_RESPONSE_UNAVAILABLE");
+    }
     return result;
+    } catch (error) {
+      // A transport failure while retrieving an existing PDF is a download
+      // retry, never an instruction to create/reprint or reselect orders.
+      if (action === "adminDownloadBlackCatPdf" &&
+          (error?.name === "AbortError" || /^(?:SHIPPING_READ_|GAS_|NETWORK_ERROR|BLACKCAT_SERVICE_UNAVAILABLE|API_TRANSPORT_|API_EXECUTION_|PREVIEW_DOWNLOAD_FAILED)/.test(error?.message || ""))) {
+        throw new Error("BLACKCAT_PDF_RESPONSE_UNAVAILABLE");
+      }
+      throw error;
     } finally { clearTimeout(timeout); }
   }
   function feedback(text, error = false, retryMode = null) {
@@ -132,8 +147,8 @@
     }
     if (error) byId("blackcatModal").querySelector(".modal-body").scrollTop = 0;
   }
-  function pdfFailure(mode, blocked = false) {
-    feedback(`單號已保留，不會重新取號。${blocked ? "瀏覽器未能開啟 PDF 分頁，請先允許開啟分頁。" : "這次未能完成取得 PDF，請直接重試。"}\n不需要重新勾選訂單或補印。`, true, mode);
+  function pdfFailure(mode, blocked = false, responseFailure = false) {
+    feedback(`單號已保留，不會重新取號。${blocked ? "瀏覽器未能開啟 PDF 分頁，請先允許開啟分頁。" : responseFailure ? "這次沒有收到完整的 PDF 下載回覆，請按「再試一次」。" : "這次未能完成取得 PDF，請直接重試。"}\n不需要重新勾選訂單或補印。`, true, mode);
   }
   function accessProblem(code) {
     if (code === "SHIPPING_READ_SERVICE_NOT_READY")
@@ -156,7 +171,7 @@
       return { title: "出貨清單連線異常", step: "系統沒有收到正確的出貨清單。請按下方「重新讀取訂單」；如果仍失敗，請把這個畫面交給協助設定系統的人。", retryLabel: "重新讀取訂單" };
     if (["BLACKCAT_MANIFEST_SCOPE_UNAVAILABLE", "BLACKCAT_MANIFEST_SCOPE_CHANGED"].includes(code))
       return { title: "還沒讀到完整的訂單清單", step: "請確認出貨總表的日期和搜尋內容，再按「重新整理訂單」。清單讀取失敗時，不會改選整天的訂單。" };
-    if (["BLACKCAT_JOURNAL_INVALID", "BLACKCAT_JOURNAL_WRITE_UNCONFIRMED", "BLACKCAT_DUPLICATE_ARTIFACT", "BLACKCAT_OPERATION_FAILED", "BLACKCAT_PREPARATION_FAILED", "BLACKCAT_ENDPOINT_FORBIDDEN", "BLACKCAT_SENDER_ADDRESS_INVALID"].includes(code))
+    if (["BLACKCAT_DISPATCH_UNAVAILABLE", "BLACKCAT_JOURNAL_INVALID", "BLACKCAT_JOURNAL_WRITE_UNCONFIRMED", "BLACKCAT_DUPLICATE_ARTIFACT", "BLACKCAT_OPERATION_FAILED", "BLACKCAT_PREPARATION_FAILED", "BLACKCAT_ENDPOINT_FORBIDDEN", "BLACKCAT_SENDER_ADDRESS_INVALID"].includes(code))
       return { title: "系統需要檢查，請先暫停列印", step: "請把這個畫面交給協助設定系統的人，確認剛才的列印紀錄。還沒確認前，不要重新勾選、補印或刪除紀錄。處理好後再按下方按鈕。" };
     return null;
   }
@@ -891,7 +906,7 @@
         if (!pending()) pending({ batchId });
         feedback(explain(e.message), true);
       } else if (["BLACKCAT_LABEL_CHANGED", "BLACKCAT_PDF_SUPERSEDED", "ADMIN_SESSION_REQUIRED"].includes(e.message)) feedback(explain(e.message), true);
-      else pdfFailure("open", e.message === "BLACKCAT_PDF_OPEN_BLOCKED");
+      else pdfFailure("open", e.message === "BLACKCAT_PDF_OPEN_BLOCKED", e.message === "BLACKCAT_PDF_RESPONSE_UNAVAILABLE");
     } finally {
       closePdfPlaceholder();
       if (epoch === view.epoch) { view.busy = false; updateSummary(); }
@@ -926,7 +941,7 @@
         } else {
           if (byId("blackcatDownloadHelp")) byId("blackcatDownloadHelp").hidden = false;
           const code = e.message === "BLACKCAT_PDF_OPEN_BLOCKED" ? e.message : "BLACKCAT_DOWNLOAD_UNCONFIRMED";
-          pdfFailure("download", e.message === "BLACKCAT_PDF_OPEN_BLOCKED");
+          pdfFailure("download", e.message === "BLACKCAT_PDF_OPEN_BLOCKED", e.message === "BLACKCAT_PDF_RESPONSE_UNAVAILABLE");
           throw new Error(code);
         }
         throw e;

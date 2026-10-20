@@ -2,7 +2,7 @@
   'use strict';
   const endpoint = 'https://sanheyuan-admin-response.zoe-quokka.workers.dev/request';
   const actions = new Set(['adminAuth', 'adminValidateSession', 'adminReadOrderSnapshot', 'adminReadOrders', 'adminReadProductCatalog']);
-  const shippingReads = new Set(['adminReadShippingManifest', 'adminReadEzcatExportCandidates', 'adminReadBlackCatCandidates', 'adminReadBlackCatBatch']);
+  const shippingReads = new Set(['adminReadShippingManifest', 'adminReadEzcatExportCandidates', 'adminReadBlackCatCandidates', 'adminReadBlackCatBatch', 'adminDownloadBlackCatPdf']);
   shippingReads.forEach(action => actions.add(action));
   const config = window.ORDER_SYSTEM_CONFIG || {};
   const enabled = config.customerId === 'sanheyuan' && config.environment === 'production' &&
