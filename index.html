@@ -5531,7 +5531,20 @@ body.preview-white-cards #order-page-section .card {
       @media screen and (min-width:768px) { .shipping-legacy-tools { max-width:1024px; } }
       @media screen and (min-width:1200px) { .shipping-legacy-tools { max-width:1140px; } }
       @media print { .shipping-legacy-tools { display:none!important; } }
-    </style>
+
+/* Order label contrast: retain status colors with stronger text and borders. */
+#order-page-section .state-badge-pending { background:#ffdaf1;color:#834064;border-color:#f3badc; }
+#order-page-section .state-badge-confirmed { background:#f6ffa8;color:#6b6829;border-color:#e4ec8c; }
+#order-page-section .state-badge-shipped { background:#cfffbc;color:#43683e;border-color:#b6e4a4; }
+#order-page-section .state-badge-cancelled { background:#ecf0f5;color:#5e6877;border-color:#d9e0e8; }
+#order-page-section .state-badge-unpaid-shipped { background:#ffefae;color:#7c642c;border-color:#efdc94; }
+#order-page-section .payment-badge.pay-success { background:#cfffbc;color:#43683e;border-color:#b6e4a4; }
+#order-page-section .payment-badge.pay-danger { background:#ffefae;color:#7c642c;border-color:#efdc94; }
+#order-page-section .payment-badge.pay-neutral { background:#e0f2ff;color:#496881;border-color:#c7e1f3; }
+#order-page-section .admin-card-list-change { background:#ffe4be;color:#8a5b2e;border-color:#f4d2a5; }
+#order-page-section .order-change-chip { background:#ffe4be;color:#8a5b2e;border-color:#f4d2a5; }
+#order-page-section .group-child-badge { background:#efe1ff;color:#6e4c94;border-color:#ddc8f4; }
+</style>
   </head>
 
   <body>
