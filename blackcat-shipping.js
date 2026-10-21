@@ -59,7 +59,7 @@
   };
   const states = { ezcat: "已改用 ezcat 處理", needs_reprint: "已取號，資料已變更，需補印", queued: "等待處理", preparing: "正在檢查資料", sending: "正在向黑貓建單", accepted: "已取得單號", finishing: "正在儲存單號、準備宅配單", ready: "單號已存好，宅配單可以開啟", attention: "已有單號，宅配單還沒完成", rejected: "尚未建單成功", unknown: "需要核對宅配單結果，請先不要重印" };
   const activeStates = ["queued", "preparing", "sending", "accepted", "finishing"];
-  let view = { epoch: 0, busy: false, date: "", candidates: [], config: null, batches: [], batch: null, selected: new Map() };
+  let view = { epoch: 0, busy: false, date: "", candidates: [], pageIndex: 0, config: null, batches: [], batch: null, selected: new Map() };
   let previousFocus = null;
   let issuedSelection = null;
   const downloadFlights = new Map();
@@ -211,7 +211,15 @@
     style.textContent += `#blackcatFeedback.is-error{background:#fff1f0;border:2px solid #c0392b;border-left-width:7px;color:#78261e;padding:18px;line-height:1.7;margin-bottom:16px}#blackcatFeedback .bc-failure-title{display:block;font-size:22px;line-height:1.4}#blackcatFeedback p{margin:10px 0}#blackcatFeedback .bc-retry{background:#a82b20;border-color:#a82b20;color:#fff;font-weight:700;min-height:46px}#blackcatFeedback .bc-actions{margin-bottom:0}`;
     style.textContent += `#blackcatIssuedDialog{position:fixed;inset:0;margin:auto;max-height:calc(100dvh - 40px);overflow:auto;width:min(460px,calc(100vw - 40px));box-sizing:border-box;border:1px solid #d9b56c;border-radius:12px;padding:22px;color:#263d30;background:#fff;box-shadow:0 16px 60px #0003}#blackcatIssuedDialog::backdrop{background:#0006}#blackcatIssuedDialog p{white-space:pre-line;line-height:1.7;overflow-wrap:anywhere}#blackcatIssuedDialog h3{margin:0 0 12px}#blackcatIssuedDialog button{font:inherit;padding:10px 14px;border:1px solid #bccabf;border-radius:8px;background:#fff;cursor:pointer}#blackcatIssuedConfirm{background:#246741!important;color:#fff}#blackcatIssuedDialog .bc-confirm-actions{display:flex;justify-content:flex-end;gap:10px}`;
     style.textContent += `
-#blackcatCandidates{display:grid;gap:12px;margin:12px 0 16px}
+#blackcatCandidates,#blackcatOversized .bc-oversized-cards{display:grid;gap:12px;margin:12px 0 16px}
+#blackcatModal .bc-page-toolbar{position:sticky;top:0;z-index:2;padding:12px;background:#f5f8f5;border:1px solid #dce6df;border-radius:10px;margin:12px 0}
+#blackcatModal .bc-page-nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#blackcatModal .bc-page-nav strong{flex:1;min-width:130px;color:#263d30}
+#blackcatModal .bc-page-toolbar .bc-summary{margin-top:10px;padding:0;background:transparent;font-weight:700}
+#blackcatModal .bc-page-toolbar .bc-detail{margin:5px 0}
+#blackcatModal .bc-page-toolbar .bc-actions{margin-bottom:0}
+#blackcatModal #blackcatOversized{margin:12px 0;padding:12px;background:#fff4dd;border:1px solid #e5c886;border-radius:10px}
+@media(max-width:520px){#blackcatModal .bc-page-nav strong{flex-basis:100%}#blackcatModal .bc-page-toolbar{padding:10px}#blackcatModal .bc-page-nav button{flex:1}#blackcatModal .bc-page-toolbar .bc-actions button{flex:1}}
 #blackcatModal .bc-order-card{padding:16px;border:1px solid #cfddd3;border-radius:12px;background:#fff;min-width:0}
 #blackcatModal .bc-order-card.bc-issued{background:#fffaf0;border-color:#e5c886}
 #blackcatModal .bc-order-card:has(input:checked){border-color:#397650;box-shadow:inset 0 0 0 1px #397650;background:#f4faf5}
@@ -276,7 +284,7 @@
     style.textContent += `#blackcatImportDialog{position:fixed;inset:0;margin:auto;width:min(620px,calc(100vw - 32px));max-height:90dvh;overflow:auto;box-sizing:border-box;border:1px solid #d3e2d8;border-radius:18px;padding:20px;color:#263e2f;background:white;box-shadow:0 16px 60px #0003}#blackcatImportDialog::backdrop{background:#0006}#blackcatImportDialog .bc-import-header{display:flex;align-items:center;justify-content:space-between;gap:12px}#blackcatImportDialog h3{margin:0;font-size:20px}#blackcatImportDialog button{font:inherit;padding:10px 14px;border:1px solid #bccabf;border-radius:8px;background:white;cursor:pointer}#blackcatImportDialog .bc-card-id{font-size:13px;color:#526557;overflow-wrap:anywhere}#blackcatImportDialog .bc-detail{font-size:14px;line-height:1.7;color:#42554a}#blackcatImportDialog .bc-ezcat-explanation p{line-height:1.7}`;
     document.head.appendChild(style);
     const modal = document.createElement("div"); modal.id = "blackcatModal"; modal.className = "modal-overlay";
-    modal.innerHTML = `<div class="modal modal-container" role="dialog" aria-modal="true" aria-labelledby="blackcatTitle"><div class="modal-header"><h3 id="blackcatTitle">列印宅配單</h3><button type="button" id="blackcatClose" aria-label="關閉黑貓建單">關閉</button></div><div class="modal-body"><div id="blackcatFeedback" class="bc-summary" role="status" aria-live="polite"></div><div id="blackcatSelection"><section class="bc-shipping-info" aria-labelledby="blackcatShippingInfoTitle"><h4 class="bc-section-title" id="blackcatShippingInfoTitle">本次出貨資訊</h4><div class="bc-date-grid"><div><span class="bc-date-label">出貨日</span><strong id="blackcatShipmentDate"></strong></div><div><span class="bc-date-label">希望配達日</span><strong id="blackcatDeliveryDate"></strong></div><div><span class="bc-date-label">溫層</span><strong>常溫</strong></div></div><p class="bc-info-note">系統自動帶入，遇週日順延。</p></section><div id="blackcatSender"></div><div class="bc-actions bc-selection-toolbar"><button type="button" id="blackcatSelectNew">全選未建單</button><button type="button" id="blackcatClearSelection">全部取消</button><button type="button" id="blackcatReload">重新整理訂單</button></div><div id="blackcatCandidates"></div><div id="blackcatSummary" class="bc-summary"></div><div class="bc-actions"><button type="button" id="blackcatSubmit" class="bc-primary">列印宅配單</button></div></div><div id="blackcatResult" hidden></div><div class="bc-actions"><button type="button" id="blackcatRecover" hidden>查詢本次結果</button></div><section id="blackcatUnfinished" hidden></section><details><summary>最近列印紀錄</summary><div id="blackcatHistory"></div></details></div></div>`;
+    modal.innerHTML = `<div class="modal modal-container" role="dialog" aria-modal="true" aria-labelledby="blackcatTitle"><div class="modal-header"><h3 id="blackcatTitle">列印宅配單</h3><button type="button" id="blackcatClose" aria-label="關閉黑貓建單">關閉</button></div><div class="modal-body"><div id="blackcatFeedback" class="bc-summary" role="status" aria-live="polite"></div><div id="blackcatSelection"><section class="bc-shipping-info" aria-labelledby="blackcatShippingInfoTitle"><h4 class="bc-section-title" id="blackcatShippingInfoTitle">本次出貨資訊</h4><div class="bc-date-grid"><div><span class="bc-date-label">出貨日</span><strong id="blackcatShipmentDate"></strong></div><div><span class="bc-date-label">希望配達日</span><strong id="blackcatDeliveryDate"></strong></div><div><span class="bc-date-label">溫層</span><strong>常溫</strong></div></div><p class="bc-info-note">系統自動帶入，遇週日順延。</p></section><div id="blackcatSender"></div><div class="bc-actions bc-selection-toolbar"><button type="button" id="blackcatSelectNew">本頁全選未建單</button><button type="button" id="blackcatClearSelection">本頁全部取消</button><button type="button" id="blackcatReload">重新整理訂單</button></div><details id="blackcatOversized" hidden></details><section class="bc-page-toolbar" aria-label="訂單分頁與列印"><nav class="bc-page-nav" aria-label="訂單分頁"><strong id="blackcatPageInfo" role="status" aria-live="polite"></strong><button type="button" id="blackcatPrevPage">上一頁</button><button type="button" id="blackcatNextPage">下一頁</button></nav><p class="bc-detail">每頁最多 100 件包裹，同一筆訂單放在同一頁。</p><div id="blackcatSummary" class="bc-summary" role="status" aria-live="polite"></div><div class="bc-actions"><button type="button" id="blackcatSubmit" class="bc-primary">列印宅配單</button><span class="bc-detail">只列印本頁勾選的訂單</span></div></section><div id="blackcatCandidates"></div></div><div class="bc-actions"><button type="button" id="blackcatContinueSelection" hidden>下一頁訂單</button></div><div id="blackcatResult" hidden></div><div class="bc-actions"><button type="button" id="blackcatRecover" hidden>查詢本次結果</button></div><section id="blackcatUnfinished" hidden></section><details><summary>最近列印紀錄</summary><div id="blackcatHistory"></div></details></div></div>`;
     document.body.appendChild(modal);
     const issuedDialog = document.createElement("dialog");
     issuedDialog.id = "blackcatIssuedDialog";
@@ -298,6 +306,9 @@
     byId("blackcatClose").onclick = close;
     byId("blackcatSubmit").onclick = () => submit();
     byId("blackcatReload").onclick = () => loadCandidates(true);
+    byId("blackcatPrevPage").onclick = () => changePage((view.pageIndex || 0) - 1);
+    byId("blackcatNextPage").onclick = () => changePage((view.pageIndex || 0) + 1);
+    byId("blackcatContinueSelection").onclick = () => continueSelection();
     byId("blackcatSelectNew").onclick = () => {
       byId("blackcatCandidates").querySelectorAll("[data-bc-selection]").forEach((n) => { n.checked = !n.disabled && !view.candidates[Number(n.dataset.bcSelection)].hasHistory; n.onchange(); });
     };
@@ -339,12 +350,17 @@
     try { if (pending() && !view.accessIssue) { byId("blackcatRecover").hidden = false; feedback("剛才的宅配單還沒完成。請按「繼續剛才的列印」，已取得的單號不會變，不用重新勾選。"); byId("blackcatSubmit").disabled = true; } }
     catch (e) { feedback(explain(e.message), true); byId("blackcatSubmit").disabled = true; }
   }
-  async function loadCandidates(preserveSelection = false) {
+  async function loadCandidates(preserveSelection = false, targetOrderNo = "") {
     if (view.busy || view.loading || downloadFlights.size) return;
     const epoch = ++view.epoch;
     const previousCandidates = new Map((preserveSelection ? view.candidates : []).map((c) => [c.orderNo, c]));
     const previousSelected = new Map(preserveSelection ? view.selected : []);
+    if (!preserveSelection) view.requestedPageOrderNo = "";
+    if (targetOrderNo) view.requestedPageOrderNo = targetOrderNo;
+    const previousAnchor = view.requestedPageOrderNo || currentPageOrders()[0]?.orderNo;
+    const previousScopeKey = view.scopeKey;
     view.loading = true; view.selected.clear(); view.candidates = []; view.config = null;
+    byId("blackcatOversized").hidden = true;
     byId("blackcatCandidates").innerHTML = "";
     byId("blackcatSender").textContent = "尚未確認目前篩選範圍與寄件設定。";
     byId("blackcatShipmentDate").textContent = "待確認";
@@ -359,40 +375,31 @@
       // Intersect with the full filtered manifest; an empty result must remain empty.
       const byOrder = new Map(result.candidates.map(c => [c.orderNo, c]));
       const scoped = [...new Set(scope.orderNos)].map(id => byOrder.get(id)).filter(Boolean);
-      view.candidates = [...scoped.filter(c => !c.hasHistory), ...scoped.filter(c => c.hasHistory)];
+      const scopeKey = JSON.stringify([view.date, scope.orderNos, scope.summary]);
+      const sameScope = preserveSelection && scopeKey === previousScopeKey;
+      // Keep page membership stable when printing changes an order to issued.
+      // A changed manifest filter/order starts a fresh plan from that scope.
+      const ordered = sameScope ? [...previousCandidates.keys()].map(no => byOrder.get(no)).filter(c => c && scope.orderNos.includes(c.orderNo)) : [];
+      const retained = new Set(ordered.map(c => c.orderNo));
+      view.candidates = sameScope ? [...ordered, ...scoped.filter(c => !retained.has(c.orderNo))] : [...scoped.filter(c => !c.hasHistory), ...scoped.filter(c => c.hasHistory)];
+      view.scopeKey = scopeKey;
       view.config = result.config; view.batches = [...new Map([...(result.unfinishedBatches || []), ...result.recentBatches].map(b => [b.batchId, b])).values()]; view.selected.clear();
       view.defaults = result.defaults;
       byId("blackcatShipmentDate").textContent = view.defaults.shipmentDate;
       byId("blackcatDeliveryDate").textContent = view.defaults.deliveryDate;
       byId("blackcatSender").innerHTML = `<div class="bc-scope"><strong>選擇訂單 · ${view.candidates.length} 筆</strong><span>訂單出貨日期：${esc(view.date)}</span></div><p class="bc-scope-filter">沿用出貨總表篩選：${esc(scope.summary)}</p><details class="bc-sender-details"><summary>寄件資料與列印設定 · ${view.config.environment === "production" ? "正式站" : view.config.environment === "test" ? "測試站" : "未設定站台"}</summary><p class="bc-detail">寄件人：${esc(view.config.senderName || "未設定")}　${esc(view.config.senderPhone || "")}<br>寄件地址：${esc(view.config.senderAddress || "未設定")}<br>紙張：A4 二聯<br>同一筆訂單有多件包裹時，代收金額只列在第一件。</p></details>`;
-      const list = byId("blackcatCandidates");
-      list.innerHTML = view.candidates.length ? view.candidates.map((c, i) => {
-        const blocked = c.errors.length || c.pendingBatchId || (!c.hasHistory && c.alreadyShipped);
+      view.newOrderNos = new Set(preserveSelection ? view.candidates.filter(c => !previousCandidates.has(c.orderNo)).map(c => c.orderNo) : []);
+      for (const c of view.candidates) {
         const prior = previousCandidates.get(c.orderNo);
-        const checked = !blocked && (preserveSelection && prior
+        const checked = !candidateBlocked(c) && (preserveSelection && prior
           ? previousSelected.has(c.orderNo) && prior.hasHistory === c.hasHistory && prior.fingerprint === c.fingerprint && prior.trackingFingerprint === c.trackingFingerprint
           : !c.hasHistory);
         if (checked) view.selected.set(c.orderNo, c.hasHistory ? "reprint" : "initial");
-        return `<div class="bc-order bc-order-card${c.hasHistory ? " bc-issued" : ""}"><div class="bc-row bc-card-heading"><label class="bc-check"><input type="checkbox" data-bc-selection="${i}" aria-label="勾選 ${esc(c.recipientName)} ${esc(c.orderNo)}" ${blocked ? "disabled" : ""} ${checked ? "checked" : ""}><span><strong class="bc-card-name">${esc(c.recipientName)}</strong><span class="bc-card-id">${esc(c.orderNo)}</span></span></label><span class="bc-status">${c.manualPending ? "已改用 ezcat・待匯回新號" : c.manualSource ? "ezcat 單號已匯回" : c.needsReprint ? "已取號・資料已變更，需補印" : c.pendingBatchId ? "列印尚未完成" : c.hasHistory ? "已建單／曾匯出" : preserveSelection && !prior ? "新增訂單・未建單" : "未建單"}</span></div><div class="bc-card-body"><div class="bc-card-field"><span>電話</span><span>${esc(c.recipientPhone)}</span></div><div class="bc-card-field"><span>收件地址</span><span>${esc(c.recipientAddress)}</span></div>${c.note ? `<div class="bc-card-field"><span>商品備註</span><span>${esc(c.note)}</span></div>` : ""}<div class="bc-card-facts"><span>${c.packageSpecs.length} 件包裹（${esc(c.packageSpecs.map((x) => x === "2" ? "90 cm" : "120 cm").join("、"))}）</span><span>代收 $${Number(c.codAmount || 0).toLocaleString()}</span><span>配達${({ 1: "13 時前", 2: "14–18 時", 4: "不指定" })[c.deliveryTimeSlot] || "待確認"}</span></div>${c.trackingNumbers.length ? `<div class="bc-card-tracking${c.needsReprint ? " bc-card-warning" : ""}">${c.needsReprint ? "舊單請勿貼箱，需補印" : "現有單號"}<strong>${esc(c.trackingNumbers.join("、"))}</strong></div>` : c.hasHistory ? '<div class="bc-card-tracking bc-card-warning">曾匯出 CSV，請先核對 ezcat 是否已建單。</div>' : ""}</div>${blocked ? `<div class="bc-error">${c.pendingBatchId ? "這筆還沒完成，請到「尚未完成的列印」查看。" : c.errors.length ? c.errors.map((e) => esc(messages[e] || e)).join("、") : "已寄出且無單號，請先核對歷史資料。"}</div>` : ""}</div>`;
-      }).join("") : '<p class="bc-detail">目前出貨總表篩選條件沒有符合的訂單。</p>';
-      list.querySelectorAll("[data-bc-selection]").forEach((node) => { node.onchange = () => {
-        const c = view.candidates[Number(node.dataset.bcSelection)];
-        if (node.checked && c.hasHistory && !view.selected.has(c.orderNo)) {
-          const history = c.trackingNumbers.length
-            ? `這筆訂單已建單。\n現有單號：${c.trackingNumbers.join("、")}`
-            : "這筆訂單曾匯出 CSV，請先核對 ezcat 是否已建單。";
-          const changed = c.needsReprint ? "\n託運資料已變更，舊單請勿貼箱，需要補印。" : "";
-          byId("blackcatIssuedTitle").textContent = "這筆訂單已建單／曾匯出";
-          byId("blackcatIssuedConfirm").textContent = "確認補印";
-          node.checked = false;
-          issuedSelection = { c, node, epoch: view.epoch };
-          byId("blackcatIssuedText").textContent = `${c.recipientName}｜${c.orderNo}\n\n${history}${changed}\n\n確認要作廢舊訂單，取得新單號嗎？`;
-          byId("blackcatIssuedDialog").showModal();
-          return;
-        }
-        if (node.checked) view.selected.set(c.orderNo, c.hasHistory ? "reprint" : "initial"); else view.selected.delete(c.orderNo);
-        updateSummary();
-      }; });
+      }
+      const pages = parcelPages(view.candidates).pages;
+      const anchorPage = preserveSelection && (sameScope || view.requestedPageOrderNo) ? pages.findIndex(p => p.orders.some(c => c.orderNo === previousAnchor)) : -1;
+      view.pageIndex = Math.max(0, anchorPage); view.requestedPageOrderNo = "";
+      renderCandidatePage();
       renderHistory(); updateSummary();
       feedback(view.config.ready ? "勾選本次要出貨的訂單，即可取號並下載 PDF；已建單的訂單預設不勾選。" : "宅配單功能還沒設定好，目前不會送出。請找協助設定系統的人處理。", !view.config.ready);
       byId("blackcatRecover").hidden = !pending();
@@ -408,16 +415,105 @@
     }
     finally { if (epoch === view.epoch) { view.loading = false; updateSummary(); } }
   }
+  // Pages are planned from complete orders, never by slicing parcels or
+  // truncating a selection. An oversized order remains visible but unselectable.
+  function parcelPages(candidates) {
+    const pages = [], oversized = [];
+    let page = null;
+    for (const c of candidates) {
+      const count = c.packageSpecs.length;
+      if (count > 100) { oversized.push(c); continue; }
+      if (!page || page.parcels + count > 100) {
+        page = { orders: [], parcels: 0 }; pages.push(page);
+      }
+      page.orders.push(c); page.parcels += count;
+    }
+    return { pages, oversized };
+  }
+  function currentPageOrders() {
+    return parcelPages(view.candidates).pages[view.pageIndex || 0]?.orders || [];
+  }
+  function candidateBlocked(c) {
+    return !c.packageSpecs.length || c.packageSpecs.length > 100 || c.errors?.length || c.pendingBatchId || (!c.hasHistory && c.alreadyShipped);
+  }
+  function candidateCards(orders) {
+    return orders.map(c => {
+      const i = view.candidates.indexOf(c), blocked = candidateBlocked(c), checked = !blocked && view.selected.has(c.orderNo);
+      return `<div class="bc-order bc-order-card${c.hasHistory ? " bc-issued" : ""}"><div class="bc-row bc-card-heading"><label class="bc-check"><input type="checkbox" data-bc-selection="${i}" aria-label="勾選 ${esc(c.recipientName)} ${esc(c.orderNo)}" ${blocked ? "disabled" : ""} ${checked ? "checked" : ""}><span><strong class="bc-card-name">${esc(c.recipientName)}</strong><span class="bc-card-id">${esc(c.orderNo)}</span></span></label><span class="bc-status">${c.manualPending ? "已改用 ezcat・待匯回新號" : c.manualSource ? "ezcat 單號已匯回" : c.needsReprint ? "已取號・資料已變更，需補印" : c.pendingBatchId ? "列印尚未完成" : c.hasHistory ? "已建單／曾匯出" : view.newOrderNos?.has(c.orderNo) ? "新增訂單・未建單" : "未建單"}</span></div><div class="bc-card-body"><div class="bc-card-field"><span>電話</span><span>${esc(c.recipientPhone)}</span></div><div class="bc-card-field"><span>收件地址</span><span>${esc(c.recipientAddress)}</span></div>${c.note ? `<div class="bc-card-field"><span>商品備註</span><span>${esc(c.note)}</span></div>` : ""}<div class="bc-card-facts"><span>${c.packageSpecs.length} 件包裹（${esc(c.packageSpecs.map((x) => x === "2" ? "90 cm" : "120 cm").join("、"))}）</span><span>代收 $${Number(c.codAmount || 0).toLocaleString()}</span><span>配達${({ 1: "13 時前", 2: "14–18 時", 4: "不指定" })[c.deliveryTimeSlot] || "待確認"}</span></div>${c.trackingNumbers.length ? `<div class="bc-card-tracking${c.needsReprint ? " bc-card-warning" : ""}">${c.needsReprint ? "舊單請勿貼箱，需補印" : "現有單號"}<strong>${esc(c.trackingNumbers.join("、"))}</strong></div>` : c.hasHistory ? '<div class="bc-card-tracking bc-card-warning">曾匯出 CSV，請先核對 ezcat 是否已建單。</div>' : ""}</div>${blocked ? `<div class="bc-error">${c.packageSpecs.length > 100 ? "這筆訂單超過 100 件，無法放入列印頁。請先調整訂單包裹，或另行確認 ezcat 手動處理方式。" : !c.packageSpecs.length ? "尚未確認包裹件數，請先檢查訂單。" : c.pendingBatchId ? "這筆還沒完成，請到「尚未完成的列印」查看。" : c.errors.length ? c.errors.map((e) => esc(messages[e] || e)).join("、") : "已寄出且無單號，請先核對歷史資料。"}</div>` : ""}</div>`;
+    }).join("");
+  }
+  function renderCandidatePage() {
+    const plan = parcelPages(view.candidates);
+    view.pageIndex = Math.max(0, Math.min(view.pageIndex || 0, plan.pages.length - 1));
+    const list = byId("blackcatCandidates");
+    list.innerHTML = candidateCards(currentPageOrders()) || '<p class="bc-detail">目前沒有可放入列印頁的訂單。</p>';
+    const oversized = byId("blackcatOversized");
+    oversized.hidden = !plan.oversized.length;
+    oversized.innerHTML = plan.oversized.length ? `<summary>有 ${plan.oversized.length} 筆訂單超過 100 件，尚未放入列印頁</summary><div class="bc-oversized-cards">${candidateCards(plan.oversized)}</div>` : "";
+    list.querySelectorAll("[data-bc-selection]").forEach((node) => { node.onchange = () => {
+      const c = view.candidates[Number(node.dataset.bcSelection)];
+      if (candidateBlocked(c) || !currentPageOrders().includes(c)) { node.checked = false; return; }
+      if (node.checked && c.hasHistory && !view.selected.has(c.orderNo)) {
+        const history = c.trackingNumbers.length
+          ? `這筆訂單已建單。\n現有單號：${c.trackingNumbers.join("、")}`
+          : "這筆訂單曾匯出 CSV，請先核對 ezcat 是否已建單。";
+        const changed = c.needsReprint ? "\n託運資料已變更，舊單請勿貼箱，需要補印。" : "";
+        byId("blackcatIssuedTitle").textContent = "這筆訂單已建單／曾匯出";
+        byId("blackcatIssuedConfirm").textContent = "確認補印";
+        node.checked = false;
+        issuedSelection = { c, node, epoch: view.epoch };
+        byId("blackcatIssuedText").textContent = `${c.recipientName}｜${c.orderNo}\n\n${history}${changed}\n\n確認要作廢舊訂單，取得新單號嗎？`;
+        byId("blackcatIssuedDialog").showModal();
+        return;
+      }
+      if (node.checked) view.selected.set(c.orderNo, c.hasHistory ? "reprint" : "initial"); else view.selected.delete(c.orderNo);
+      updateSummary();
+    }; });
+  }
+  function changePage(index) {
+    if (view.busy || view.loading || view.ezcatBusy || downloadFlights.size || byId("blackcatSelection").hidden) return;
+    const pages = parcelPages(view.candidates).pages;
+    if (!Number.isInteger(index) || index < 0 || index >= pages.length) return;
+    view.pageIndex = index;
+    renderCandidatePage(); updateSummary();
+    byId("blackcatPageInfo").scrollIntoView?.({ block: "start" });
+  }
+  async function continueSelection() {
+    if (view.busy || view.loading || view.ezcatBusy || downloadFlights.size || view.accessIssue) return;
+    try {
+      if (pending() || !selectionResultComplete()) return;
+      const pages = parcelPages(view.candidates).pages;
+      if (pages.length < 2) return;
+      const next = pages[((view.pageIndex || 0) + 1) % pages.length].orders[0]?.orderNo;
+      // Read current fingerprints and issued status before another submission.
+      // A failed read keeps the original intent and disables all new printing.
+      await loadCandidates(true, next);
+      byId("blackcatPageInfo").scrollIntoView?.({ block: "start" });
+    } catch (e) { feedback(explain(e.message), true); }
+  }
+  function selectionResultComplete() {
+    const b = view.batch;
+    return !!b && !b.downloadError && ((b.state === "ready" && b.pdfReady && pdfOpened(b.batchId)) ||
+      (b.state === "ezcat" && b.orders?.length && b.orders.every(o => o.manualLabel?.currentNumbers?.length)));
+  }
   function updateSummary() {
-    const chosen = view.candidates.filter((c) => view.selected.has(c.orderNo));
+    const chosen = currentPageOrders().filter((c) => view.selected.has(c.orderNo));
     const parcels = chosen.reduce((n, c) => n + c.packageSpecs.length, 0), amount = chosen.reduce((n, c) => n + Number(c.codAmount || 0), 0);
     const reprints = chosen.filter((c) => view.selected.get(c.orderNo) === "reprint").length;
-    byId("blackcatSummary").textContent = `${chosen.length} 筆訂單，共 ${parcels} 件包裹｜代收合計 $${amount.toLocaleString()}${reprints ? `\n其中 ${reprints} 筆補印，成功取得新單號後，舊單號才標記已取代。` : ""}`;
+    byId("blackcatSummary").textContent = `本頁已勾選 ${chosen.length} 筆訂單，共 ${parcels} 件包裹｜代收合計 $${amount.toLocaleString()}${reprints ? `\n其中 ${reprints} 筆補印，成功取得新單號後，舊單號才標記已取代。` : ""}`;
     let hasPending = true, pendingWork = null; try { pendingWork = pending(); hasPending = !!pendingWork; } catch (_) { /* fail closed */ }
     const otherPending = hasPending && pendingWork?.batchId !== view.batch?.batchId;
-    byId("blackcatSubmit").disabled = view.busy || view.loading || !!view.accessIssue || !view.config?.ready || !chosen.length || parcels > 100 || hasPending;
+    byId("blackcatSubmit").disabled = view.busy || view.loading || !!view.accessIssue || !view.config?.ready || !chosen.length || chosen.some(candidateBlocked) || parcels > 100 || hasPending;
     byId("blackcatSubmit").textContent = view.busy || downloadFlights.size ? "宅配單生成中…" : "列印宅配單";
     const working = view.busy || view.loading || !!view.ezcatBusy || downloadFlights.size > 0;
+    const pages = parcelPages(view.candidates).pages, page = pages[view.pageIndex || 0];
+    byId("blackcatPageInfo").textContent = page ? `第 ${(view.pageIndex || 0) + 1}／${pages.length} 頁 · ${page.orders.length} 筆訂單／${page.parcels} 件包裹` : "尚無列印頁";
+    byId("blackcatPrevPage").disabled = working || !page || !view.pageIndex;
+    byId("blackcatNextPage").disabled = working || !page || (view.pageIndex || 0) >= pages.length - 1;
+    const nextSelection = byId("blackcatContinueSelection");
+    nextSelection.hidden = pages.length < 2 || byId("blackcatResult").hidden || !selectionResultComplete();
+    nextSelection.disabled = working || hasPending || !!view.accessIssue;
+    nextSelection.textContent = (view.pageIndex || 0) < pages.length - 1 ? "下一頁訂單" : "查看其他頁訂單";
     const blocked = !!view.accessIssue;
     const retryingPdf = view.pdfRetry?.batchId === view.batch?.batchId && !!view.pdfRetry;
     if (byId("blackcatRetryPdf")) byId("blackcatRetryPdf").disabled = working || otherPending || (!view.batch?.pdfReady && view.pdfRetry?.mode !== "process");
@@ -687,7 +783,10 @@
       if (pending()) return recover();
       const { shipmentDate, deliveryDate, thermosphere } = view.defaults || {};
       if (!shipmentDate || !deliveryDate) { feedback("日期尚未載入，請更新清單。", true); return; }
-      const selections = view.candidates.filter((c) => view.selected.has(c.orderNo)).map((c) => ({ orderNo: c.orderNo, mode: view.selected.get(c.orderNo), fingerprint: c.fingerprint, trackingFingerprint: c.trackingFingerprint }));
+      const chosen = currentPageOrders().filter((c) => view.selected.has(c.orderNo));
+      if (!view.config?.ready || chosen.some(candidateBlocked)) { feedback("這頁的訂單資料尚未確認，請重新整理訂單。", true); return; }
+      if (chosen.reduce((n, c) => n + c.packageSpecs.length, 0) > 100) { feedback(explain("BLACKCAT_PARCEL_LIMIT"), true); return; }
+      const selections = chosen.map((c) => ({ orderNo: c.orderNo, mode: view.selected.get(c.orderNo), fingerprint: c.fingerprint, trackingFingerprint: c.trackingFingerprint }));
       if (!selections.length) return;
       const requestKey = crypto.randomUUID();
       const body = { requestKey, date: view.date, shipmentDate, deliveryDate, thermosphere, selections };
