@@ -5265,7 +5265,24 @@
  #order-page-section .cards-container.admin-card-view-compact .card:not(.is-view-expanded) .amount { font-size:23px; }
 }
 
-/* Soft stage backgrounds; existing badges and typography remain unchanged. */
+ /* Keep recipient and amount aligned on phones; let the address use the full card. */
+@media(max-width:767px) {
+ #order-page-section .card .main-customer-block {
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,45%);gap:6px 10px;align-items:start;
+ }
+ #order-page-section .card .customer-info-group { display:contents; }
+ #order-page-section .card .customer-info-group > .name { grid-column:1;grid-row:1; }
+ #order-page-section .card .customer-info-group > .phone { grid-column:1;grid-row:2;margin-top:0;overflow-wrap:anywhere; }
+ #order-page-section .card .customer-info-group > .address { grid-column:1 / -1;grid-row:3;margin-top:0;overflow-wrap:anywhere; }
+ #order-page-section .card .right-header-box { grid-column:2;grid-row:1 / 3;width:100%;min-width:0;margin:0; }
+ #order-page-section .card .amount-payment-row { flex-direction:column;align-items:flex-end;gap:5px; }
+ #order-page-section .card .amount-payment-row .amount,
+ #order-page-section .cards-container.admin-card-view-compact .card:not(.is-view-expanded) .amount { font-size:clamp(18px,5.5vw,25px);max-width:100%;overflow-wrap:anywhere; }
+ #order-page-section .card .amount-payment-row .payment-badge { max-width:100%;white-space:normal;overflow-wrap:anywhere; }
+ #order-page-section .card .cod-collection-amount { font-size:13px;line-height:1.4;overflow-wrap:anywhere; }
+}
+
+ /* Soft stage backgrounds; existing badges and typography remain unchanged. */
 #order-page-section .card.status-pending {
   --admin-card-list-bg:#fdf0f2;
   background:#fdf0f2;
