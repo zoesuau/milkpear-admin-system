@@ -5545,6 +5545,9 @@ body.preview-white-cards #order-page-section .card {
 #order-page-section .order-change-chip { background:#ffe4be;color:#8a5b2e;border-color:#f4d2a5; }
 #order-page-section .group-child-badge { background:#efe1ff;color:#6e4c94;border-color:#ddc8f4; }
 </style>
+    <link rel="manifest" href="./admin.webmanifest">
+    <link rel="apple-touch-icon" href="./push-icon-192.png">
+    <link rel="stylesheet" href="./admin-push.css">
   </head>
 
   <body>
@@ -26374,5 +26377,24 @@ ${adminNote}
     </script>
     <script src="./blackcat-shipping.js?v=20261021-pagination-five-step"></script>
     <script src="./blackcat-pdf-timing.js?v=20261019-inline-start-v1"></script>
+    <script type="module">
+      import { mountAdminPush } from './admin-push.js';
+      mountAdminPush({
+        container: document.querySelector('.admin-header-actions'),
+        requireLogin() {
+          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+          showAdminAuthOverlay('登入已過期，請重新登入後查看訂單。', true);
+        },
+        async api(operation, data) {
+          const token = sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || '';
+          if (!token) return { ok: false, error: 'ADMIN_SESSION_REQUIRED' };
+          const response = await fetchWithTimeout(GAS_ORDERS_API_URL, {
+            method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ ...data, action: 'adminPush', operation, adminSessionToken: token })
+          }, 15000);
+          return response.json();
+        }
+      });
+    </script>
   </body>
 </html>
