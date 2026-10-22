@@ -532,10 +532,6 @@
       byId("blackcatOpenPdf").disabled = blocked || working || otherPending;
       byId("blackcatOpenPdf").textContent = working ? "PDF 開啟中…" : "開啟 PDF";
     }
-    if (byId("blackcatExportPdf")) {
-      byId("blackcatExportPdf").hidden = !view.batch?.pdfReady || !!view.batch?.downloadError;
-      byId("blackcatExportPdf").disabled = blocked || working || otherPending;
-    }
     if (byId("blackcatHandoffSubmit")) byId("blackcatHandoffSubmit").disabled = working || otherPending || !!pendingWork?.handoff;
     ["blackcatHandoffStart", "blackcatRetryHandoff", "blackcatHandoffCancel", "blackcatEzcatExport", "blackcatEzcatImport", "blackcatEzcatRefresh", "blackcatEzcatFile"].forEach(id => { if (byId(id)) byId(id).disabled = working || otherPending || blocked; });
     if (byId("blackcatDownloadNote")) {
@@ -901,14 +897,13 @@
     renderHistory();
     const invalid = batch.downloadError || (batch.orders.some((o) => o.needsReprint) ? "BLACKCAT_LABEL_CHANGED" : "");
     feedback(`${invalid === "BLACKCAT_LABEL_CHANGED" ? "已取號，資料已變更，需補印" : invalid === "BLACKCAT_PDF_SUPERSEDED" ? "舊 PDF 已停止下載" : states[batch.state] || batch.state}｜${batch.orderCount} 筆訂單、${batch.packageCount} 件包裹${invalid || batch.error ? `\n${explain(invalid || batch.error)}` : ""}`, !!invalid || ["unknown", "rejected", "attention", "needs_reprint"].includes(batch.state));
-    byId("blackcatResult").innerHTML = `<p class="bc-detail">只處理下列訂單；其他訂單單號不變。</p>` + batch.orders.map((o) => `<div class="bc-order"><strong>${esc(o.recipientName)}｜${esc(o.orderNo)}</strong><div class="bc-detail">${o.trackingNumbers.length ? `<strong>${o.needsReprint || o.superseded ? "舊單請勿貼箱：" : o.syncState === "done" ? "目前應貼單號：" : "已有單號，還沒確認存入訂單："}${esc(o.trackingNumbers.join("、"))}</strong>` : "尚未取得可確認的單號"}${o.mode === "reprint" && o.trackingNumbers.length ? `<br>補印已重新取號。舊號 ${esc(o.replacedNumbers.join("、") || "無已回填單號")} 請勿再貼。` : ""}<br>${o.needsReprint ? explain("BLACKCAT_LABEL_CHANGED") : o.syncState === "done" ? "單號已存進訂單" : "單號還沒存進訂單"}${o.error ? `<br>${esc(explain(o.error))}` : ""}</div></div>`).join("") + `<div id="blackcatDownloadHelp" class="bc-actions" ${batch.pdfReady || activeStates.includes(batch.state) ? "" : "hidden"}><button type="button" class="bc-primary" id="blackcatDownload">列印宅配單</button><button type="button" id="blackcatOpenPdf" hidden>開啟 PDF</button><button type="button" id="blackcatExportPdf" hidden>下載／分享 PDF</button></div><p id="blackcatViewRefreshStatus" class="bc-detail" role="status" hidden></p><p id="blackcatDownloadNote" class="bc-detail" ${batch.pdfReady ? "" : "hidden"}>下載或開啟未成功，再按「列印宅配單」即可，單號不變。</p>`;
+    byId("blackcatResult").innerHTML = `<p class="bc-detail">只處理下列訂單；其他訂單單號不變。</p>` + batch.orders.map((o) => `<div class="bc-order"><strong>${esc(o.recipientName)}｜${esc(o.orderNo)}</strong><div class="bc-detail">${o.trackingNumbers.length ? `<strong>${o.needsReprint || o.superseded ? "舊單請勿貼箱：" : o.syncState === "done" ? "目前應貼單號：" : "已有單號，還沒確認存入訂單："}${esc(o.trackingNumbers.join("、"))}</strong>` : "尚未取得可確認的單號"}${o.mode === "reprint" && o.trackingNumbers.length ? `<br>補印已重新取號。舊號 ${esc(o.replacedNumbers.join("、") || "無已回填單號")} 請勿再貼。` : ""}<br>${o.needsReprint ? explain("BLACKCAT_LABEL_CHANGED") : o.syncState === "done" ? "單號已存進訂單" : "單號還沒存進訂單"}${o.error ? `<br>${esc(explain(o.error))}` : ""}</div></div>`).join("") + `<div id="blackcatDownloadHelp" class="bc-actions" ${batch.pdfReady || activeStates.includes(batch.state) ? "" : "hidden"}><button type="button" class="bc-primary" id="blackcatDownload">列印宅配單</button><button type="button" id="blackcatOpenPdf" hidden>開啟 PDF</button></div><p id="blackcatViewRefreshStatus" class="bc-detail" role="status" hidden></p><p id="blackcatDownloadNote" class="bc-detail" ${batch.pdfReady ? "" : "hidden"}>下載或開啟未成功，再按「列印宅配單」即可，單號不變。</p>`;
     byId("blackcatDownload").onclick = () => {
       if (view.busy || downloadFlights.size || !batch.pdfReady || pdfOpened(batch.batchId)) return;
       preparePdfWindow();
       download(batch.batchId).catch(() => {});
     };
     byId("blackcatOpenPdf").onclick = () => reopenPdf(batch.batchId);
-    byId("blackcatExportPdf").onclick = () => exportPdf(batch.batchId);
     if (batch.resolution) byId("blackcatResult").insertAdjacentHTML("beforeend", `<p class="bc-detail">核對紀錄：${esc(batch.resolution.actor)}｜${esc(batch.resolution.outcome === "created" ? "已確認有單號，繼續使用原單號" : "已確認沒有單號，可以重新勾選列印")}<br>${esc(batch.resolution.evidence)}</p>`);
     if (batch.state === "unknown") renderResolution(batch);
     renderHandoff(batch);
@@ -1023,31 +1018,6 @@
       closePdfPlaceholder();
       if (epoch === view.epoch) { view.busy = false; updateSummary(); }
     }
-  }
-
-  function exportPdf(batchId) {
-    if (view.busy || downloadFlights.size || view.batch?.batchId !== batchId || !view.batch.pdfReady || view.batch.downloadError) return;
-    if (!window.BlackCatPdfExport) { feedback("下載工具尚未載入，請重新開啟後台再試。", true); return; }
-    const epoch = view.epoch, session = token();
-    const isCurrent = () => epoch === view.epoch && view.batch?.batchId === batchId && view.batch.pdfReady && !view.batch.downloadError && !!session && token() === session;
-    window.BlackCatPdfExport.open({ isCurrent, load: async () => {
-      if (!isCurrent()) throw Error("登入或訂單狀態已更新，請重新開啟下載。");
-      view.busy = true; updateSummary();
-      try {
-        await refreshPdfOrderViews();
-        if (!isCurrent()) throw Error("ADMIN_SESSION_REQUIRED");
-        // Revalidate the existing batch and current label before preparing a file.
-        return await api("adminDownloadBlackCatPdf", { batchId });
-      } catch (error) {
-        if (epoch === view.epoch && ["BLACKCAT_LABEL_CHANGED", "BLACKCAT_PDF_SUPERSEDED"].includes(error.message)) {
-          view.batch.pdfReady = false; view.batch.downloadError = error.message;
-        }
-        if (epoch === view.epoch) showAccessProblem(error.message, () => exportPdf(batchId));
-        throw Error(explain(error.message));
-      } finally {
-        if (epoch === view.epoch) { view.busy = false; updateSummary(); }
-      }
-    }});
   }
 
   function download(batchId, preparedPdf) {
