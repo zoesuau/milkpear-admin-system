@@ -1,4 +1,5 @@
 export function mountAdminPush({ container, api, requireLogin, platform = window }) {
+  mountForegroundPush(platform);
   const button = document.createElement('button');
   button.type = 'button'; button.className = 'btn-refresh-orders'; button.textContent = '手機通知';
   container.append(button);
@@ -22,6 +23,10 @@ export function mountAdminPush({ container, api, requireLogin, platform = window
   const el = selector => dialog.querySelector(selector);
   const enable = el('[data-enable]'), disable = el('[data-disable]'), refresh = el('[data-refresh]');
   let registration, config, busy = false;
+  // Updating registration preserves the existing device subscription/VAPID key.
+  if (platform.navigator.serviceWorker && platform.Notification?.permission === 'granted') {
+    platform.navigator.serviceWorker.register(new URL('./admin-push-sw.js', import.meta.url), {scope:'./',updateViaCache:'none'}).then(r=>{registration=r;}).catch(()=>{});
+  }
   const message = text => { el('[data-message]').textContent = text; };
   const request = async (operation, data = {}) => {
     const result = await api(operation, data);
@@ -118,4 +123,23 @@ export function mountAdminPush({ container, api, requireLogin, platform = window
   el('[data-close]').addEventListener('click', () => dialog.close());
   el('[data-close-top]').addEventListener('click', () => dialog.close());
   return { button, dialog };
+}
+
+export function mountForegroundPush(platform = window) {
+  const serviceWorker = platform.navigator.serviceWorker;
+  if (!serviceWorker?.addEventListener) return;
+  const seen = new Set();
+  let notice;
+  serviceWorker.addEventListener('message', event => {
+    const data = event.data;
+    if (document.visibilityState !== 'visible' || data?.type !== 'sanheyuan-order-push' || !/^[a-f0-9]{64}$/.test(data.eventId || '') || seen.has(data.eventId)) return;
+    if (typeof data.title !== 'string' || typeof data.body !== 'string') return;
+    seen.add(data.eventId); if (seen.size > 100) seen.delete(seen.values().next().value);
+    if (notice) notice.remove();
+    notice = document.createElement('aside'); notice.className = 'admin-push-banner'; notice.setAttribute('role','alert');
+    const title = document.createElement('strong'); title.textContent = data.title.slice(0,100);
+    const body = document.createElement('p'); body.textContent = data.body.slice(0,500);
+    const close = document.createElement('button'); close.type = 'button'; close.textContent = '關閉'; close.setAttribute('aria-label','關閉新訂單提醒'); close.addEventListener('click',()=>notice.remove());
+    notice.append(title,body,close); (document.querySelector?.('dialog[open]') || document.body).append(notice);
+  });
 }
