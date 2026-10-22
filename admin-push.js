@@ -6,7 +6,7 @@ export function mountAdminPush({ container, api, requireLogin, platform = window
   dialog.className = 'admin-push-dialog';
   dialog.setAttribute('aria-labelledby', 'adminPushTitle');
   dialog.innerHTML = `<div class="push-heading"><h2 id="adminPushTitle" tabindex="-1" autofocus>新訂單手機通知</h2><button type="button" data-close-top aria-label="關閉通知設定">✕</button></div>
-    <p>客戶表單下單與管理員在後台「新增訂單」，都會推播給兩位管理員。客戶表單下單另保留 LINE 管理員群組通知。</p>
+    <p>客戶表單下單與管理員在後台「新增訂單」，都會推播到管理員已開啟通知的裝置。客戶表單下單另保留 LINE 管理員群組通知。</p>
     <p>每位管理員在自己的手機開啟一次。通常約一分鐘內提醒；點通知進入後台查看。</p>
     <p class="push-hint">iPhone 請從主畫面圖示開啟（iOS 16.4 以上）。已加入的圖示若仍開啟一般瀏覽器，需重新加入主畫面。</p>
     <label>這台裝置的名稱<input id="adminPushLabel" maxlength="32" value="我的手機" autocomplete="off"></label>
