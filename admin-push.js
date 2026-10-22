@@ -130,7 +130,7 @@ export function mountForegroundPush(platform = window) {
   if (!serviceWorker?.addEventListener) return;
   const seen = new Set();
   const pending = [];
-  let stack, dialogHost;
+  let stack, dialogHost, returnFocus;
   function releaseDialog() {
     dialogHost?.removeEventListener('close', releaseDialog);
     dialogHost = undefined;
@@ -143,30 +143,29 @@ export function mountForegroundPush(platform = window) {
       return;
     }
     if (!stack) {
+      returnFocus = document.activeElement;
       stack = document.createElement('section'); stack.className = 'admin-push-stack';
       stack.setAttribute('role', 'region'); stack.setAttribute('aria-label', '新訂單提醒');
     }
     stack.replaceChildren();
-    // Only three visual layers; every outstanding reminder stays in the queue.
+    // Keep the visual stack compact; the count includes every pending reminder.
     for (let depth = Math.min(pending.length, 3) - 1; depth > 0; depth--) {
       const layer = document.createElement('div'); layer.className = 'admin-push-layer';
       layer.setAttribute('data-depth', String(depth)); layer.setAttribute('aria-hidden', 'true'); stack.append(layer);
     }
     const current = pending[0];
     const notice = document.createElement('aside'); notice.className = 'admin-push-banner'; notice.setAttribute('role', 'alert');
-    const title = document.createElement('strong'); title.textContent = current.title;
-    const body = document.createElement('p'); body.textContent = current.body;
-    const close = document.createElement('button'); close.type = 'button'; close.textContent = '關閉'; close.setAttribute('aria-label', '關閉這則新訂單提醒');
+    const title = document.createElement('strong'); title.textContent = `新增 ${pending.length} 筆訂單`;
+    const body = document.createElement('p'); body.textContent = `最新一筆：${current.title}\n${current.body}`;
+    const close = document.createElement('button'); close.type = 'button'; close.textContent = '全部收起'; close.setAttribute('aria-label', '收起全部新訂單提醒');
     close.addEventListener('click', () => {
       const restoreFocus = document.activeElement === close;
-      pending.splice(pending.indexOf(current), 1); render();
-      if (restoreFocus) stack?.querySelector('button')?.focus();
+      pending.length = 0; render();
+      if (restoreFocus && returnFocus?.isConnected) returnFocus.focus();
     });
     notice.append(title, body, close); stack.append(notice);
-    if (pending.length > 3) {
-      const count = document.createElement('span'); count.className = 'admin-push-count'; count.textContent = String(pending.length);
-      count.setAttribute('role', 'status'); count.setAttribute('aria-label', `${pending.length} 則待查看的新訂單提醒`); stack.append(count);
-    }
+    const count = document.createElement('span'); count.className = 'admin-push-count'; count.textContent = String(pending.length);
+    count.setAttribute('role', 'status'); count.setAttribute('aria-label', `${pending.length} 筆新訂單提醒`); stack.append(count);
     const host = document.querySelector?.('dialog[open]') || document.body;
     if (dialogHost !== host) {
       dialogHost?.removeEventListener('close', releaseDialog);
@@ -177,9 +176,10 @@ export function mountForegroundPush(platform = window) {
   }
   serviceWorker.addEventListener('message', event => {
     const data = event.data;
-    if (document.visibilityState !== 'visible' || data?.type !== 'sanheyuan-order-push' || !/^[a-f0-9]{64}$/.test(data.eventId || '') || seen.has(data.eventId) || pending.some(item => item.eventId === data.eventId)) return;
+    if (document.visibilityState !== 'visible' || data?.type !== 'sanheyuan-order-push' || !/^[a-f0-9]{64}$/.test(data.eventId || '') || seen.has(data.eventId)) return;
     if (typeof data.title !== 'string' || typeof data.body !== 'string') return;
-    seen.add(data.eventId); if (seen.size > 100) seen.delete(seen.values().next().value);
+    // Retain IDs for this page lifetime so dismissing a batch cannot recount it.
+    seen.add(data.eventId);
     pending.unshift({ eventId: data.eventId, title: data.title.slice(0, 100), body: data.body.slice(0, 500) });
     render();
   });

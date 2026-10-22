@@ -4,7 +4,7 @@
 .admin-push-layer[data-depth="1"]{z-index:2;transform:translateY(12px) scaleX(.97);background:#eaf4ee}
 .admin-push-layer[data-depth="2"]{z-index:1;transform:translateY(24px) scaleX(.94)}
 .admin-push-stack .admin-push-banner{box-sizing:border-box;position:relative;z-index:3;display:flex;flex-direction:column;max-height:min(70dvh,calc(100dvh - 100px));padding:18px;border:2px solid #28704c;border-radius:14px;background:#f5fff8;box-shadow:0 8px 32px #173c2940}
-.admin-push-banner strong{display:block;flex:none;padding-right:54px}
+.admin-push-banner strong{display:block;flex:none;padding-right:90px}
 .admin-push-banner p{min-height:0;overflow:auto;overscroll-behavior:contain;white-space:pre-line;margin:10px 0 0}
 .admin-push-stack .admin-push-banner button{position:absolute;top:10px;right:10px;min-width:44px;min-height:44px;padding:8px;border:0;border-radius:8px;background:#e3f1e7;color:#173c29;font:inherit;cursor:pointer}
 .admin-push-stack .admin-push-banner button:focus-visible{outline:3px solid #287cd1;outline-offset:2px}
