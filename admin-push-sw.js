@@ -12,7 +12,7 @@ self.addEventListener('push', event => {
   } catch (_) {}
   const display = self.registration.showNotification(title, {
     body,
-    icon: new URL('push-icon-192.png', self.registration.scope).href,
+    icon: new URL('notification-logo-192-v1.png', self.registration.scope).href,
     ...(eventId ? { tag: 'order-' + eventId } : {})
   });
   // Always keep the system notification; also inform an open backend without
