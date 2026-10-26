@@ -13,6 +13,7 @@ window.ORDER_SYSTEM_CONFIG = Object.freeze({
   "features": {
     "adminOrderSnapshot": true,
     "adminStartupWorkspace": true,
+    "adminSeasonPreparation": true,
     "adminReadObservabilityLevel": "DEBUG",
     "groupOrders": true,
     "adminDirectResponse": true,

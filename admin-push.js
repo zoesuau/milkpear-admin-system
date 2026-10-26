@@ -1,9 +1,9 @@
-export function mountAdminPush({ container, api, requireLogin, platform = window }) {
+export function mountAdminPush({ container, api, requireLogin, platform = window, inlineContainer, onOpen, onClose }) {
   mountForegroundPush(platform);
   const button = document.createElement('button');
   button.type = 'button'; button.className = 'btn-refresh-orders'; button.textContent = '手機通知';
   container.append(button);
-  const dialog = document.createElement('dialog');
+  const dialog = document.createElement(inlineContainer ? 'section' : 'dialog');
   dialog.className = 'admin-push-dialog';
   dialog.setAttribute('aria-labelledby', 'adminPushTitle');
   dialog.innerHTML = `<div class="push-heading"><h2 id="adminPushTitle" tabindex="-1" autofocus>新訂單手機通知</h2><button type="button" data-close-top aria-label="關閉通知設定">✕</button></div>
@@ -19,7 +19,12 @@ export function mountAdminPush({ container, api, requireLogin, platform = window
     <p class="push-hint">「服務已接受」不代表手機已顯示；鎖屏、專注模式與網路狀態仍需實際確認。</p>
     <ul data-events></ul>
     <div class="push-actions"><button type="button" data-refresh>重新查詢</button><button type="button" data-close>關閉</button></div>`;
-  document.body.append(dialog);
+  if (inlineContainer) { dialog.hidden = true; inlineContainer.append(dialog); }
+  else document.body.append(dialog);
+  const closePanel = () => {
+    if (inlineContainer) { dialog.hidden = true; onClose?.(); }
+    else dialog.close();
+  };
   const el = selector => dialog.querySelector(selector);
   const enable = el('[data-enable]'), disable = el('[data-disable]'), refresh = el('[data-refresh]');
   let registration, config, busy = false;
@@ -31,7 +36,7 @@ export function mountAdminPush({ container, api, requireLogin, platform = window
   const request = async (operation, data = {}) => {
     const result = await api(operation, data);
     if (result.error === 'ADMIN_SESSION_REQUIRED') {
-      dialog.close(); requireLogin(); throw new Error('登入已過期，請重新登入。');
+      closePanel(); requireLogin(); throw new Error('登入已過期，請重新登入。');
     }
     if (!result.ok) throw new Error(result.error === 'PUSH_DISABLED' ? '手機通知尚未啟用。' : '通知服務暫時無法連線，訂單仍可正常成立，請稍後重試。');
     return result;
@@ -87,7 +92,8 @@ export function mountAdminPush({ container, api, requireLogin, platform = window
     finally { busy = false; refresh.disabled = false; await controls().catch(() => {}); }
   }
   button.addEventListener('click', () => {
-    dialog.showModal();
+    if (inlineContainer) { dialog.hidden = false; onOpen?.(); }
+    else dialog.showModal();
     perform(async () => {
       message('正在查詢通知設定…');
       config = await request('config');
@@ -120,8 +126,9 @@ export function mountAdminPush({ container, api, requireLogin, platform = window
     message('已關閉這台手機通知。'); await renderStatus();
   }));
   refresh.addEventListener('click', () => perform(async () => { await renderStatus(); message('已更新發送紀錄。'); }));
-  el('[data-close]').addEventListener('click', () => dialog.close());
-  el('[data-close-top]').addEventListener('click', () => dialog.close());
+  if (inlineContainer) el('[data-close]').textContent = '返回設定';
+  el('[data-close]').addEventListener('click', closePanel);
+  el('[data-close-top]').addEventListener('click', closePanel);
   return { button, dialog };
 }
 

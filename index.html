@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261026-full-startup-production-v3">
+<html lang="zh-Hant" data-release-version="20261027-system-settings-production-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261026-full-startup-production-v3" />
+    <meta name="admin-release" content="20261027-system-settings-production-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
     <link rel="preconnect" href="https://sanheyuan-admin-response.zoe-quokka.workers.dev" crossorigin />
-    <script src="./customer-config.js?v=20261026-full-startup-production-v3"></script>
+    <script src="./customer-config.js?v=20261027-system-settings-production-v1"></script>
     <script src="./admin-direct-response.js?v=20261020-download-fence-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261026-full-startup-production-v3"></script>
+    <script src="./admin-diagnostics.js?v=20261027-system-settings-production-v1"></script>
     <script src="./admin-mutation-recovery.js?v=20261019-label-fields-v1"></script>
     <link
       rel="stylesheet"
@@ -5564,7 +5564,48 @@ body.preview-white-cards #order-page-section .card {
 #order-page-section .admin-card-list-change { background:#ffe4be;color:#8a5b2e;border-color:#f4d2a5; }
 #order-page-section .order-change-chip { background:#ffe4be;color:#8a5b2e;border-color:#f4d2a5; }
 #order-page-section .group-child-badge { background:#efe1ff;color:#6e4c94;border-color:#ddc8f4; }
-</style>
+      .admin-season-entry-points {display:flex;gap:10px;justify-content:flex-end;align-items:center;margin:0 0 8px;}
+      .admin-season-entry-points[hidden] {display:none;}
+      .admin-season-entry-points button,.admin-season-entry-points summary {font:inherit;font-size:14px;color:#4f7f63;background:transparent;border:0;padding:8px;cursor:pointer;}
+      .admin-season-entry-points details {position:relative;}
+      .admin-season-entry-points summary {list-style:none;font-weight:700;min-width:36px;text-align:center;}
+      .admin-season-entry-points details>button {position:absolute;right:0;top:100%;width:130px;background:white;border:1px solid #dbe5dd;border-radius:8px;z-index:30;box-shadow:0 4px 18px #23382b20;}
+      .admin-season-dialog {width:min(1000px,95vw);max-height:92vh;border:1px solid #dbe5dd;border-radius:14px;padding:18px;background:white;color:#334155;}
+      .admin-season-dialog::backdrop {background:#15231c66;}
+      .admin-season-dialog-close {display:flex;justify-content:flex-end;}
+      .admin-season-dialog-close button {font:inherit;border:1px solid #b4c9ba;border-radius:7px;padding:9px 14px;background:white;color:#315b40;cursor:pointer;}
+      @media(max-width:600px){.admin-season-dialog{width:100%;height:100dvh;max-height:100dvh;max-width:100vw;margin:0;padding:14px;border:0;border-radius:0;}}
+
+      /* ADMIN_SETTINGS_CSS_START */
+      .admin-tab-bar:has([data-tab="settings"]) {grid-template-columns:repeat(4,minmax(0,1fr));}
+      .admin-settings-page {max-width:500px;margin:0 auto 24px;padding:24px;box-sizing:border-box;background:#fff;border-radius:18px;color:#334155;}
+      .admin-settings-page h2 {font-size:24px;margin:0 0 20px;}
+      .admin-settings-header:has(button:not([hidden])) {margin-bottom:16px;}
+      .admin-settings-header button {font:inherit;font-size:14px;border:0;background:transparent;color:#4f7f63;padding:8px 0;cursor:pointer;}
+      .admin-settings-menu {display:grid;}
+      .admin-settings-item {position:relative;display:block;width:100%;box-sizing:border-box;text-align:left;padding:18px 32px 18px 0;border:0;border-top:1px solid #e3ebe5;background:transparent;color:#334155;font:inherit;cursor:pointer;}
+      .admin-settings-item::after {content:'›';position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:24px;color:#64748b;pointer-events:none;}
+      .admin-settings-item strong {display:block;font-size:16px;font-weight:700;}
+      .admin-settings-item>span {display:block;font-size:14px;color:#64748b;margin-top:6px;line-height:1.6;}
+      .admin-settings-push-item {cursor:default;}
+      #adminSettingsPushEntry button {display:block;width:100%;text-align:left;background:transparent;border:0;padding:0;margin:0;min-height:28px;color:#334155;font:inherit;font-weight:700;cursor:pointer;}
+      .admin-settings-page button:focus-visible {outline:3px solid #99c7a7;outline-offset:3px;}
+      .admin-settings-page[hidden],.admin-settings-page [hidden] {display:none!important;}
+      .admin-settings-page #system-records-page-section {max-width:none;margin:0;padding:0;}
+      .admin-settings-page .order-records-content {padding:0;background:transparent;}
+      .admin-settings-page .product-banner-admin {margin:0;padding:0;border:0;}
+      .admin-settings-page .product-banner-editor {display:grid;gap:16px;}
+      .admin-settings-page .product-banner-preview img {max-width:100%;max-height:280px;object-fit:contain;}
+      .admin-settings-page input[type=file] {width:100%;min-width:0;}
+      .admin-settings-page .admin-push-dialog {width:100%;max-height:none;overflow:visible;padding:0;border-radius:0;}
+      #adminSettingsPushPane .push-heading {display:none;}
+      #adminSettingsSeasonPane>div>h2 {display:none;}
+      @media(min-width:768px){.admin-settings-page {max-width:1024px;}}
+      @media(min-width:1200px){.admin-settings-page {max-width:1140px;}}
+      @media(max-width:600px){.admin-tab-bar:has([data-tab="settings"]) {grid-template-columns:repeat(2,minmax(0,1fr));}.admin-settings-page {padding:20px 18px;}}
+      @media print{.admin-settings-page{display:none!important;}}
+      /* ADMIN_SETTINGS_CSS_END */
+    </style>
     <link rel="manifest" href="./admin.webmanifest?v=20261022-logo">
     <link rel="apple-touch-icon" sizes="180x180" href="./app-logo-180-v1.png">
     <link rel="stylesheet" href="./admin-push.css?v=20261022-count">
@@ -5621,6 +5662,7 @@ body.preview-white-cards #order-page-section .card {
       >
         商品管理
       </button>
+      <button type="button" class="admin-tab-btn" id="adminSettingsOpenButton" data-tab="settings" onclick="openAdminSettings()">系統設定</button>
     </div>
 
     <section id="order-workspace-section">
@@ -5629,7 +5671,6 @@ body.preview-white-cards #order-page-section .card {
         <div id="order-workspace-tabs" class="order-workspace-tabs" role="tablist" aria-label="訂單作業內容" hidden>
           <button type="button" role="tab" id="orderListTabButton" aria-controls="order-page-section" aria-selected="true" onclick="switchAdminTab('orders')">訂單列表</button>
           <button type="button" role="tab" id="groupOrdersTabButton" aria-controls="group-order-page-section" aria-selected="false" onclick="switchAdminTab('groupOrders')">團體管理</button>
-          <button type="button" role="tab" id="systemRecordsTabButton" aria-controls="system-records-page-section" aria-selected="false" onclick="switchAdminTab('systemRecords')">系統處理紀錄</button>
         </div>
       </div>
     <section id="order-page-section">
@@ -5668,6 +5709,9 @@ body.preview-white-cards #order-page-section .card {
               ➕ 新增訂單
             </button>
           </div>
+        </div>
+        <div id="adminSeasonEntryPoints" class="admin-season-entry-points" hidden>
+          <button type="button" onclick="openAdminSeasonPreparation('history')">查看歷史</button>
         </div>
         <div class="admin-refresh-meta" id="adminRefreshMeta">尚未更新</div>
         <div id="adminSessionStatus" role="status" class="admin-workflow-feedback"></div>
@@ -6031,7 +6075,25 @@ body.preview-white-cards #order-page-section .card {
       </div>
     </section>
 
-    <section id="system-records-page-section" role="tabpanel" aria-labelledby="systemRecordsTabButton" style="display:none"><h2>系統處理紀錄</h2><div id="adminOperationRecords"><div class="order-records-content"><p id="adminStartupSummary" aria-live="polite" style="white-space:pre-line;overflow-wrap:anywhere">正在確認本次完整載入時間…</p>        <details id="adminCreateTiming" class="hidden">
+    <dialog id="adminSeasonDialog" class="admin-season-dialog" aria-label="歷史訂單與產季結束">
+      <div class="admin-season-dialog-close"><button type="button" onclick="document.getElementById('adminSeasonDialog').close()">返回訂單列表</button></div>
+      <div id="season-history-page-section"></div>
+    </dialog>
+
+    </section><!-- order-workspace-section -->
+
+
+    <!-- ADMIN_SETTINGS_HUB_START -->
+    <section id="admin-settings-page-section" class="admin-settings-page" aria-labelledby="adminSettingsTitle" style="display:none">
+      <div class="admin-settings-header"><button type="button" id="adminSettingsBack" onclick="openAdminSettings()" hidden>← 返回設定</button></div>
+      <h2 id="adminSettingsTitle">系統設定</h2>
+      <div id="adminSettingsMenu" class="admin-settings-menu">
+        <button type="button" id="adminSettingsSeasonEntry" class="admin-settings-item" onclick="openAdminSeasonPreparation('prepare')"><strong>產季結束／封存</strong><span>產季結束後整理已完成的訂單</span></button>
+        <button type="button" class="admin-settings-item" onclick="openAdminSettings('records')"><strong>系統處理紀錄</strong><span>查看登入、載入時間與操作紀錄</span></button>
+        <div class="admin-settings-item admin-settings-push-item"><div id="adminSettingsPushEntry"><span id="adminSettingsPushLoading">手機通知載入中…</span></div><span>管理這台手機的新訂單提醒</span></div>
+        <button type="button" class="admin-settings-item" onclick="openAdminSettings('banner')"><strong>前台廣告圖</strong><span>更新客戶下單頁的廣告圖片</span></button>
+      </div>
+    <section id="system-records-page-section" data-admin-settings-pane="records" aria-labelledby="adminSettingsTitle" hidden><div id="adminOperationRecords"><div class="order-records-content"><p id="adminStartupSummary" aria-live="polite" style="white-space:pre-line;overflow-wrap:anywhere">正在確認本次完整載入時間…</p>        <details id="adminCreateTiming" class="hidden">
           <summary>查看建單耗時</summary>
           <div id="adminCreateTimingText" style="overflow-wrap:anywhere"></div>
         </details>        <details id="adminDiagnostics">
@@ -6046,7 +6108,59 @@ body.preview-white-cards #order-page-section .card {
           <p>僅保存本機最近 40 筆處理紀錄，不含客戶資料或登入憑證。</p>
           <pre id="adminShipmentDiagnosticsText" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></pre>
         </details></div></div></section>
-    </section><!-- order-workspace-section -->
+          <section id="adminBannerSettings" class="product-banner-admin" data-admin-settings-pane="banner" hidden>
+            <p>更新客戶下單頁顯示的廣告圖片。</p><p id="adminBannerSettingsFeedback" class="product-management-feedback" role="status" aria-live="polite"></p>
+            <div class="product-banner-editor">
+              <div class="product-field">
+                <label for="productBannerImageFile">直接上傳新圖片</label>
+                <input
+                  id="productBannerImageFile"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onchange="previewSelectedProductBannerFile()"
+                />
+              </div>
+              <div class="product-banner-preview">
+                <img
+                  id="productBannerPreview"
+                  src="assets/banner.png"
+                  alt="前台廣告圖預覽"
+                  onerror="
+                    this.style.display = 'none';
+                    document.getElementById(
+                      'productBannerPreviewEmpty',
+                    ).style.display = 'block';
+                  "
+                  onload="
+                    this.style.display = '';
+                    document.getElementById(
+                      'productBannerPreviewEmpty',
+                    ).style.display = 'none';
+                  "
+                />
+                <span
+                  id="productBannerPreviewEmpty"
+                  style="
+                    display: none;
+                    color: var(--text-muted);
+                    font-size: 0.85em;
+                  "
+                  >尚未上傳廣告圖，或圖片路徑無法在後台預覽（不影響前台實際顯示）</span
+                >
+              </div>
+              <button
+                type="button"
+                class="product-action-btn secondary"
+                id="adminBannerUploadButton" onclick="uploadProductBannerImage()"
+              >
+                上傳並套用圖片
+              </button>
+            </div>
+          </section>
+      <section id="adminSettingsSeasonPane" data-admin-settings-pane="season" hidden></section>
+      <section id="adminSettingsPushPane" data-admin-settings-pane="push" hidden></section>
+    </section>
+    <!-- ADMIN_SETTINGS_HUB_END -->
 
     <section id="shipping-print-page-section" style="display: none">
       <div class="shipping-print-control-panel">
@@ -6455,55 +6569,7 @@ body.preview-white-cards #order-page-section .card {
               <div class="shipping-batch-empty">進入商品管理後讀取批次資料。</div>
             </div>
           </section>
-          <div class="product-banner-admin">
-            <h3>前台廣告圖</h3>
-            <div class="product-banner-editor">
-              <div class="product-field">
-                <label for="productBannerImageFile">直接上傳新圖片</label>
-                <input
-                  id="productBannerImageFile"
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  onchange="previewSelectedProductBannerFile()"
-                />
-              </div>
-              <div class="product-banner-preview">
-                <img
-                  id="productBannerPreview"
-                  src="assets/banner.png"
-                  alt="前台廣告圖預覽"
-                  onerror="
-                    this.style.display = 'none';
-                    document.getElementById(
-                      'productBannerPreviewEmpty',
-                    ).style.display = 'block';
-                  "
-                  onload="
-                    this.style.display = '';
-                    document.getElementById(
-                      'productBannerPreviewEmpty',
-                    ).style.display = 'none';
-                  "
-                />
-                <span
-                  id="productBannerPreviewEmpty"
-                  style="
-                    display: none;
-                    color: var(--text-muted);
-                    font-size: 0.85em;
-                  "
-                  >尚未上傳廣告圖，或圖片路徑無法在後台預覽（不影響前台實際顯示）</span
-                >
-              </div>
-              <button
-                type="button"
-                class="product-action-btn secondary"
-                onclick="uploadProductBannerImage()"
-              >
-                上傳並套用圖片
-              </button>
-            </div>
-          </div>
+
         </div>
       </div>
     </section>
@@ -7425,11 +7491,12 @@ body.preview-white-cards #order-page-section .card {
       const ADMIN_ORDERS_PER_PAGE = 20;
       const ADMIN_CARD_VIEW_MODE_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-card-view-mode-v2`;
       const ADMIN_ACTIVE_TAB_KEY = `${ADMIN_STORAGE_NAMESPACE}:admin-active-tab-v1`;
-      const ADMIN_TAB_NAMES = new Set(["systemRecords",
+      const ADMIN_TAB_NAMES = new Set([
         "orders",
         "groupOrders",
         "shippingPrint",
         "products",
+        "settings",
       ]);
       const ADMIN_CARD_VIEW_MODES = new Set(["full", "compact", "list"]);
       const ADMIN_ORDER_SEARCH_DEBOUNCE_MS = 350;
@@ -8425,6 +8492,17 @@ body.preview-white-cards #order-page-section .card {
       }
 
       function clearAdminAuthSession() {
+        for (const id of ["adminSeasonDialog"]) {
+          const dialog = document.getElementById(id);
+          if (dialog?.open) dialog.close?.();
+        }
+        const settingsPage = document.getElementById("admin-settings-page-section");
+        if (settingsPage) settingsPage.hidden = true;
+        if (typeof adminSeasonView !== "undefined") {
+          adminSeasonView?.clear();
+          adminSeasonView = null;
+          adminSeasonViewToken = "";
+        }
         sessionStorage.removeItem(ADMIN_LINE_STATE_KEY);
         sessionStorage.removeItem(ADMIN_LINE_NONCE_KEY);
         sessionStorage.removeItem(ADMIN_LINE_NONCE_KEY + ":submitted");
@@ -9142,7 +9220,138 @@ body.preview-white-cards #order-page-section .card {
         return false;
       }
 
-      function switchAdminTab(tabName) {
+      // ADMIN_SETTINGS_CONTROLS_START
+      function openAdminSettings(section = "menu") {
+        const token = String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "");
+        if (!token) { showAdminAuthOverlay("請先登入後台。", true); return; }
+        switchAdminTab("settings", section);
+      }
+      function renderAdminSettingsSection(section = "menu") {
+        section = ["records", "banner", "season", "push"].includes(section) ? section : "menu";
+        const page = document.getElementById("admin-settings-page-section");
+        if (!page) return;
+        page.hidden = false;
+        document.getElementById("adminSettingsMenu").hidden = section !== "menu";
+        document.getElementById("adminSettingsBack").hidden = section === "menu";
+        document.getElementById("adminSettingsTitle").textContent = ({menu:"系統設定",records:"系統處理紀錄",banner:"前台廣告圖",season:"產季結束／封存",push:"手機通知"})[section];
+        document.getElementById("adminSettingsSeasonEntry").hidden = ORDER_SYSTEM_CONFIG.features?.adminSeasonPreparation !== true;
+        page.querySelectorAll("[data-admin-settings-pane]").forEach(panel => { panel.hidden = panel.dataset.adminSettingsPane !== section; });
+        if (section === "banner") void loadAdminBannerSettings();
+      }
+      function setAdminBannerFeedback(message, type = "") {
+        const feedback = document.getElementById("adminBannerSettingsFeedback");
+        if (!feedback) return;
+        feedback.textContent = message || "";
+        feedback.className = `product-management-feedback ${type}`.trim();
+      }
+      // ADMIN_SETTINGS_CONTROLS_END
+      let adminBannerSettingsFlight = null;
+      async function loadAdminBannerSettings() {
+        if (adminBannerSettingsFlight) return adminBannerSettingsFlight;
+        const token = String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "");
+        if (!token) return;
+        const fileInput = document.getElementById("productBannerImageFile");
+        const uploadButton = document.getElementById("adminBannerUploadButton");
+        if (fileInput) fileInput.disabled = true;
+        if (uploadButton) uploadButton.disabled = true;
+        setAdminBannerFeedback("正在讀取目前的廣告圖…");
+        const flight = (async () => {
+          try {
+            const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
+              method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+              body:JSON.stringify({action:"adminReadProductCatalog", includeOperations:false, requestId:createAdminDiagnosticRequestId("adminReadProductCatalog"), adminSessionToken:token})
+            }, ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS);
+            const result = await response.json();
+            if (String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "") !== token) return;
+            if (result?.error === "ADMIN_SESSION_REQUIRED") {
+              document.getElementById("admin-settings-page-section").hidden = true;
+              sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+              showAdminAuthOverlay("登入已過期，請重新登入。", true);
+              return;
+            }
+            if (!response.ok || result?.ok !== true || result.action !== "adminReadProductCatalog" || !result.siteSettings || typeof result.siteSettings !== "object") throw new Error("BANNER_SETTINGS_UNAVAILABLE");
+            adminSiteSettings = {...adminSiteSettings, ...result.siteSettings};
+            if (!fileInput?.files?.length) renderProductBannerSettings();
+            setAdminBannerFeedback(fileInput?.files?.length ? "已保留選取的圖片；按「上傳並套用圖片」才會更新前台。" : "");
+          } catch (error) {
+            setAdminBannerFeedback("目前廣告圖讀取失敗，請返回設定後再試。", "error");
+          }
+        })();
+        adminBannerSettingsFlight = flight;
+        try { await flight; } finally {
+          if (adminBannerSettingsFlight === flight) adminBannerSettingsFlight = null;
+          if (fileInput) fileInput.disabled = false;
+          if (uploadButton) uploadButton.disabled = false;
+        }
+      }
+
+      let adminSeasonModuleFlight = null;
+      let adminSeasonOpenId = 0;
+      let adminSeasonView = null;
+      let adminSeasonViewToken = "";
+      let adminSeasonViewMode = "";
+      async function openAdminSeasonPreparation(mode = "history") {
+        const panel = document.getElementById("season-history-page-section");
+        const token = String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "");
+        if (!panel || !token || ORDER_SYSTEM_CONFIG.features?.adminSeasonPreparation !== true) return;
+        mode = mode === "prepare" ? "prepare" : "history";
+        const openId = ++adminSeasonOpenId;
+        const dialog = document.getElementById("adminSeasonDialog");
+        if (mode === "prepare") {
+          if (dialog?.open) dialog.close();
+          document.getElementById("adminSettingsSeasonPane").appendChild(panel);
+          openAdminSettings("season");
+        } else if (dialog) {
+          dialog.appendChild(panel);
+          const closeButton = dialog.querySelector(".admin-season-dialog-close button");
+          if (closeButton) closeButton.textContent = mode === "prepare" ? "返回設定" : "返回訂單列表";
+          if (!dialog.open) dialog.showModal();
+        }
+        if (adminSeasonView && adminSeasonViewToken === token && adminSeasonViewMode === mode) { void adminSeasonView.reload(); return; }
+        panel.textContent = "正在讀取…";
+        try {
+          if (!adminSeasonModuleFlight) adminSeasonModuleFlight = (async () => {
+            const load = (tag, path) => new Promise((resolve, reject) => {
+              const el = document.createElement(tag);
+              if (tag === "link") { el.rel = "stylesheet"; el.href = path; }
+              else el.src = path;
+              el.onload = resolve; el.onerror = () => { el.remove(); reject(new Error("SEASON_MODULE_UNAVAILABLE")); };
+              document.head.appendChild(el);
+            });
+            await load("link", "admin-seasons.css?v=20261027-system-settings-production-v1");
+            await load("script", "admin-seasons-core.js?v=20261027-system-settings-production-v1");
+            await load("script", "admin-seasons.js?v=20261027-system-settings-production-v1");
+          })().catch(error => { adminSeasonModuleFlight = null; throw error; });
+          await adminSeasonModuleFlight;
+          if (openId !== adminSeasonOpenId || String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "") !== token) return;
+          if (adminSeasonView && adminSeasonViewToken === token && adminSeasonViewMode === mode) return;
+          adminSeasonView?.clear();
+          adminSeasonViewToken = token;
+          adminSeasonViewMode = mode;
+          adminSeasonView = window.AdminSeasons.mount(panel, async (action, input) => {
+            if (String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "") !== token) throw new Error("ADMIN_SESSION_REQUIRED");
+            const response = await fetchWithTimeout(GAS_ORDERS_API_URL, {
+              method: "POST", headers: {"Content-Type":"text/plain;charset=utf-8"},
+              body: JSON.stringify({...input, action, adminSessionToken:token})
+            }, 60000, true);
+            if (String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "") !== token) {
+              if (adminSeasonViewToken === token) { adminSeasonView?.clear(); adminSeasonView = null; adminSeasonViewToken = ""; }
+              throw new Error("ADMIN_SESSION_REQUIRED");
+            }
+            if (!response.ok) throw new Error("SEASON_SERVICE_UNAVAILABLE");
+            const result = await response.json();
+            if (String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "") !== token) throw new Error("ADMIN_SESSION_REQUIRED");
+            if (result.error === "ADMIN_SESSION_REQUIRED" && adminSeasonViewToken === token) { adminSeasonView?.clear(); adminSeasonView = null; adminSeasonViewToken = ""; showAdminAuthOverlay("登入已失效，請重新登入。", true); }
+            return result;
+          }, {allowExecution:false, mode});
+        } catch (error) {
+          panel.textContent = "暫時無法讀取，請關閉後重試。";
+        }
+      }
+
+      function switchAdminTab(tabName, settingsSection = "menu") {
+        if (tabName === "settings" && !sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY)) { showAdminAuthOverlay("請先登入後台。", true); return; }
+        if (tabName === "systemRecords") { openAdminSettings("records"); return; }
         const normalizedTabName =
           ADMIN_TAB_NAMES.has(tabName) &&
           (tabName !== "groupOrders" || GROUP_ORDERS_ENABLED)
@@ -9150,12 +9359,12 @@ body.preview-white-cards #order-page-section .card {
             : "orders";
         sessionStorage.setItem(ADMIN_ACTIVE_TAB_KEY, normalizedTabName);
         const workspace = document.getElementById("order-workspace-section");
-        if (workspace) workspace.style.display = ["orders", "groupOrders", "systemRecords"].includes(normalizedTabName) ? "" : "none";
+        if (workspace) workspace.style.display = ["orders", "groupOrders"].includes(normalizedTabName) ? "" : "none";
+        const seasonActions = document.getElementById("adminSeasonEntryPoints");
+        if (seasonActions) seasonActions.hidden = ORDER_SYSTEM_CONFIG.features?.adminSeasonPreparation !== true;
         const subTabs = document.getElementById("order-workspace-tabs");
         if (subTabs) subTabs.hidden = false;
         document.getElementById('groupOrdersTabButton').hidden = !GROUP_ORDERS_ENABLED;
-        document.getElementById('systemRecordsTabButton').setAttribute('aria-selected', String(normalizedTabName === 'systemRecords'));
-        document.getElementById('system-records-page-section').style.display = normalizedTabName === 'systemRecords' ? '' : 'none';
         document.getElementById("orderListTabButton")?.setAttribute("aria-selected", String(normalizedTabName === "orders"));
         document.getElementById("groupOrdersTabButton")?.setAttribute("aria-selected", String(normalizedTabName === "groupOrders"));
         const orderSection = document.getElementById("order-page-section");
@@ -9167,6 +9376,9 @@ body.preview-white-cards #order-page-section .card {
           "group-order-page-section",
         );
         const tabButtons = document.querySelectorAll(".admin-tab-btn");
+        const settingsPage = document.getElementById("admin-settings-page-section");
+        if (settingsPage) settingsPage.style.display = normalizedTabName === "settings" ? "" : "none";
+        if (normalizedTabName === "settings") renderAdminSettingsSection(settingsSection);
 
         if (orderSection) {
           orderSection.style.display =
@@ -9187,7 +9399,7 @@ body.preview-white-cards #order-page-section .card {
         tabButtons.forEach((button) => {
           button.classList.toggle(
             "active",
-            button.dataset.tab === (["groupOrders", "systemRecords"].includes(normalizedTabName) ? "orders" : normalizedTabName),
+            button.dataset.tab === (["groupOrders"].includes(normalizedTabName) ? "orders" : normalizedTabName),
           );
         });
 
@@ -9211,7 +9423,7 @@ body.preview-white-cards #order-page-section .card {
         const storedTabName = String(
           sessionStorage.getItem(ADMIN_ACTIVE_TAB_KEY) || "orders",
         ).trim();
-        switchAdminTab(storedTabName);
+        switchAdminTab(["systemRecords", "seasons", "settings"].includes(storedTabName) ? "orders" : storedTabName);
       }
 
       function setShippingBatchManagementFeedback(message, type = "") {
@@ -10664,13 +10876,13 @@ function cancelProductManagementEdit(button) {
         if (!file || !preview) return;
 
         if (!file.type.startsWith("image/")) {
-          setProductManagementFeedback("請選擇圖片檔。", "error");
+          setAdminBannerFeedback("請選擇圖片檔。", "error");
           input.value = "";
           return;
         }
 
         preview.src = URL.createObjectURL(file);
-        setProductManagementFeedback("已選擇圖片，請按「上傳並套用圖片」。");
+        setAdminBannerFeedback("已選擇圖片，請按「上傳並套用圖片」。");
       }
 
       function readFileAsBase64(file) {
@@ -10693,7 +10905,7 @@ function cancelProductManagementEdit(button) {
         ).trim();
 
         if (!adminSessionToken) {
-          setProductManagementFeedback(
+          setAdminBannerFeedback(
             "登入已過期，請重新登入 LINE。",
             "error",
           );
@@ -10701,7 +10913,7 @@ function cancelProductManagementEdit(button) {
         }
 
         if (!file) {
-          setProductManagementFeedback("請先選擇一張圖片。", "error");
+          setAdminBannerFeedback("請先選擇一張圖片。", "error");
           return;
         }
 
@@ -10710,7 +10922,7 @@ function cancelProductManagementEdit(button) {
             file.type,
           )
         ) {
-          setProductManagementFeedback(
+          setAdminBannerFeedback(
             "只支援 PNG、JPG、WEBP、GIF 圖片。",
             "error",
           );
@@ -10718,11 +10930,11 @@ function cancelProductManagementEdit(button) {
         }
 
         if (file.size > 5 * 1024 * 1024) {
-          setProductManagementFeedback("圖片請小於 5MB。", "error");
+          setAdminBannerFeedback("圖片請小於 5MB。", "error");
           return;
         }
 
-        setProductManagementFeedback("圖片上傳中...");
+        setAdminBannerFeedback("圖片上傳中...");
 
         try {
           const base64Data = await readFileAsBase64(file);
@@ -10756,11 +10968,11 @@ function cancelProductManagementEdit(button) {
             bannerImageUrl: result.imageUrl,
           };
           renderProductBannerSettings();
-          setProductManagementFeedback("✅ 已上傳並套用廣告圖", "success");
+          setAdminBannerFeedback("✅ 已上傳並套用廣告圖", "success");
           if (input) input.value = "";
         } catch (error) {
           console.error("廣告圖上傳失敗", error);
-          setProductManagementFeedback(
+          setAdminBannerFeedback(
             "圖片上傳失敗，請換一張較小的圖片再試。",
             "error",
           );
@@ -26514,10 +26726,14 @@ ${adminNote}
     <script src="./blackcat-shipping.js?v=20261022-pdf-simple-v1"></script>
     <script src="./blackcat-pdf-timing.js?v=20261019-inline-start-v1"></script>
     <script type="module">
-      import { mountAdminPush } from './admin-push.js?v=20261022-count';
-      mountAdminPush({
-        container: document.querySelector('.admin-header-actions'),
+      import { mountAdminPush } from './admin-push.js?v=20261027-system-settings-production-v1';
+      const adminPushControls = mountAdminPush({
+        container: document.getElementById('adminSettingsPushEntry'),
+        inlineContainer: document.getElementById('adminSettingsPushPane'),
+        onOpen: () => openAdminSettings('push'),
+        onClose: () => openAdminSettings(),
         requireLogin() {
+          document.getElementById('admin-settings-page-section').hidden = true;
           sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
           showAdminAuthOverlay('登入已過期，請重新登入後查看訂單。', true);
         },
@@ -26531,6 +26747,8 @@ ${adminNote}
           return response.json();
         }
       });
+      document.getElementById('adminSettingsPushLoading')?.remove();
+      adminPushControls.button.setAttribute('aria-label', '手機通知');
     </script>
   </body>
 </html>
