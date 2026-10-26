@@ -78,4 +78,11 @@ check('query flows cannot replace startup result and arbitrary mode text is reje
   const query=f.api.beginFlow('query');f.setClock(3100);f.api.markFlow(query,'ui_updated');f.api.startupMode('PRIVATE_TOKEN');
   assert.equal(f.summary(),saved);assert.match(saved,/尚未達標/);assert.ok(!saved.includes('PRIVATE_TOKEN'));
 });
+check('startup includes page download time, while ordinary operations retain their own start',()=>{
+  const f=fixture();f.c.performance.timeOrigin=f.c.Date.now()-400;
+  const flow=f.api.beginFlow('startup');f.setClock(2700);f.api.markFlow(flow,'full_data');f.api.markFlow(flow,'ui_updated');
+  assert.match(f.summary(),/完整畫面就緒：3.10 秒/);assert.match(f.summary(),/尚未達標/);
+  const query=f.api.beginFlow('query');assert.equal(query.startedAt,f.c.Date.now());
+  f.c.performance.timeOrigin=f.c.Date.now()+1000;const invalid=f.api.beginFlow('startup');assert.equal(invalid.startedAt,f.c.Date.now());
+});
 console.log(JSON.stringify({passed:count,networkRequests:0}));

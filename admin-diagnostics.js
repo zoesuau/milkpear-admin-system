@@ -52,7 +52,7 @@
     const seconds = value => value === null ? '尚未完成' : (value / 1000).toFixed(2) + ' 秒';
     const mode = {complete:'完整訂單一次載入',page:'第一頁後補完整訂單',unknown:'確認中'}[startupView.mode];
     const result = startupView.failed ? '本次未完成' : startupView.uiMs === null ? '等待完成' : startupView.uiMs <= 3000 ? '已達標' : '尚未達標';
-    el.textContent = `本次開啟後台\n載入方式：${mode}\n登入確認：${seconds(startupView.authMs)}\n完整資料就緒：${seconds(startupView.fullMs)}\n完整畫面就緒：${seconds(startupView.uiMs)}\n3 秒目標：${result}\n計時從本頁初始化開始，包含登入確認；不含 LINE 頁面停留與跳轉。${startupView.hidden?'\n載入期間曾切換畫面，以上時間包含背景等待。':''}`;
+    el.textContent = `本次開啟後台\n載入方式：${mode}\n登入確認：${seconds(startupView.authMs)}\n完整資料就緒：${seconds(startupView.fullMs)}\n完整畫面就緒：${seconds(startupView.uiMs)}\n3 秒目標：${result}\n計時從本頁開始載入，包含頁面下載與登入確認；不含之前的 LINE 頁面操作。${startupView.hidden?'\n載入期間曾切換畫面，以上時間包含背景等待。':''}`;
   }
   const uuid = () => crypto.randomUUID();
   function read(key, fallback) { try { return JSON.parse(localStorage.getItem(prefix + key)) ?? fallback; } catch { storageOK = false; return fallback; } }
@@ -205,7 +205,13 @@
           || !Number.isFinite(startedAt) || startedAt>now || startedAt<now-MAX_FLOW_AGE) return null;
         pruneFlows();const existing=flows.get(flowId);
         if (existing) return existing.handle.flowName===name&&existing.handle.startedAt===startedAt ? existing.handle : null;
-      } else {flowId=uuid();startedAt=now;}
+      } else {
+        flowId=uuid();startedAt=now;
+        // Include navigation/download/parse time in startup acceptance. Other
+        // operations still begin at their actual action, never page navigation.
+        const navigationAt = typeof performance !== 'undefined' ? performance.timeOrigin : null;
+        if (name === 'startup' && Number.isFinite(navigationAt) && navigationAt <= now && navigationAt >= now-MAX_FLOW_AGE) startedAt=navigationAt;
+      }
       const handle = Object.freeze({flowId,flowName:name,startedAt});
       const state = {handle,startedClock:flowClock()-(now-startedAt),operationId:uuid(),phase:'start',marked:new Set(['start'])};
       flows.set(handle.flowId,state);pruneFlows();
