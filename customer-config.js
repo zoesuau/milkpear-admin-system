@@ -1,4 +1,4 @@
-// Candidate generated from customer-manifest.json. Not deployed.
+// Production configuration for the Sanheyuan admin frontend.
 window.ORDER_SYSTEM_CONFIG = Object.freeze({
   "productId": "farm-order-fulfillment",
   "customerId": "sanheyuan",
@@ -12,6 +12,7 @@ window.ORDER_SYSTEM_CONFIG = Object.freeze({
   "adminSiteUrl": "https://zoesuau.github.io/milkpear-admin-system",
   "features": {
     "adminOrderSnapshot": true,
+    "adminStartupWorkspace": true,
     "adminReadObservabilityLevel": "DEBUG",
     "groupOrders": true,
     "adminDirectResponse": true,

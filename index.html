@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261026-startup-workspace-v1">
+<html lang="zh-Hant" data-release-version="20261026-full-startup-production-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261019-label-fields-v1" />
+    <meta name="admin-release" content="20261026-full-startup-production-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261019-label-fields-v1"></script>
+    <script src="./customer-config.js?v=20261026-full-startup-production-v1"></script>
     <script src="./admin-direct-response.js?v=20261020-download-fence-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261019-label-fields-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261026-full-startup-production-v1"></script>
     <script src="./admin-mutation-recovery.js?v=20261019-label-fields-v1"></script>
     <link
       rel="stylesheet"
@@ -6028,7 +6028,7 @@ body.preview-white-cards #order-page-section .card {
       </div>
     </section>
 
-    <section id="system-records-page-section" role="tabpanel" aria-labelledby="systemRecordsTabButton" style="display:none"><h2>系統處理紀錄</h2><div id="adminOperationRecords"><div class="order-records-content">        <details id="adminCreateTiming" class="hidden">
+    <section id="system-records-page-section" role="tabpanel" aria-labelledby="systemRecordsTabButton" style="display:none"><h2>系統處理紀錄</h2><div id="adminOperationRecords"><div class="order-records-content"><p id="adminStartupSummary" aria-live="polite" style="white-space:pre-line;overflow-wrap:anywhere">正在確認本次完整載入時間…</p>        <details id="adminCreateTiming" class="hidden">
           <summary>查看建單耗時</summary>
           <div id="adminCreateTimingText" style="overflow-wrap:anywhere"></div>
         </details>        <details id="adminDiagnostics">
@@ -8692,14 +8692,18 @@ body.preview-white-cards #order-page-section .card {
 
       let adminLoginOrderBootstrap = null;
       function isAdminStartupWorkspaceEnabled() {
-        // Per-tab trial survives the LINE redirect without changing its URI.
-        // Missing/blocked storage leaves the established page-first path active.
+        // Production no longer depends on a trial flag surviving the LINE tab.
+        // Keep an explicit per-tab compatibility override for rollback.
+        const config = window.ORDER_SYSTEM_CONFIG || {};
+        const defaultEnabled = config.customerId === "sanheyuan" &&
+          config.environment === "production" && config.features?.adminStartupWorkspace === true;
+        const option = new URLSearchParams(window.location.search).get("startupWorkspace");
         try {
           const key = "sanheyuan:startup-workspace:v1";
-          const option = new URLSearchParams(window.location.search).get("startupWorkspace");
           if (option === "1" || option === "0") sessionStorage.setItem(key, option);
-          return sessionStorage.getItem(key) === "1";
-        } catch { return false; }
+          const saved = sessionStorage.getItem(key);
+          return saved === "0" ? false : saved === "1" ? true : defaultEnabled;
+        } catch { return option === "0" ? false : defaultEnabled; }
       }
       let adminAuthCompletionPromise = null;
       async function fetchAdminAuthWithResultRecovery(payload, recovery = {}) {
@@ -22644,7 +22648,8 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
       // 頁面初始化
       window.addEventListener("DOMContentLoaded", async () => {
         window.adminStartupFlow = window.AdminDiagnostics?.beginFlow?.("startup");
-        isAdminStartupWorkspaceEnabled();
+        const completeStartup = isAdminStartupWorkspaceEnabled();
+        window.AdminDiagnostics?.startupMode?.(completeStartup ? "complete" : "page");
         try {
           const oldRecords = readAdminShipmentDiagnostics();
           document.getElementById("adminShipmentDiagnosticsText").textContent = oldRecords.length ? JSON.stringify(oldRecords, null, 2) : "目前沒有舊版寄出紀錄。";
@@ -22791,8 +22796,8 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
 
 
         try {
-          // The opt-in read is complete in one response; the default retains
-          // the existing page-first and background-workspace path.
+          // The production default is complete in one response. An explicit
+          // compatibility override retains the page-first path for rollback.
           const adminOrders = await fetchInitialAdminOrdersWithRecovery({ page: 1 });
 
           if (!Array.isArray(adminOrders)) {

@@ -17,6 +17,43 @@
   const outcomes = new Set(['started','success','failure','interrupted','online','offline','visible','hidden']);
   const codes = new Set(['OK','UNKNOWN_ERROR','AUTH_START_FAILED','AUTH_PROVIDER_CALLBACK_ERROR','AUTH_CALLBACK_CONTEXT_MISSING','AUTH_CALLBACK_STATE_MISMATCH','AUTH_CALLBACK_PARAMETER_MISSING','ADMIN_AUTH_PENDING','ADMIN_AUTH_RESULT_NOT_FOUND','ADMIN_AUTH_RESTART_REQUIRED','ADMIN_AUTH_RECOVERY_EXPIRED','ADMIN_AUTH_RECOVERY_CONTEXT_INVALID','ADMIN_AUTH_RESULT_UNAVAILABLE','ADMIN_AUTH_CONTEXT_INVALID','ADMIN_SESSION_STORE_FAILED','LINE_ADMIN_AUTH_FAILED','LINE_NONCE_MISMATCH','LINE_AUTH_CONFIG_MISSING','LINE_ID_TOKEN_VERIFY_FAILED','LINE_ID_TOKEN_MISSING','INVALID_REDIRECT_URI','GOOGLE_AUTH_REQUIRED','GAS_SERVER_ERROR','GAS_AUTH_REQUEST_FAILED','LINE_TOKEN_EXCHANGE_FAILED','INVENTORY_RESULT_UNCONFIRMED','INVENTORY_REVIEW_REQUIRED','INVENTORY_UPDATE_INDETERMINATE','INVENTORY_PENDING_CHANGED','INVENTORY_STOCK_CHANGED','INVENTORY_UPDATE_BUSY','INVENTORY_REQUEST_KEY_CONFLICT','PRODUCT_SAVE_UNCONFIRMED','PRODUCT_SAVE_REVIEW_REQUIRED','PRODUCT_FIELD_CONFLICT','PRODUCT_SAVE_REQUEST_CONFLICT','PRODUCT_SAVE_RECEIPT_INVALID','PRODUCT_CATALOG_STALE','PRODUCT_CATALOG_INVALID','PRODUCT_CATALOG_HEADER_MISMATCH','PRODUCT_CATALOG_VERSION_REQUIRED','PRODUCT_MANAGEMENT_UPDATE_BUSY','PRODUCT_MANAGEMENT_UPDATE_FAILED','PRODUCT_MANAGEMENT_SAVE_FAILED','PRODUCT_ID_CODE_IMMUTABLE','PRODUCT_SPEC_IMMUTABLE','PRODUCT_SHIPPING_RULE_INVALID','PRODUCT_STOCK_SEPARATE_ACTION_REQUIRED','SITE_SETTINGS_INVALID','SITE_SETTINGS_HEADER_MISMATCH','NETWORK_ERROR','GAS_TIMEOUT','GAS_NON_JSON_RESPONSE','ADMIN_NETWORK_OFFLINE','ADMIN_SESSION_REQUIRED','ADMIN_SESSION_VALIDATION_FAILED','GAS_AUTH_RESPONSE_INVALID','LINE_AUTH_MISSING_FIELD','LINE_AUTH_FAILED','AUTH_GOOGLE_403','SHIPMENT_RESPONSE_TIMEOUT','SHIPMENT_READBACK_FAILED','SHIPMENT_READBACK_INVALID','SHIPMENT_RESPONSE_INVALID','SHIPMENT_RENDER_FAILED','SHIPMENT_STATE_PENDING','SHIPMENT_PAUSED','SHIPMENT_BUDGET_EXHAUSTED','SHIPMENT_NOT_COMMITTED','SAVE_UI_UPDATE_FAILED','ADMIN_MUTATION_UNCONFIRMED','ADMIN_MUTATION_BUSY','ADMIN_MUTATION_PREVIOUS_RESOLVED','ADMIN_MUTATION_STORAGE_INVALID','ORDER_CREATE_FAILED','ORDER_CREATE_INDETERMINATE','ORDER_CREATE_LOCAL_UPDATE_FAILED','PRODUCT_STOCK_INSUFFICIENT','ADMIN_ORDERS_READ_FAILED','ADMIN_ORDER_FILTER_INVALID','ADMIN_ORDER_SEARCH_QUERY_INVALID','ADMIN_ORDER_SNAPSHOT_PAGE_UNAVAILABLE','ADMIN_ORDER_SNAPSHOT_PAGE_INVALID','ADMIN_ORDER_SNAPSHOT_VERSION_NOT_READY','ADMIN_ORDER_SNAPSHOT_UNAVAILABLE','ADMIN_ORDER_SNAPSHOT_PENDING_UNAVAILABLE','ADMIN_ORDER_SNAPSHOT_SYNC_FAILED','REQUEST_KEYS_INVALID','CUSTOMER_SEARCH_FAILED','ABORTED','UNCONFIRMED','WORKSPACE_WAIT_DRAFT','WORKSPACE_WAIT_SELECTION','WORKSPACE_WAIT_HIDDEN','WORKSPACE_SESSION_CHANGED','WORKSPACE_QUERY_CHANGED','WORKSPACE_MUTATION_CHANGED','WORKSPACE_VERSION_CHANGED','WORKSPACE_RENDER_FAILED','WORKSPACE_READ_FAILED','WORKSPACE_STALE_DATA','WORKSPACE_LOAD_FAILED']);
   let storageOK = true, pending = new Map(), history = [], dropped = 0, timer, uploading = false, retry = 0, lastUpload = '', uploadState = '';
+  // Keep this page's startup result separate from the rolling polling history.
+  // Only bounded timing and fixed mode labels are retained, never order data.
+  let startupView = {mode:'unknown',flowId:null,startedAt:null,authMs:null,fullMs:null,uiMs:null,failed:false,hidden:false,workspaceId:null};
+  function startupMode(mode) {
+    if (!['complete','page'].includes(mode)) return;
+    startupView.mode = mode;
+    render();
+  }
+  function observeStartup(event) {
+    if (event.pageId !== pageId) return;
+    if (event.stage === 'PAGE' && event.outcome === 'hidden' && startupView.flowId && startupView.uiMs === null) startupView.hidden = true;
+    if (event.stage !== 'FLOW' || !event.flowId) return;
+    if (event.flowName === 'startup' && event.phase === 'start') {
+      startupView = {...startupView,flowId:event.flowId,startedAt:event.flowStartedAt,authMs:null,fullMs:null,uiMs:null,failed:false,hidden:false,workspaceId:null};
+    }
+    if (!startupView.flowId) return;
+    const startup = event.flowName === 'startup' && event.flowId === startupView.flowId;
+    if (event.flowName === 'workspace' && event.phase === 'start' && startupView.uiMs === null) startupView.workspaceId = event.flowId;
+    const workspace = event.flowName === 'workspace' && event.flowId === startupView.workspaceId;
+    if (!startup && !workspace) return;
+    const elapsed = (workspace ? event.flowStartedAt - startupView.startedAt : 0) + event.flowElapsedMs;
+    if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed > MAX_FLOW_AGE) return;
+    if (event.outcome === 'success') {
+      if (startup && event.phase === 'auth_complete' && startupView.authMs === null) startupView.authMs = elapsed;
+      if (event.phase === 'full_data') startupView.fullMs = elapsed;
+      if (event.phase === 'ui_updated' && startupView.fullMs !== null) {startupView.uiMs = elapsed;startupView.failed = false;}
+    }
+    if (event.phase === 'complete' && ['failure','interrupted'].includes(event.outcome) && startupView.uiMs === null) startupView.failed = true;
+  }
+  function renderStartup() {
+    const el = document.getElementById('adminStartupSummary');
+    if (!el) return;
+    const seconds = value => value === null ? '尚未完成' : (value / 1000).toFixed(2) + ' 秒';
+    const mode = {complete:'完整訂單一次載入',page:'第一頁後補完整訂單',unknown:'確認中'}[startupView.mode];
+    const result = startupView.failed ? '本次未完成' : startupView.uiMs === null ? '等待完成' : startupView.uiMs <= 3000 ? '已達標' : '尚未達標';
+    el.textContent = `本次開啟後台\n載入方式：${mode}\n登入確認：${seconds(startupView.authMs)}\n完整資料就緒：${seconds(startupView.fullMs)}\n完整畫面就緒：${seconds(startupView.uiMs)}\n3 秒目標：${result}\n計時從本頁初始化開始，包含登入確認；不含 LINE 頁面停留與跳轉。${startupView.hidden?'\n載入期間曾切換畫面，以上時間包含背景等待。':''}`;
+  }
   const uuid = () => crypto.randomUUID();
   function read(key, fallback) { try { return JSON.parse(localStorage.getItem(prefix + key)) ?? fallback; } catch { storageOK = false; return fallback; } }
   function write(key, value) { try { localStorage.setItem(prefix + key, JSON.stringify(value)); } catch { storageOK = false; } }
@@ -132,7 +169,7 @@
   function record(input={}) {
     try {
       const e=clean({...input,id:uuid(),operationId:isId(input.operationId)?input.operationId:uuid(),deviceId,pageId,at:Date.now(),version,deviceType,online:navigator.onLine !== false});
-      if(!e)return; history.push(e); history=history.slice(-MAX_HISTORY);pending.set(e.id,e);
+      if(!e)return; observeStartup(e); history.push(e); history=history.slice(-MAX_HISTORY);pending.set(e.id,e);
       write('history',history);syncQueue();render();schedule();
     } catch { /* Must not affect application control flow. */ }
   }
@@ -263,6 +300,7 @@
   }
   function format(e){const flow=sanitizeFlow(e);return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${workspaceCodeLabels[e.code] ? workspaceCodeLabels[e.code]+'（'+e.code+'）' : e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}${flow.flowId?'｜'+flowLabels[flow.flowName]+'・'+phaseLabels[flow.phase]+'｜整段 '+Math.round(flow.flowElapsedMs)+' 毫秒':''}${e.headersMs!==null&&e.headersMs!==undefined?'｜回應標頭 '+(e.headersMs/1000).toFixed(2)+' 秒':''}${e.bodyMs!==null&&e.bodyMs!==undefined?'｜回覆副本觀察 '+(e.bodyMs/1000).toFixed(2)+' 秒':''}${e.responseHost&&e.responseHost!=='unknown'?'｜'+e.responseHost:''}${e.redirected===true?'｜已轉址':''}${e.outcome==='failure'?formatResponseContract(e.responseContract):''}${e.catalogAttempt?'｜第 '+e.catalogAttempt+' 次請求':''}${formatCatalogTiming(e.catalogTiming)}${e.snapshotTiming?'｜快取讀取 '+e.snapshotTiming.cacheReadReason+'｜快取存入 '+e.snapshotTiming.cacheWriteReason+(e.snapshotTiming.serverElapsedMs!==null?'｜後端 '+(e.snapshotTiming.serverElapsedMs/1000).toFixed(2)+' 秒':''):''}\n操作 ${e.operationId}${e.requestId ? "｜請求 " + e.requestId : ""}${flow.flowId?'｜流程 '+flow.flowId:''}｜${e.deviceType}｜${e.version}`;}
   function render(){try{
+    renderStartup();
     const el=document.getElementById('adminDiagnosticsText'); if(el)el.textContent=history.length?history.slice().reverse().map(format).join('\n\n'):'目前這個瀏覽器沒有診斷紀錄。';
     const status=document.getElementById('adminDiagnosticsStatus');if(status)status.textContent=`本機 ${history.length} 筆｜待上傳 ${pending.size} 筆${dropped?'｜超過保存上限／期限 '+dropped+' 筆':''}。${!storageOK?'瀏覽器無法持久保存，關閉後尚未上傳的紀錄可能遺失。':''}${navigator.onLine===false?'目前離線，恢復連線後自動補傳。':uploadState}${lastUpload?' 最近上傳：'+lastUpload:''}`;
   }catch{}}
@@ -294,7 +332,7 @@
     } catch(error) {recordRequest({requestId,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':'NETWORK_ERROR',elapsedMs:Date.now()-start});throw error;}
   };
   const shipIds=new Map();
-  window.AdminDiagnostics={record,flush,render,beginFlow,bindRequestToFlow,markFlow,finishFlow, async query(token) {
+  window.AdminDiagnostics={record,flush,render,startupMode,beginFlow,bindRequestToFlow,markFlow,finishFlow, async query(token) {
     if(!token)throw new Error('請先完成管理員登入。');
     const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);
     try {const response=await rawFetch(endpoint+'/query',{method:'POST',headers:{'content-type':'application/json'},signal:controller.signal,body:JSON.stringify({adminSessionToken:token})});const result=await response.json();if(!response.ok||!result.ok)throw new Error('暫時無法讀取集中紀錄，請確認登入或服務狀態。');return result.events.map(format).join('\n\n')||'集中紀錄目前沒有資料。';}finally{clearTimeout(timeout);}
