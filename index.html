@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261027-system-settings-production-v1">
+<html lang="zh-Hant" data-release-version="20261027-settings-spacing-production-v2">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261027-system-settings-production-v1" />
+    <meta name="admin-release" content="20261027-settings-spacing-production-v2" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
     <link rel="preconnect" href="https://sanheyuan-admin-response.zoe-quokka.workers.dev" crossorigin />
-    <script src="./customer-config.js?v=20261027-system-settings-production-v1"></script>
+    <script src="./customer-config.js?v=20261027-settings-spacing-production-v2"></script>
     <script src="./admin-direct-response.js?v=20261020-download-fence-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261027-system-settings-production-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261027-settings-spacing-production-v2"></script>
     <script src="./admin-mutation-recovery.js?v=20261019-label-fields-v1"></script>
     <link
       rel="stylesheet"
@@ -5592,7 +5592,7 @@ body.preview-white-cards #order-page-section .card {
       .admin-settings-page button:focus-visible {outline:3px solid #99c7a7;outline-offset:3px;}
       .admin-settings-page[hidden],.admin-settings-page [hidden] {display:none!important;}
       .admin-settings-page #system-records-page-section {max-width:none;margin:0;padding:0;}
-      .admin-settings-page .order-records-content {padding:0;background:transparent;}
+      .admin-settings-page .order-records-content {padding:20px;box-sizing:border-box;min-width:0;background:transparent;}
       .admin-settings-page .product-banner-admin {margin:0;padding:0;border:0;}
       .admin-settings-page .product-banner-editor {display:grid;gap:16px;}
       .admin-settings-page .product-banner-preview img {max-width:100%;max-height:280px;object-fit:contain;}
@@ -5602,7 +5602,7 @@ body.preview-white-cards #order-page-section .card {
       #adminSettingsSeasonPane>div>h2 {display:none;}
       @media(min-width:768px){.admin-settings-page {max-width:1024px;}}
       @media(min-width:1200px){.admin-settings-page {max-width:1140px;}}
-      @media(max-width:600px){.admin-tab-bar:has([data-tab="settings"]) {grid-template-columns:repeat(2,minmax(0,1fr));}.admin-settings-page {padding:20px 18px;}}
+      @media(max-width:600px){.admin-tab-bar:has([data-tab="settings"]) {grid-template-columns:repeat(2,minmax(0,1fr));}.admin-settings-page {padding:20px 18px;}.admin-settings-page .order-records-content {padding:16px;}}
       @media print{.admin-settings-page{display:none!important;}}
       /* ADMIN_SETTINGS_CSS_END */
     </style>
@@ -9318,9 +9318,9 @@ body.preview-white-cards #order-page-section .card {
               el.onload = resolve; el.onerror = () => { el.remove(); reject(new Error("SEASON_MODULE_UNAVAILABLE")); };
               document.head.appendChild(el);
             });
-            await load("link", "admin-seasons.css?v=20261027-system-settings-production-v1");
-            await load("script", "admin-seasons-core.js?v=20261027-system-settings-production-v1");
-            await load("script", "admin-seasons.js?v=20261027-system-settings-production-v1");
+            await load("link", "admin-seasons.css?v=20261027-settings-spacing-production-v2");
+            await load("script", "admin-seasons-core.js?v=20261027-settings-spacing-production-v2");
+            await load("script", "admin-seasons.js?v=20261027-settings-spacing-production-v2");
           })().catch(error => { adminSeasonModuleFlight = null; throw error; });
           await adminSeasonModuleFlight;
           if (openId !== adminSeasonOpenId || String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "") !== token) return;
@@ -26726,7 +26726,7 @@ ${adminNote}
     <script src="./blackcat-shipping.js?v=20261022-pdf-simple-v1"></script>
     <script src="./blackcat-pdf-timing.js?v=20261019-inline-start-v1"></script>
     <script type="module">
-      import { mountAdminPush } from './admin-push.js?v=20261027-system-settings-production-v1';
+      import { mountAdminPush } from './admin-push.js?v=20261027-settings-spacing-production-v2';
       const adminPushControls = mountAdminPush({
         container: document.getElementById('adminSettingsPushEntry'),
         inlineContainer: document.getElementById('adminSettingsPushPane'),
