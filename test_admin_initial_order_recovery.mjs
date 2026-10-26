@@ -20,6 +20,8 @@ function fixture(results) {
     ADMIN_INITIAL_ORDER_RETRY_DELAY_MS: 0,
     ADMIN_LINE_SESSION_TOKEN_KEY: 'token',
     adminNetworkRecoveryPending: '',
+    adminLoginOrderBootstrap: null,
+    isAdminStartupWorkspaceEnabled: () => false,
     navigator: { onLine: true },
     sessionStorage: { getItem: key => key === 'token' ? 'fixture-session' : null },
     window: { setTimeout: fn => { queueMicrotask(fn); return 1; } },
@@ -79,3 +81,19 @@ function fixture(results) {
 }
 
 console.log('initial order recovery: PASS bounded automatic retry, new request id, offline stop');
+
+{
+  const f = fixture(['network-failure', []]);
+  f.ctx.isAdminStartupWorkspaceEnabled = () => true;
+  assert.deepEqual(await f.ctx.fetchInitialAdminOrdersWithRecovery(), []);
+  assert.equal(f.requests.length, 2);
+  assert.ok(f.requests.every(r => r.completeWorkspace && r.initialWorkspace && r.forceReload));
+}
+for (const workspace of [false, true]) {
+  const f = fixture(['network-failure', []]);
+  f.ctx.adminLoginOrderBootstrap = { workspace };
+  assert.equal(await f.ctx.fetchInitialAdminOrdersWithRecovery(), null);
+  assert.equal(f.requests.length, 1, 'a combined response must never trigger a second auth/data request');
+  assert.equal(f.requests[0].completeWorkspace === true, workspace);
+}
+console.log('initial workspace recovery: PASS retry retains complete mode, combined failures stop');

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261019-label-fields-v1">
+<html lang="zh-Hant" data-release-version="20261026-startup-workspace-v1">
   <head>
     <meta charset="UTF-8" />
     <meta name="admin-release" content="20261019-label-fields-v1" />
@@ -8691,6 +8691,16 @@ body.preview-white-cards #order-page-section .card {
       }
 
       let adminLoginOrderBootstrap = null;
+      function isAdminStartupWorkspaceEnabled() {
+        // Per-tab trial survives the LINE redirect without changing its URI.
+        // Missing/blocked storage leaves the established page-first path active.
+        try {
+          const key = "sanheyuan:startup-workspace:v1";
+          const option = new URLSearchParams(window.location.search).get("startupWorkspace");
+          if (option === "1" || option === "0") sessionStorage.setItem(key, option);
+          return sessionStorage.getItem(key) === "1";
+        } catch { return false; }
+      }
       let adminAuthCompletionPromise = null;
       async function fetchAdminAuthWithResultRecovery(payload, recovery = {}) {
         // One deadline belongs to the whole callback, including reloads. A slow
@@ -8821,6 +8831,7 @@ body.preview-white-cards #order-page-section .card {
           const startup = window.AdminDirectResponse?.enabledFor?.("adminAuth") ? {
             filter: getAdminOrderPageFilter(1),
             requestId: createAdminDiagnosticRequestId("adminReadOrderSnapshotBootstrap").replace("|", "_"),
+            ...(isAdminStartupWorkspaceEnabled() ? {workspace: true} : {}),
           } : null;
           const startupRevision = adminOrderMutationRevision;
           const response = await fetchAdminAuthWithResultRecovery({
@@ -8898,11 +8909,13 @@ body.preview-white-cards #order-page-section .card {
             }
             if (startup) {
               // In-memory handoff of the SAME response, never a persistent cache
-              // or a rescue fetch. The usual page validator checks its contents.
+              // or a rescue fetch. The selected read validator checks its contents.
               adminLoginOrderBootstrap = {
                 token: payload.adminSessionToken.trim(), filter: startup.filter,
                 mutationRevision: startupRevision, requestId: startup.requestId,
-                payload: payload.startup?.requestId === startup.requestId
+                workspace: startup.workspace === true,
+                payload: payload.startup?.requestId === startup.requestId &&
+                    (startup.workspace !== true || payload.startup.workspace === true)
                   ? payload.startup.snapshot : {ok:false,error:"ADMIN_STARTUP_RESPONSE_MISSING"},
               };
             }
@@ -13476,6 +13489,66 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         return attachAdminOrderSnapshotReadMeta(orders, payload);
       }
 
+      async function acceptAdminStartupWorkspace(payload, contextIsCurrent) {
+        // Validate into temporary maps. A corrupt response or a session/mutation
+        // change during decompression must never publish a partial workspace.
+        const invalid = () => { throw new Error("ADMIN_STARTUP_WORKSPACE_INVALID"); };
+        const integer = value => Number.isSafeInteger(value) && value >= 0;
+        if (payload?.ok !== true || payload.action !== "adminReadOrderSnapshot" ||
+            payload.source !== "firestore" || payload.stale === true || payload.unchanged === true ||
+            payload.schemaVersion !== 1 || typeof payload.version !== "string" || !payload.version ||
+            typeof payload.liveVersion !== "string" || !payload.liveVersion ||
+            !integer(payload.orderCount) || !integer(payload.bucketCount) ||
+            payload.bucketCount < 1 || payload.bucketCount > 128 ||
+            !Array.isArray(payload.manifest) || !Array.isArray(payload.chunks) ||
+            payload.manifest.length !== payload.bucketCount || payload.chunks.length !== payload.bucketCount ||
+            (payload.pendingOrders !== undefined && !Array.isArray(payload.pendingOrders))) invalid();
+        const uniqueBuckets = entries => entries.every(entry => integer(entry?.bucketId)) &&
+          new Set(entries.map(entry => entry.bucketId)).size === entries.length;
+        if (!uniqueBuckets(payload.manifest) || !uniqueBuckets(payload.chunks)) invalid();
+        const decodedChunks = new Map(), encodedChunks = new Map(), orderNos = new Set();
+        const orders = [];
+        let encodedSize = 0;
+        for (const entry of payload.manifest) {
+          const chunk = payload.chunks.find(item => item.bucketId === entry.bucketId);
+          if (!chunk || !/^[a-f0-9]{64}$/.test(entry.checksum) || chunk.checksum !== entry.checksum ||
+              chunk.encoding !== "gzip-base64" || typeof chunk.data !== "string" ||
+              !integer(entry.orderCount)) invalid();
+          encodedSize += chunk.data.length;
+          if (encodedSize > 8 * 1024 * 1024) invalid();
+          const bytes = Uint8Array.from(atob(chunk.data), char => char.charCodeAt(0));
+          const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+          if (Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("") !== entry.checksum) invalid();
+          const decoded = await decodeAdminSnapshotGzipBase64Json(chunk.data);
+          if (decoded?.bucketId !== entry.bucketId || !Array.isArray(decoded.orders) ||
+              decoded.orders.length !== entry.orderCount) invalid();
+          for (const order of decoded.orders) {
+            const orderNo = typeof order?.orderNo === "string" ? order.orderNo.trim() : "";
+            if (!orderNo || orderNos.has(orderNo)) invalid();
+            orderNos.add(orderNo); orders.push(order);
+          }
+          decodedChunks.set(entry.bucketId, decoded.orders);
+          encodedChunks.set(entry.bucketId, chunk.data);
+        }
+        if (orders.length !== payload.orderCount) invalid();
+        const pendingNos = new Set();
+        for (const order of payload.pendingOrders || []) {
+          const orderNo = typeof order?.orderNo === "string" ? order.orderNo.trim() : "";
+          if (!orderNo || pendingNos.has(orderNo)) invalid();
+          pendingNos.add(orderNo);
+        }
+        const result = attachAdminOrderSnapshotReadMeta(orders, payload);
+        if (!contextIsCurrent()) throw new Error("ADMIN_STARTUP_CONTEXT_CHANGED");
+        adminOrderSnapshotChunks.clear();
+        adminOrderSnapshotEncodedChunks.clear();
+        for (const [id, items] of decodedChunks) adminOrderSnapshotChunks.set(id, items);
+        for (const [id, data] of encodedChunks) adminOrderSnapshotEncodedChunks.set(id, data);
+        adminOrderSnapshotManifest = payload.manifest.slice();
+        adminOrderSnapshotVersion = payload.version;
+        persistAdminOrderSnapshotSessionCache();
+        return result;
+      }
+
       function getAdminOrderPageFilter(page = adminCurrentPage) {
         const dates = getAdminServerDateRange();
         const query = String(document.getElementById("searchBar")?.value || "").trim();
@@ -13853,9 +13926,15 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         const forceReload = options && options.forceReload === true;
         const adminSessionToken = String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "").trim();
         const mutationRevision = adminOrderMutationRevision;
+        const bootstrap = options.initialWorkspace === true ? adminLoginOrderBootstrap : null;
+        if (bootstrap) adminLoginOrderBootstrap = null;
+        let startupFilter = "";
+        const startupContextIsCurrent = () => mutationRevision === adminOrderMutationRevision &&
+          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) === adminSessionToken &&
+          startupFilter === JSON.stringify(getAdminOrderPageFilter(1));
         const adminReadStatusEl = document.getElementById("adminReadStatus");
         const requestId =
-          options.requestId ||
+          bootstrap?.requestId || options.requestId ||
           createAdminDiagnosticRequestId("adminReadOrderSnapshot");
         window.AdminDiagnostics?.bindRequestToFlow?.(requestId, options.flow || window.adminStartupFlow);
         const startedAt = Date.now();
@@ -13866,13 +13945,18 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           if (!baseUrl || !adminSessionToken) {
             throw new Error("ADMIN_SESSION_REQUIRED");
           }
+          if (options.initialWorkspace === true) startupFilter = JSON.stringify(getAdminOrderPageFilter(1));
           if (adminReadStatusEl && !silent) {
             setAdminStatusPanelVisible(true);
             adminReadStatusEl.className = "gas-test-status";
             adminReadStatusEl.innerText = "讀取版本化訂單快照中...";
           }
 
-          const response = await fetchAdminRecoverableResponse(
+          if (bootstrap && (bootstrap.workspace !== true || bootstrap.token !== adminSessionToken ||
+              bootstrap.mutationRevision !== mutationRevision || JSON.stringify(bootstrap.filter) !== startupFilter)) {
+            throw new Error("ADMIN_STARTUP_CONTEXT_CHANGED");
+          }
+          const response = bootstrap ? {ok: true, json: async () => bootstrap.payload} : await fetchAdminRecoverableResponse(
             baseUrl,
             {
               method: "POST",
@@ -13913,7 +13997,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           if (payload?.error === "ADMIN_SESSION_REQUIRED") {
             throw new Error("ADMIN_SESSION_REQUIRED");
           }
-          if (payload?.error === "ADMIN_ORDER_SNAPSHOT_VERSION_NOT_READY" && !options.publicationRetry) {
+          if (payload?.error === "ADMIN_ORDER_SNAPSHOT_VERSION_NOT_READY" && !options.publicationRetry && !bootstrap) {
             // The prior read completed with an explicit publication-race result.
             // Retry once against a fresh base; never replay a business mutation.
             return performAdminOrderSnapshotFetchOnce({ ...options, publicationRetry: true, forceReload: true });
@@ -13938,7 +14022,9 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           }
           markAdminSessionVerified();
           const decodeStartedAt = Date.now();
-          const orders = payload.unchanged === true
+          const orders = options.initialWorkspace === true
+            ? await acceptAdminStartupWorkspace(payload, startupContextIsCurrent)
+            : payload.unchanged === true
             ? attachAdminOrderSnapshotReadMeta(
                 flattenAdminOrderSnapshotChunks(adminOrderSnapshotManifest),
                 payload,
@@ -14036,6 +14122,12 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
 
       async function fetchInitialAdminOrdersWithRecovery(options = {}) {
         const combinedResponse = !!adminLoginOrderBootstrap;
+        // A combined response retains the mode requested before LINE auth. For
+        // an existing session, read the full workspace directly in one request.
+        const workspace = adminLoginOrderBootstrap
+          ? adminLoginOrderBootstrap.workspace === true
+          : isAdminStartupWorkspaceEnabled();
+        if (workspace) options = { ...options, initialWorkspace: true, completeWorkspace: true, forceReload: true };
         const firstResult = await fetchAdminOrdersFromGas({
           ...options,
           initialDeliveryRecovery: true,
@@ -22552,6 +22644,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
       // 頁面初始化
       window.addEventListener("DOMContentLoaded", async () => {
         window.adminStartupFlow = window.AdminDiagnostics?.beginFlow?.("startup");
+        isAdminStartupWorkspaceEnabled();
         try {
           const oldRecords = readAdminShipmentDiagnostics();
           document.getElementById("adminShipmentDiagnosticsText").textContent = oldRecords.length ? JSON.stringify(oldRecords, null, 2) : "目前沒有舊版寄出紀錄。";
@@ -22698,8 +22791,8 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
 
 
         try {
-          // One authorized, server-filtered page is a complete view. The full
-          // workspace is optional background data, never a startup prerequisite.
+          // The opt-in read is complete in one response; the default retains
+          // the existing page-first and background-workspace path.
           const adminOrders = await fetchInitialAdminOrdersWithRecovery({ page: 1 });
 
           if (!Array.isArray(adminOrders)) {
@@ -22707,9 +22800,13 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           }
 
           const renderStartedAt = Date.now();
+          const completeWorkspace = adminOrders.adminReadMeta?.serverFiltered !== true;
+          if (completeWorkspace) window.AdminDiagnostics?.markFlow?.(window.adminStartupFlow, "full_data");
+          adminOrderWorkspaceComplete = completeWorkspace;
           const rendered = renderAdminOrders(adminOrders);
 
           if (!rendered) {
+            adminOrderWorkspaceComplete = false;
             showAdminAuthOverlay(
               "⚠️ 管理員訂單顯示失敗，請按下方重新讀取訂單。",
               false,
@@ -22739,6 +22836,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           window.clearTimeout(initialLoadTimer);
           updateAdminRefreshMeta();
           window.AdminDiagnostics?.markFlow?.(window.adminStartupFlow, "first_usable");
+          if (completeWorkspace) window.AdminDiagnostics?.markFlow?.(window.adminStartupFlow, "ui_updated");
           window.AdminDiagnostics?.finishFlow?.(window.adminStartupFlow, { outcome: "success", code: "OK" });
           restoreAdminTab();
           queueAdminCompleteWorkspaceLoad();
