@@ -1,19 +1,22 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261026-full-startup-production-v2">
+<html lang="zh-Hant" data-release-version="20261026-full-startup-production-v3">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261026-full-startup-production-v2" />
+    <meta name="admin-release" content="20261026-full-startup-production-v3" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
     <title>出貨後台</title>
-    <script src="./customer-config.js?v=20261026-full-startup-production-v2"></script>
+    <link rel="preconnect" href="https://sanheyuan-admin-response.zoe-quokka.workers.dev" crossorigin />
+    <script src="./customer-config.js?v=20261026-full-startup-production-v3"></script>
     <script src="./admin-direct-response.js?v=20261020-download-fence-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261026-full-startup-production-v2"></script>
+    <script src="./admin-diagnostics.js?v=20261026-full-startup-production-v3"></script>
     <script src="./admin-mutation-recovery.js?v=20261019-label-fields-v1"></script>
     <link
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
       crossorigin="anonymous"
     />
@@ -22646,7 +22649,9 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
       }
 
       // 頁面初始化
-      window.addEventListener("DOMContentLoaded", async () => {
+      async function initializeAdminPage() {
+        if (adminPageInitializationStarted) return;
+        adminPageInitializationStarted = true;
         window.adminStartupFlow = window.AdminDiagnostics?.beginFlow?.("startup");
         const completeStartup = isAdminStartupWorkspaceEnabled();
         window.AdminDiagnostics?.startupMode?.(completeStartup ? "complete" : "page");
@@ -22840,10 +22845,11 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           initialLoadFinished = true;
           window.clearTimeout(initialLoadTimer);
           updateAdminRefreshMeta();
+          restoreAdminTab();
+          await waitForAdminStartupPaint();
           window.AdminDiagnostics?.markFlow?.(window.adminStartupFlow, "first_usable");
           if (completeWorkspace) window.AdminDiagnostics?.markFlow?.(window.adminStartupFlow, "ui_updated");
           window.AdminDiagnostics?.finishFlow?.(window.adminStartupFlow, { outcome: "success", code: "OK" });
-          restoreAdminTab();
           queueAdminCompleteWorkspaceLoad();
           await reconcilePendingAdminShipment();
           await recoverPendingAdminCreateOrderOnLoad();
@@ -22856,7 +22862,12 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           if (!adminInitialOrdersReady && !adminAuthBlocksDataLoad) scheduleAdminLiveOrderSync(15000);
         }
 
-      });
+      }
+      function waitForAdminStartupPaint() {
+        // The second frame is after the browser's opportunity to paint the
+        // completed DOM. Hidden-tab delay stays part of the measured duration.
+        return new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+      }
       // ==========================================
       // ✨ 系統一：訂單狀態 badge/class 同步（由系統自動推導）
       // ==========================================
@@ -26494,6 +26505,11 @@ ${adminNote}
           finishAdminCreateMeasurement(createMeasurement);
         }
       }
+      // The complete page DOM and all main-script declarations are now ready.
+      // Begin the authorized read while optional printing/push modules download.
+      let adminPageInitializationStarted = false;
+      window.addEventListener("DOMContentLoaded", initializeAdminPage, { once: true });
+      void initializeAdminPage();
     </script>
     <script src="./blackcat-shipping.js?v=20261022-pdf-simple-v1"></script>
     <script src="./blackcat-pdf-timing.js?v=20261019-inline-start-v1"></script>

@@ -86,3 +86,40 @@ check('startup includes page download time, while ordinary operations retain the
   f.c.performance.timeOrigin=f.c.Date.now()+1000;const invalid=f.api.beginFlow('startup');assert.equal(invalid.startedAt,f.c.Date.now());
 });
 console.log(JSON.stringify({passed:count,networkRequests:0}));
+
+// Exercise the actual initializer while an auth result is pending: early startup
+// and the later DOMContentLoaded event must share one attempt.
+{
+  const a=html.indexOf('      async function initializeAdminPage()'),
+    b=html.indexOf('      function waitForAdminStartupPaint()',a);
+  assert.ok(a>0&&b>a);
+  let calls=0, completeAuth;
+  const element={addEventListener(){},classList:{remove(){}},dataset:{}};
+  const c={Date,Promise,adminPageInitializationStarted:false,GROUP_ORDERS_ENABLED:false,
+    document:{getElementById:()=>element,querySelector:()=>null},
+    window:{addEventListener(){},AdminDiagnostics:{beginFlow(){},startupMode(){},finishFlow(){}}},
+    isAdminStartupWorkspaceEnabled:()=>true,readAdminShipmentDiagnostics:()=>[],
+    getShippingManifestCustomCalendarMonthSeed:()=>({year:2026,month:10}),
+    initAdminAuth:()=>{calls++;return new Promise(resolve=>{completeAuth=resolve;});}};
+  const noops=['initializeAdminManualRefreshControl','initializeAdminCardViewMode','handleAdminNetworkOffline',
+    'handleAdminNetworkRestored','flushPendingAdminAuthDiagnostics','handleAdminCustomerSearchInput',
+    'handleAdminCustomerSearchKeydown','handleAdminCustomerSearchConfirm','handleNewOrderSameAsRecipientChange',
+    'handleNewOrderSenderNameInput','autofillHistoricalBuyerPhone','handleNewOrderSenderPhoneInput',
+    'syncNewOrderSenderFromRecipient','refreshAdminOrdersFromOverlay','hideAdminAuthOverlay',
+    'setShippingManifestCustomCalendarMonth','renderShippingManifestCustomDateCalendar','bindAdminWorkflowEvents',
+    'updateCurrentWeekFilterButtonLabel','renderCustomDateCalendar','calculateCardAmount','updateStatsCounters',
+    'handleBatchCheckChange','initShipmentBaseline','updateNotifyButton','renderProductManagement'];
+  for(const name of noops)c[name]=()=>{};
+  vm.createContext(c);vm.runInContext(html.slice(a,b),c);
+  const first=c.initializeAdminPage();await c.initializeAdminPage();
+  assert.equal(calls,1);completeAuth(false);await first;await c.initializeAdminPage();assert.equal(calls,1);
+  console.log('PASS early startup and DOM ready share exactly one auth attempt');
+}
+{
+  const a=html.indexOf('      function waitForAdminStartupPaint()'),b=html.indexOf('      // ==========================================',a);
+  const frames=[];const c={Promise,window:{requestAnimationFrame:fn=>frames.push(fn)}};vm.createContext(c);vm.runInContext(html.slice(a,b),c);
+  let done=false;const pending=c.waitForAdminStartupPaint().then(()=>{done=true;});
+  assert.equal(done,false);frames.shift()();await Promise.resolve();assert.equal(done,false);
+  frames.shift()();await pending;assert.equal(done,true);
+  console.log('PASS complete UI waits for a browser paint opportunity');
+}
