@@ -166,10 +166,15 @@
     write('queue',[...pending.values()]); write('dropped',dropped);
   }
   function schedule(delay=3000) { if (!timer) timer=setTimeout(()=>{timer=null; void flush();},delay); }
-  function record(input={}) {
+  function record(input={}, localTiming=null) {
     try {
       const e=clean({...input,id:uuid(),operationId:isId(input.operationId)?input.operationId:uuid(),deviceId,pageId,at:Date.now(),version,deviceType,online:navigator.onLine !== false});
-      if(!e)return; observeStartup(e); history.push(e); history=history.slice(-MAX_HISTORY);pending.set(e.id,e);
+      if(!e)return;
+      if (localTiming) {
+        localTransportTimings.set(e.id,localTiming);
+        while (localTransportTimings.size > MAX_HISTORY) localTransportTimings.delete(localTransportTimings.keys().next().value);
+      }
+      observeStartup(e); history.push(e); history=history.slice(-MAX_HISTORY);pending.set(e.id,e);
       write('history',history);syncQueue();render();schedule();
     } catch { /* Must not affect application control flow. */ }
   }
@@ -268,6 +273,52 @@
   };
   const flowLabels={startup:'開啟後台',auth:'登入',save:'儲存',query:'查詢',workspace:'背景完整資料'};
   const phaseLabels={start:'開始',auth_complete:'登入完成',first_usable:'第一頁可操作',full_data:'完整資料已就緒',waiting_ui:'等待套用畫面',save_confirmed:'儲存已確認',ui_updated:'畫面已更新',complete:'結束'};
+  // Local-only response phases: bounded, numeric allowlist; never persisted or
+  // uploaded. These nested measurements overlap and must not be summed.
+  const localTransportTimings = new Map();
+  const workerTimingKeys = ['admin_api','tokenMs','firestoreHeadersMs','firestoreBodyMs','executionHeadersMs','executionBodyMs'];
+  const apiTimingKeys = ['identityMs','inputValidationMs','handlerMs','outputMs','finalizeMs','totalMs'];
+  function boundedTiming(value) {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 600000 ? value : null;
+  }
+  function observeTransportTiming(requestId, action, response, body) {
+    try {
+      if (!safeRequestId(requestId) || !['adminAuth','adminReadOrderSnapshot'].includes(action)) return;
+      const timing = {worker:{},gas:{}};
+      if (response) {
+        const header = response.headers?.get('server-timing');
+        if (typeof header === 'string' && header.length <= 2048) {
+          const seen = new Set();
+          for (const part of header.split(',')) {
+            const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*;\s*dur=(\d+(?:\.\d+)?)\s*$/.exec(part);
+            if (!match || ![...workerTimingKeys,'tokenRefreshed'].includes(match[1])) continue;
+            const key = match[1], value = Number(match[2]);
+            if (seen.has(key)) { delete timing.worker[key]; continue; }
+            seen.add(key);
+            if (key === 'tokenRefreshed' ? value === 0 || value === 1 : boundedTiming(value) !== null) timing.worker[key] = value;
+          }
+        }
+      }
+      if (body?.action === action && body.apiTiming && typeof body.apiTiming === 'object' && !Array.isArray(body.apiTiming)) {
+        for (const key of apiTimingKeys) {
+          const value = boundedTiming(body.apiTiming[key]);
+          if (value !== null) timing.gas[key] = value;
+        }
+      }
+      if (!Object.keys(timing.worker).length && !Object.keys(timing.gas).length) return;
+      return timing;
+    } catch { /* Observation cannot fail a business request. */ }
+  }
+  function formatLocalTransportTiming(event) {
+    const timing = event.pageId === pageId && localTransportTimings.get(event.id);
+    if (!timing || !['RESPONSE','RESULT'].includes(event.stage)) return '';
+    const parts = [];
+    for (const [group,keys] of [['worker',workerTimingKeys],['gas',apiTimingKeys]]) {
+      for (const key of keys) if (boundedTiming(timing[group]?.[key]) !== null) parts.push(group+'.'+key+'='+timing[group][key]+' ms');
+    }
+    if ([0,1].includes(timing.worker?.tokenRefreshed)) parts.push('worker.tokenRefreshed='+timing.worker.tokenRefreshed);
+    return '\n本頁分段（不保存、不上傳；包含重疊計時）：'+parts.join('｜');
+  }
   function responseMetadata(response) {
     let responseHost='unknown';
     try {const host=new URL(response.url).hostname;
@@ -304,7 +355,7 @@
     const names = {serverElapsedMs:'後端處理',sessionMs:'登入檢查',catalogMs:'商品目錄',operationsMs:'訂單統計',versionMs:'目錄版本',settingsMs:'網站設定'};
     return Object.entries(names).filter(([key]) => t[key] !== null).map(([key,label]) => '｜'+label+' '+(t[key]/1000).toFixed(2)+' 秒').join('')+'｜統計狀態 '+t.operationsOutcome;
   }
-  function format(e){const flow=sanitizeFlow(e);return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${workspaceCodeLabels[e.code] ? workspaceCodeLabels[e.code]+'（'+e.code+'）' : e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}${flow.flowId?'｜'+flowLabels[flow.flowName]+'・'+phaseLabels[flow.phase]+'｜整段 '+Math.round(flow.flowElapsedMs)+' 毫秒':''}${e.headersMs!==null&&e.headersMs!==undefined?'｜回應標頭 '+(e.headersMs/1000).toFixed(2)+' 秒':''}${e.bodyMs!==null&&e.bodyMs!==undefined?'｜回覆副本觀察 '+(e.bodyMs/1000).toFixed(2)+' 秒':''}${e.responseHost&&e.responseHost!=='unknown'?'｜'+e.responseHost:''}${e.redirected===true?'｜已轉址':''}${e.outcome==='failure'?formatResponseContract(e.responseContract):''}${e.catalogAttempt?'｜第 '+e.catalogAttempt+' 次請求':''}${formatCatalogTiming(e.catalogTiming)}${e.snapshotTiming?'｜快取讀取 '+e.snapshotTiming.cacheReadReason+'｜快取存入 '+e.snapshotTiming.cacheWriteReason+(e.snapshotTiming.serverElapsedMs!==null?'｜後端 '+(e.snapshotTiming.serverElapsedMs/1000).toFixed(2)+' 秒':''):''}\n操作 ${e.operationId}${e.requestId ? "｜請求 " + e.requestId : ""}${flow.flowId?'｜流程 '+flow.flowId:''}｜${e.deviceType}｜${e.version}`;}
+  function format(e){const flow=sanitizeFlow(e);return `${new Date(e.at).toLocaleString()}｜${e.action}｜${labels[e.stage]||e.stage}｜${e.outcome}｜${workspaceCodeLabels[e.code] ? workspaceCodeLabels[e.code]+'（'+e.code+'）' : e.code}${e.elapsedMs?'｜'+(e.elapsedMs/1000).toFixed(2)+' 秒':''}${flow.flowId?'｜'+flowLabels[flow.flowName]+'・'+phaseLabels[flow.phase]+'｜整段 '+Math.round(flow.flowElapsedMs)+' 毫秒':''}${e.headersMs!==null&&e.headersMs!==undefined?'｜回應標頭 '+(e.headersMs/1000).toFixed(2)+' 秒':''}${e.bodyMs!==null&&e.bodyMs!==undefined?'｜回覆副本觀察 '+(e.bodyMs/1000).toFixed(2)+' 秒':''}${e.responseHost&&e.responseHost!=='unknown'?'｜'+e.responseHost:''}${e.redirected===true?'｜已轉址':''}${e.outcome==='failure'?formatResponseContract(e.responseContract):''}${e.catalogAttempt?'｜第 '+e.catalogAttempt+' 次請求':''}${formatCatalogTiming(e.catalogTiming)}${e.snapshotTiming?'｜快取讀取 '+e.snapshotTiming.cacheReadReason+'｜快取存入 '+e.snapshotTiming.cacheWriteReason+(e.snapshotTiming.serverElapsedMs!==null?'｜後端 '+(e.snapshotTiming.serverElapsedMs/1000).toFixed(2)+' 秒':''):''}\n操作 ${e.operationId}${e.requestId ? "｜請求 " + e.requestId : ""}${flow.flowId?'｜流程 '+flow.flowId:''}｜${e.deviceType}｜${e.version}${formatLocalTransportTiming(e)}`;}
   function render(){try{
     renderStartup();
     const el=document.getElementById('adminDiagnosticsText'); if(el)el.textContent=history.length?history.slice().reverse().map(format).join('\n\n'):'目前這個瀏覽器沒有診斷紀錄。';
@@ -323,16 +374,16 @@
     // Capture the binding: completion/eviction must not attach a late response
     // to a newer operation or lose its original flow association.
     pruneFlows();const flowState=requestFlows.get(requestId);
-    const recordRequest = event => record({...event,catalogAttempt,...flowMetadata(flowState)});
+    const recordRequest = (event,localTiming) => record({...event,catalogAttempt,...flowMetadata(flowState)},localTiming);
     const start=Date.now();recordRequest({requestId,operationId,action,stage:'REQUEST',outcome:'started',code:'OK'});
     try {
       const response=await rawFetch(input,options);
       const headersAt=Date.now(), metadata={requestId,...responseMetadata(response),headersMs:headersAt-start};
-      recordRequest({...metadata,operationId,action,stage:'RESPONSE',outcome:response.ok?'success':'failure',code:response.ok?'OK':'HTTP_'+response.status,httpStatus:response.status,elapsedMs:Date.now()-start});
+      recordRequest({...metadata,operationId,action,stage:'RESPONSE',outcome:response.ok?'success':'failure',code:response.ok?'OK':'HTTP_'+response.status,httpStatus:response.status,elapsedMs:Date.now()-start},observeTransportTiming(requestId,action,response));
       // Observe a copy asynchronously; never await telemetry or alter a business response.
       try {void response.clone().json().then(body=>{
         const ok=response.ok && body?.ok===true && (body.action!=='adminReadOrderMutationResult' || body.state==='completed') && (action!=='adminUpdateProductFields' || body.state==='committed');
-        recordRequest({...metadata,responseContract:observeResponseContract(body,action),catalogTiming:action==='adminReadProductCatalog' && body?.action===action ? sanitizeCatalogTiming(body.diagnostic?.catalogTiming) : null,snapshotTiming:action==='adminReadOrderSnapshot' && body?.action===action ? sanitizeSnapshotTiming({...body.timing,...(body.timing ? {} : body.diagnostic),serverElapsedMs:body.elapsedMs}) : null,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start});
+        recordRequest({...metadata,responseContract:observeResponseContract(body,action),catalogTiming:action==='adminReadProductCatalog' && body?.action===action ? sanitizeCatalogTiming(body.diagnostic?.catalogTiming) : null,snapshotTiming:action==='adminReadOrderSnapshot' && body?.action===action ? sanitizeSnapshotTiming({...body.timing,...(body.timing ? {} : body.diagnostic),serverElapsedMs:body.elapsedMs}) : null,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:ok?'success':'failure',code:ok?'OK':body?.errorCode||body?.error||'UNCONFIRMED',httpStatus:response.status,elapsedMs:Date.now()-start},observeTransportTiming(requestId,action,response,body));
       },error=>recordRequest({...metadata,bodyMs:Date.now()-headersAt,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':error?.name==='SyntaxError'?'GAS_NON_JSON_RESPONSE':'NETWORK_ERROR',httpStatus:response.status,elapsedMs:Date.now()-start}));}catch{}
       return response;
     } catch(error) {recordRequest({requestId,operationId,action,stage:'RESULT',outcome:'failure',code:error?.name==='AbortError'?'ABORTED':'NETWORK_ERROR',elapsedMs:Date.now()-start});throw error;}
