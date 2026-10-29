@@ -93,6 +93,41 @@
     return Number.isInteger(value) && value >= 1 && value <= 3 ? value : null;
   }
 
+  // These are nested spans from one response, not additive totals. In particular,
+  // gasTotalMs is inside executionHeadersMs, which is inside admin_api.
+  const transportTimingActions = new Set(['adminAuth','adminValidateSession','adminReadOrderSnapshot','adminReadOrders']);
+  const transportTimingKeys = new Set(['admin_api','tokenMs','tokenRefreshed','firestoreHeadersMs','firestoreBodyMs','executionHeadersMs','executionBodyMs','gasIdentityMs','gasInputValidationMs','gasHandlerMs','gasFinalizeMs','gasTotalMs']);
+  function sanitizeTransportTiming(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const result = {};
+    for (const key of transportTimingKeys) {
+      if (!Object.prototype.hasOwnProperty.call(value,key)) continue;
+      const ms = value[key];
+      if (Number.isFinite(ms) && ms >= 0 && ms <= 120000 && (key !== 'tokenRefreshed' || ms === 0 || ms === 1)) result[key] = Math.round(ms * 1000) / 1000;
+    }
+    return Object.keys(result).length ? result : null;
+  }
+  function transportTimingFields(value) {
+    if (!transportTimingActions.has(value.action) || !['RESPONSE','RESULT'].includes(value.stage)) return {};
+    const timing = sanitizeTransportTiming(value.transportTiming);
+    return timing ? {transportTiming:timing} : {};
+  }
+  function readTransportTiming(response) {
+    try {
+      const header = response.headers.get('server-timing');
+      if (typeof header !== 'string' || header.length > 8192) return null;
+      const timing = {}, seen = new Set();
+      for (const entry of header.split(',')) {
+        const match = /^\s*([A-Za-z][A-Za-z0-9_]*)\s*;\s*dur\s*=\s*(\d+(?:\.\d+)?)\s*$/.exec(entry);
+        if (!match || !transportTimingKeys.has(match[1])) continue;
+        // Ambiguous duplicate metrics stay unknown rather than picking a winner.
+        if (seen.has(match[1])) {delete timing[match[1]]; continue;}
+        seen.add(match[1]);timing[match[1]] = Number(match[2]);
+      }
+      return sanitizeTransportTiming(timing);
+    } catch { return null; }
+  }
+
   function sanitizeSnapshotTiming(value) {
     if (!value || typeof value !== 'object') return null;
     const readReasons = new Set(['NOT_ATTEMPTED','DISABLED','DIRTY','VERSION_MISSING','INDEX_MISSING','VERSION_MISMATCH','INDEX_INVALID','SEGMENT_MISSING','SEGMENT_INVALID','LENGTH_MISMATCH','CHECKSUM_MISMATCH','MANIFEST_INVALID','PUBLICATION_CHANGED','HIT','READ_EXCEPTION','REQUIRED_VERSION_MISMATCH']);
@@ -132,7 +167,7 @@
   function clean(value) {
     if (!value || !isId(value.id) || !isId(value.operationId) || !isId(value.deviceId) || !isId(value.pageId)) return null;
     if (!Number.isFinite(value.at) || value.at < Date.now() - MAX_AGE || value.at > Date.now() + 300000) return null;
-    return {...sanitizeFlow(value),requestId:safeRequestId(value.requestId), id:value.id, operationId:value.operationId, deviceId:value.deviceId, pageId:value.pageId, at:value.at,
+    return {...sanitizeFlow(value),...transportTimingFields(value),requestId:safeRequestId(value.requestId), id:value.id, operationId:value.operationId, deviceId:value.deviceId, pageId:value.pageId, at:value.at,
       action:actions.has(value.action) ? value.action : 'client', stage:stages.has(value.stage) ? value.stage : 'RESULT',
       outcome:outcomes.has(value.outcome) ? value.outcome : 'failure',
       code:typeof value.code==='string' && (codes.has(value.code) || /^HTTP_[45]\d\d$/.test(value.code)) ? value.code : 'UNKNOWN_ERROR',
@@ -248,9 +283,16 @@
     if(uploading || !endpoint || navigator.onLine === false)return;
     syncQueue(); if(!pending.size){render();return;}
     uploading=true;uploadState='正在背景上傳';render();
-    const batch=[...pending.values()].slice(0,20); const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),10000);
+    // New timing fields must not push a valid batch beyond the collector's 32 KiB
+    // limit. This changes only diagnostic batching, never a business request.
+    const batch=[], payload={productId:config.productId,customerId:config.customerId,environment:config.environment,events:batch};
+    for (const event of [...pending.values()].slice(0,20)) {
+      batch.push(event);
+      if (new TextEncoder().encode(JSON.stringify(payload)).byteLength > 32768) {batch.pop();break;}
+    }
+    const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),10000);
     try {
-      const response=await rawFetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({productId:config.productId,customerId:config.customerId,environment:config.environment,events:batch}),signal:controller.signal,keepalive:true});
+      const response=await rawFetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),signal:controller.signal,keepalive:true});
       const result=await response.json();if(!response.ok || result.ok!==true || !Array.isArray(result.ack))throw new Error('UPLOAD_FAILED');
       const sent=new Set(batch.map(e=>e.id));syncQueue();
       for(const id of result.ack)if(sent.has(id))pending.delete(id);
@@ -273,7 +315,7 @@
     try {const host=new URL(response.url).hostname;
       responseHost=host==='script.google.com'?'google-script':host==='script.googleusercontent.com'?'google-content':'other';
     } catch {}
-    return {responseHost,redirected:typeof response.redirected==='boolean'?response.redirected:null};
+    return {responseHost,redirected:typeof response.redirected==='boolean'?response.redirected:null,transportTiming:readTransportTiming(response)};
   }
   function observeResponseContract(body, action) {
     const object = body !== null && typeof body === 'object' && !Array.isArray(body);
