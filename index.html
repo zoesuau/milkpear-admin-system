@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261030-startup-transport-timing-v1">
+<html lang="zh-Hant" data-release-version="20261030-auth-busy-recovery-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261030-startup-transport-timing-v1" />
+    <meta name="admin-release" content="20261030-auth-busy-recovery-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://sanheyuan-admin-response.zoe-quokka.workers.dev" crossorigin />
     <script src="./customer-config.js?v=20261027-settings-spacing-production-v2"></script>
     <script src="./admin-direct-response.js?v=20261020-download-fence-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261030-startup-transport-timing-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261030-auth-busy-recovery-v1"></script>
     <script src="./admin-mutation-recovery.js?v=20261019-label-fields-v1"></script>
     <link
       rel="stylesheet"
@@ -8787,24 +8787,75 @@ body.preview-white-cards #order-page-section .card {
         } catch { return option === "0" ? false : defaultEnabled; }
       }
       let adminAuthCompletionPromise = null;
+      function isAdminAuthUnacceptedBusy(result) {
+        return result?.ok === false && result.action === "adminAuth" &&
+          result.error === "ADMIN_AUTH_BUSY" && result.state === "busy" &&
+          result.claimRetryProtocol === 1 && result.requestAccepted === false &&
+          result.retryable === true;
+      }
+
+      function readAdminAuthBusyRecovery(payload, deadline) {
+        if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce ||
+            sessionStorage.getItem(ADMIN_LINE_CODE_VERIFIER_KEY) !== payload.codeVerifier) {
+          throw new Error("AUTH_CALLBACK_CONTEXT_MISSING");
+        }
+        let saved;
+        try { saved = JSON.parse(sessionStorage.getItem(ADMIN_LINE_NONCE_KEY + ":recovery") || "null"); }
+        catch { throw new Error("ADMIN_AUTH_RECOVERY_CONTEXT_INVALID"); }
+        const count = saved?.busyRetryCount === undefined ? 0 : saved.busyRetryCount;
+        if (!saved || saved.nonce !== payload.nonce || saved.deadline !== deadline ||
+            saved.diagnosticRequestId !== payload.diagnosticRequestId ||
+            !Number.isInteger(count) || count < 0 || count > 2 ||
+            (saved.claimRetryAllowed !== undefined && typeof saved.claimRetryAllowed !== "boolean")) {
+          throw new Error("ADMIN_AUTH_RECOVERY_CONTEXT_INVALID");
+        }
+        if (deadline <= Date.now()) throw new Error("ADMIN_AUTH_RECOVERY_EXPIRED");
+        return saved;
+      }
+
       async function fetchAdminAuthWithResultRecovery(payload, recovery = {}) {
         // One deadline belongs to the whole callback, including reloads. A slow
         // successful exchange must not be cut off just to start shorter queries.
         const deadline = Number.isFinite(recovery.deadline)
           ? recovery.deadline : Date.now() + 60000;
         if (window.AdminDirectResponse?.enabledFor?.("adminAuth")) {
-          if (adminBrowserIsOffline()) throw new Error('ADMIN_NETWORK_OFFLINE');
-          if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce) throw new Error('AUTH_CALLBACK_CONTEXT_MISSING');
-          const remaining = deadline - Date.now();
-          if (remaining <= 0) throw new Error('ADMIN_AUTH_RECOVERY_EXPIRED');
-          // A single Execution API response contains auth and the first page.
-          // Never turn an uncertain response into automatic result polling.
-          const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
-            method: 'POST', headers: {'Content-Type':'text/plain;charset=utf-8'},
-            body: JSON.stringify(payload),
-          }, Math.min(60000, remaining), {maxAttempts:1, totalBudgetMs:remaining, flow:recovery.flow});
-          if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce) throw new Error('AUTH_CALLBACK_CONTEXT_MISSING');
-          return response;
+          while (true) {
+            if (adminBrowserIsOffline()) throw new Error('ADMIN_NETWORK_OFFLINE');
+            if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce) throw new Error('AUTH_CALLBACK_CONTEXT_MISSING');
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) throw new Error('ADMIN_AUTH_RECOVERY_EXPIRED');
+            // A full retry is allowed only after this exact request receives the
+            // opt-in not-accepted response. Unknown replies never enter that path.
+            const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
+              method: 'POST', headers: {'Content-Type':'text/plain;charset=utf-8'},
+              body: JSON.stringify(payload),
+            }, Math.min(60000, remaining), {maxAttempts:1, totalBudgetMs:remaining, flow:recovery.flow});
+            if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce) throw new Error('AUTH_CALLBACK_CONTEXT_MISSING');
+            const result = response.ok ? await response.json() : null;
+            if (!isAdminAuthUnacceptedBusy(result) || payload.claimRetryProtocol !== 1 ||
+                payload.resultOnly === true || typeof payload.code !== "string" || !payload.code) return response;
+            let saved = readAdminAuthBusyRecovery(payload, deadline);
+            if ((saved.busyRetryCount || 0) >= 2) return response;
+            // A reload during this wait retains only explicit not-accepted proof;
+            // no code, token, or new deadline is written to storage.
+            saved.claimRetryAllowed = true;
+            sessionStorage.setItem(ADMIN_LINE_NONCE_KEY + ":recovery", JSON.stringify(saved));
+            showAdminAuthOverlay("系統忙碌，正在重新確認登入…", false);
+            const delay = Number.isFinite(result.retryAfterMs)
+              ? Math.max(500, Math.min(1500, result.retryAfterMs)) : 1500;
+            await new Promise(resolve => window.setTimeout(resolve, Math.min(delay, deadline - Date.now())));
+            if (adminBrowserIsOffline()) throw new Error('ADMIN_NETWORK_OFFLINE');
+            saved = readAdminAuthBusyRecovery(payload, deadline);
+            if (saved.claimRetryAllowed !== true || (saved.busyRetryCount || 0) >= 2) {
+              throw new Error("ADMIN_AUTH_RECOVERY_CONTEXT_INVALID");
+            }
+            // Consume the permission before dispatch. A lost retry response or
+            // a reload now can only query the reserved result, never replay code.
+            saved.claimRetryAllowed = false;
+            saved.busyRetryCount = (saved.busyRetryCount || 0) + 1;
+            sessionStorage.setItem(ADMIN_LINE_NONCE_KEY + ":recovery", JSON.stringify(saved));
+            sessionStorage.setItem(ADMIN_LINE_NONCE_KEY + ":submitted", payload.nonce);
+          }
         }
         let attempt = 0;
         while (Date.now() < deadline) {
@@ -8902,6 +8953,11 @@ body.preview-white-cards #order-page-section .card {
           if (typeof recovery.diagnosticRequestId !== "string" || !recovery.diagnosticRequestId) {
             throw new Error("ADMIN_AUTH_RECOVERY_CONTEXT_INVALID");
           }
+          const busyRetryCount = recovery.busyRetryCount === undefined ? 0 : recovery.busyRetryCount;
+          if (!Number.isInteger(busyRetryCount) || busyRetryCount < 0 || busyRetryCount > 2 ||
+              (recovery.claimRetryAllowed !== undefined && typeof recovery.claimRetryAllowed !== "boolean")) {
+            throw new Error("ADMIN_AUTH_RECOVERY_CONTEXT_INVALID");
+          }
           diagnosticRequestId = recovery.diagnosticRequestId;
           authFlow = window.AdminDiagnostics?.beginFlow?.("auth", recovery.flow || { startedAt: recovery.startedAt });
           if (authFlow) {
@@ -8910,7 +8966,14 @@ body.preview-white-cards #order-page-section .card {
             window.AdminDiagnostics.bindRequestToFlow(diagnosticRequestId, authFlow);
           }
           const sentKey = ADMIN_LINE_NONCE_KEY + ":submitted";
-          const resultOnly = sessionStorage.getItem(sentKey) === nonce;
+          const confirmedBusyRetry = window.AdminDirectResponse?.enabledFor?.("adminAuth") &&
+            recovery.claimRetryAllowed === true && busyRetryCount < 2;
+          const resultOnly = sessionStorage.getItem(sentKey) === nonce && !confirmedBusyRetry;
+          if (confirmedBusyRetry) {
+            recovery.claimRetryAllowed = false;
+            recovery.busyRetryCount = busyRetryCount + 1;
+            sessionStorage.setItem(recoveryKey, JSON.stringify(recovery));
+          }
           // Persist before dispatch: a reload cannot replay an uncertain exchange.
           sessionStorage.setItem(sentKey, nonce);
           const startup = window.AdminDirectResponse?.enabledFor?.("adminAuth") ? {
@@ -8921,6 +8984,7 @@ body.preview-white-cards #order-page-section .card {
           const startupRevision = adminOrderMutationRevision;
           const response = await fetchAdminAuthWithResultRecovery({
                 action: "adminAuth",
+                claimRetryProtocol: 1,
                 ...(startup ? {startup} : {}),
                 ...(resultOnly ? { resultOnly: true } : { code }),
                 redirectUri: ADMIN_AUTH_REDIRECT_URI,
@@ -9017,6 +9081,12 @@ body.preview-white-cards #order-page-section .card {
           }
 
           const errorCode = String(payload?.error || "").trim();
+          if (isAdminAuthUnacceptedBusy(payload) && resultOnly) {
+            // Busy result queries remain read-only, including after a reload.
+            setAdminAuthRetryButtonMode(true);
+            showAdminAuthOverlay("系統忙碌，請稍後按「再次確認登入」。", true, false, true);
+            return false;
+          }
           if (payload?.restartRequired !== true && ["ADMIN_AUTH_PENDING", "ADMIN_AUTH_RESULT_NOT_FOUND"].includes(errorCode)) {
             setAdminAuthRetryButtonMode(true);
             showAdminAuthOverlay(
@@ -9040,6 +9110,8 @@ body.preview-white-cards #order-page-section .card {
               : errorCode === "LINE_AUTH_CONFIG_MISSING" ||
                   errorCode === "INVALID_REDIRECT_URI"
                 ? "⚠️ 管理員登入設定異常，請聯絡系統管理員。"
+                : errorCode === "ADMIN_AUTH_BUSY"
+                  ? "系統目前忙碌，請稍後重新登入 LINE。"
                 : payload?.restartRequired === true
                   ? "這次登入無法繼續確認，請重新登入 LINE。"
                   : "⚠️ LINE 登入驗證未完成，請重新登入 LINE",
