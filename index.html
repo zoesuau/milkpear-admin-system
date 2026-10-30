@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261030-startup-assets-v1">
+<html lang="zh-Hant" data-release-version="20261030-home-badge-count-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261030-startup-assets-v1" />
+    <meta name="admin-release" content="20261030-home-badge-count-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -11,11 +11,11 @@
     <link rel="preconnect" href="https://sanheyuan-admin-response.zoe-quokka.workers.dev" crossorigin />
     <link rel="preload" as="script" href="./customer-config.js?v=20261027-settings-spacing-production-v2" />
     <link rel="preload" as="script" href="./admin-direct-response.js?v=20261020-download-fence-v1" />
-    <link rel="preload" as="script" href="./admin-diagnostics.js?v=20261030-startup-assets-v1" />
+    <link rel="preload" as="script" href="./admin-diagnostics.js?v=20261030-home-badge-count-v1" />
     <link rel="preload" as="script" href="./admin-mutation-recovery.js?v=20261019-label-fields-v1" />
     <script src="./customer-config.js?v=20261027-settings-spacing-production-v2"></script>
     <script src="./admin-direct-response.js?v=20261020-download-fence-v1"></script>
-    <script src="./admin-diagnostics.js?v=20261030-startup-assets-v1"></script>
+    <script src="./admin-diagnostics.js?v=20261030-home-badge-count-v1"></script>
     <script src="./admin-mutation-recovery.js?v=20261019-label-fields-v1"></script>
     <link
       rel="stylesheet"
@@ -14417,17 +14417,41 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         }
       }
 
+      // Only a successful authoritative read followed by a visible order view
+      // may acknowledge notifications. Local edits/rerenders have no read stamp.
+      const adminBadgeReads = new WeakMap();
+      const adminBadgePageOpenedAt = Date.now();
+      function acknowledgeAdminOrderBadge(orders) {
+        const readStartedAt = adminBadgeReads.get(orders);
+        if (!readStartedAt || orders.adminReadMeta?.snapshotStale) return;
+        requestAnimationFrame(() => {
+          const cards = document.getElementById("cards-container");
+          const overlay = document.getElementById("adminAuthOverlay");
+          if (adminAuthBlocksDataLoad || document.visibilityState !== "visible" ||
+              !sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) ||
+              (overlay && !overlay.classList.contains("hidden")) ||
+              !cards?.getClientRects().length) return;
+          // Do not wait on serviceWorker.ready or add any work to startup I/O.
+          navigator.serviceWorker?.controller?.postMessage({
+            type: 'sanheyuan-orders-viewed', readStartedAt
+          });
+        });
+      }
       async function fetchAdminOrdersFromGas(options = {}) {
+        const readStartedAt = adminLoginOrderBootstrap ? adminBadgePageOpenedAt : Date.now();
         const requestId = String(
           options.requestId || createAdminDiagnosticRequestId("adminReadOrders"),
         ).slice(0, 160);
+        let orders;
         if (!ADMIN_ORDER_SNAPSHOT_CLIENT_ENABLED) {
-          return performAdminOrdersFetchFromGas({ ...options, requestId });
+          orders = await performAdminOrdersFetchFromGas({ ...options, requestId });
+        } else if (!adminOrderWorkspaceComplete && options.completeWorkspace !== true) {
+          orders = await fetchAdminOrderPageFromGas({ ...options, requestId });
+        } else {
+          orders = await performAdminOrderSnapshotFetch({ ...options, requestId });
         }
-        if (!adminOrderWorkspaceComplete && options.completeWorkspace !== true) {
-          return fetchAdminOrderPageFromGas({ ...options, requestId });
-        }
-        return performAdminOrderSnapshotFetch({ ...options, requestId });
+        if (Array.isArray(orders) && !orders.adminReadMeta?.snapshotStale) adminBadgeReads.set(orders, readStartedAt);
+        return orders;
       }
 
       async function fetchInitialAdminOrdersWithRecovery(options = {}) {
@@ -14933,9 +14957,11 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
             updateAdminPagination(0);
             syncBatchSelectionUi();
             renderShippingManifest();
+            acknowledgeAdminOrderBadge(adminOrders);
             return true;
           }
           applyCurrentFilter();
+          acknowledgeAdminOrderBadge(adminOrders);
           return true;
         } catch (error) {
           const adminReadStatusEl = document.getElementById("adminReadStatus");
@@ -15061,6 +15087,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
             updateNotifyButton();
             applyReadOnlyModeToRealOrders();
           }
+          acknowledgeAdminOrderBadge(orders);
           updateAdminRefreshMeta();
           queueAdminCompleteWorkspaceLoad();
           if (reconcileOnResume) await reconcilePendingAdminShipment();
