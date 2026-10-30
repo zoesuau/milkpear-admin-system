@@ -50,22 +50,24 @@ async function setNewOrderBadge(eventId, receivedAt) {
   await displayBadgeCount(state);
 }
 self.addEventListener('message', event => {
-  if (event.data?.type !== 'sanheyuan-orders-viewed') return;
+  if (event.data?.type !== 'sanheyuan-visible-orders-viewed') return;
   const source = event.source;
   const root = new URL(self.registration.scope);
   let url;
   try { url = new URL(source?.url); } catch (_) { return; }
-  const readStartedAt = event.data.readStartedAt;
+  const eventIds = event.data.eventIds;
   if (source.type !== 'window' || source.visibilityState !== 'visible' ||
       url.origin !== root.origin || !url.pathname.startsWith(root.pathname) ||
-      !Number.isFinite(readStartedAt) || readStartedAt <= 0 || readStartedAt > Date.now()) return;
+      !Array.isArray(eventIds) || eventIds.length > 200 || !eventIds.length ||
+      !eventIds.every(id => typeof id === 'string' && /^[a-f0-9]{64}$/.test(id))) return;
   event.waitUntil(queueBadgeWork(async () => {
     const cache = await caches.open(badgeCacheName);
     const state = await readBadgeState(cache);
+    const visible = new Set(eventIds);
     let changed = false;
     for (const item of state.events) {
-      // Keep notifications received during/after this read for the next successful read.
-      if (item.unread && item.receivedAt < readStartedAt) {
+      // Only matching visible orders are acknowledged; unrelated notifications remain unread.
+      if (item.unread && visible.has(item.id)) {
         item.unread = false;
         changed = true;
       }
