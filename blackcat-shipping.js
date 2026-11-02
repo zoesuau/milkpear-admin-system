@@ -2,6 +2,8 @@
 (() => {
   "use strict";
   const messages = {
+    BLACKCAT_LABEL_SEQUENCE_INVALID: "宅配單編號紀錄需要核對，已停止取號。請找管理員檢查，勿清除編號紀錄。",
+    BLACKCAT_LABEL_SEQUENCE_EXHAUSTED: "宅配單短尾碼已用完，已停止取號。請找管理員擴充編號格式。",
     BLACKCAT_EZCAT_WAITING: "已改用 ezcat，請匯出 CSV 並匯回新單號；這裡先不要重新取號。",
     BLACKCAT_EZCAT_TRANSFERRED: "已改用 ezcat，這次舊 PDF 停止開啟，舊單請勿貼箱。",
     BLACKCAT_EZCAT_BUSY: "背景還在處理，請稍後重新讀取結果，再改用 ezcat。",
@@ -890,6 +892,10 @@
       }
     }
   }
+  function carrierOrderAliases(o) {
+    if (!Array.isArray(o.parcels) || !o.parcels.length) return "";
+    return `<details class="bc-order-aliases"><summary>宅配單訂單識別碼對照</summary>${o.parcels.map(p => `<div class="bc-detail">第 ${Number(p.parcelIndex) + 1} 件：<strong>${esc(p.id)}</strong>${p.trackingNo ? `<br>宅配單號：${esc(p.trackingNo)}` : ""}</div>`).join("")}</details>`;
+  }
   function showBatch(batch) {
     if (batch.state === "ezcat" && pending()?.batchId === batch.batchId) pending(null);
     view.batch = batch; byId("blackcatSelection").hidden = true; byId("blackcatResult").hidden = false;
@@ -897,7 +903,7 @@
     renderHistory();
     const invalid = batch.downloadError || (batch.orders.some((o) => o.needsReprint) ? "BLACKCAT_LABEL_CHANGED" : "");
     feedback(`${invalid === "BLACKCAT_LABEL_CHANGED" ? "已取號，資料已變更，需補印" : invalid === "BLACKCAT_PDF_SUPERSEDED" ? "舊 PDF 已停止下載" : states[batch.state] || batch.state}｜${batch.orderCount} 筆訂單、${batch.packageCount} 件包裹${invalid || batch.error ? `\n${explain(invalid || batch.error)}` : ""}`, !!invalid || ["unknown", "rejected", "attention", "needs_reprint"].includes(batch.state));
-    byId("blackcatResult").innerHTML = `<p class="bc-detail">只處理下列訂單；其他訂單單號不變。</p>` + batch.orders.map((o) => `<div class="bc-order"><strong>${esc(o.recipientName)}｜${esc(o.orderNo)}</strong><div class="bc-detail">${o.trackingNumbers.length ? `<strong>${o.needsReprint || o.superseded ? "舊單請勿貼箱：" : o.syncState === "done" ? "目前應貼單號：" : "已有單號，還沒確認存入訂單："}${esc(o.trackingNumbers.join("、"))}</strong>` : "尚未取得可確認的單號"}${o.mode === "reprint" && o.trackingNumbers.length ? `<br>補印已重新取號。舊號 ${esc(o.replacedNumbers.join("、") || "無已回填單號")} 請勿再貼。` : ""}<br>${o.needsReprint ? explain("BLACKCAT_LABEL_CHANGED") : o.syncState === "done" ? "單號已存進訂單" : "單號還沒存進訂單"}${o.error ? `<br>${esc(explain(o.error))}` : ""}</div></div>`).join("") + `<div id="blackcatDownloadHelp" class="bc-actions" ${batch.pdfReady || activeStates.includes(batch.state) ? "" : "hidden"}><button type="button" class="bc-primary" id="blackcatDownload">列印宅配單</button><button type="button" id="blackcatOpenPdf" hidden>開啟 PDF</button></div><p id="blackcatViewRefreshStatus" class="bc-detail" role="status" hidden></p><p id="blackcatDownloadNote" class="bc-detail" ${batch.pdfReady ? "" : "hidden"}>下載或開啟未成功，再按「列印宅配單」即可，單號不變。</p>`;
+    byId("blackcatResult").innerHTML = `<p class="bc-detail">只處理下列訂單；其他訂單單號不變。</p>` + batch.orders.map((o) => `<div class="bc-order"><strong>${esc(o.recipientName)}｜${esc(o.orderNo)}</strong><div class="bc-detail">${o.trackingNumbers.length ? `<strong>${o.needsReprint || o.superseded ? "舊單請勿貼箱：" : o.syncState === "done" ? "目前應貼單號：" : "已有單號，還沒確認存入訂單："}${esc(o.trackingNumbers.join("、"))}</strong>` : "尚未取得可確認的單號"}${o.mode === "reprint" && o.trackingNumbers.length ? `<br>補印已重新取號。舊號 ${esc(o.replacedNumbers.join("、") || "無已回填單號")} 請勿再貼。` : ""}<br>${o.needsReprint ? explain("BLACKCAT_LABEL_CHANGED") : o.syncState === "done" ? "單號已存進訂單" : "單號還沒存進訂單"}${o.error ? `<br>${esc(explain(o.error))}` : ""}</div>${carrierOrderAliases(o)}</div>`).join("") + `<div id="blackcatDownloadHelp" class="bc-actions" ${batch.pdfReady || activeStates.includes(batch.state) ? "" : "hidden"}><button type="button" class="bc-primary" id="blackcatDownload">列印宅配單</button><button type="button" id="blackcatOpenPdf" hidden>開啟 PDF</button></div><p id="blackcatViewRefreshStatus" class="bc-detail" role="status" hidden></p><p id="blackcatDownloadNote" class="bc-detail" ${batch.pdfReady ? "" : "hidden"}>下載或開啟未成功，再按「列印宅配單」即可，單號不變。</p>`;
     byId("blackcatDownload").onclick = () => {
       if (view.busy || downloadFlights.size || !batch.pdfReady || pdfOpened(batch.batchId)) return;
       preparePdfWindow();
@@ -964,6 +970,16 @@
     try { if (pdfWindow && !pdfWindow.closed) pdfWindow.close(); } catch (_) { /* Browser may deny access. */ }
     pdfWindow = null;
   }
+  async function preparePdfLayout(result) {
+    return window.BlackCatPdfLayout
+      ? window.BlackCatPdfLayout.prepare(result)
+      : { ...result, phoneLayoutAdjusted: false };
+  }
+  function pdfLayoutNotice(result) {
+    return result.phoneLayoutAdjusted === false
+      ? " 此 PDF 未能套用電話靠左，已保留原版排版。"
+      : "";
+  }
   function openPdf(result, batchId) {
     const bytes = Uint8Array.from(atob(result.pdfBase64), (c) => c.charCodeAt(0));
     const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
@@ -994,11 +1010,11 @@
       await refreshPdfOrderViews();
       if (epoch !== view.epoch) return;
       // Always revalidate current addresses/numbers; never open a cached stale label.
-      const result = await api("adminDownloadBlackCatPdf", { batchId });
+      const result = await preparePdfLayout(await api("adminDownloadBlackCatPdf", { batchId }));
       if (epoch !== view.epoch) return;
       openPdf(result, batchId);
       if (pending()?.batchId === batchId && pending()?.downloadPending) pending(null);
-      feedback("已開啟本次 PDF，單號不變，沒有重新建單或下載檔案。");
+      feedback("已開啟本次 PDF，單號不變，沒有重新建單或下載檔案。" + pdfLayoutNotice(result));
     } catch (e) {
       if (epoch !== view.epoch) return;
       if (["BLACKCAT_LABEL_CHANGED", "BLACKCAT_PDF_SUPERSEDED"].includes(e.message)) {
@@ -1028,13 +1044,14 @@
       pending({ batchId, downloadPending: true });
       feedback("正在準備宅配單，請稍候。再下載一次也不會換號。");
       try {
-        const result = preparedPdf || await api("adminDownloadBlackCatPdf", { batchId });
+        let result = preparedPdf || await api("adminDownloadBlackCatPdf", { batchId });
         if (preparedPdf && (result.batch?.batchId !== batchId || !result.batch?.pdfReady)) throw new Error("BLACKCAT_PDF_NOT_READY");
+        result = await preparePdfLayout(result);
         await downloadEzcatBase64File(result.pdfBase64, result.fileName, "application/pdf");
         openPdf(result, batchId);
         if (pending()?.batchId === batchId) pending(null);
         byId("blackcatRecover").hidden = !pending();
-        if (view.batch?.batchId === batchId) feedback("PDF 已下載並開啟，請核對收件人與目前應貼單號。");
+        if (view.batch?.batchId === batchId) feedback("PDF 已下載並開啟，請核對收件人與目前應貼單號。" + pdfLayoutNotice(result));
       } catch (e) {
         if (showAccessProblem(e.message, () => { preparePdfWindow(); return download(batchId).catch(() => {}); })) throw e;
         if (["BLACKCAT_LABEL_CHANGED", "BLACKCAT_PDF_SUPERSEDED"].includes(e.message)) {
