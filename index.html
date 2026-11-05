@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261105-auth-callback-recovery-v1">
+<html lang="zh-Hant" data-release-version="20261105-auth-locks-product-stats-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261105-auth-callback-recovery-v1" />
+    <meta name="admin-release" content="20261105-auth-locks-product-stats-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -10,11 +10,11 @@
     <title>出貨後台</title>
     <link rel="preconnect" href="https://sanheyuan-admin-response.zoe-quokka.workers.dev" crossorigin />
     <link rel="preload" as="script" href="./customer-config.js?v=20261027-settings-spacing-production-v2" />
-    <link rel="preload" as="script" href="./admin-direct-response.js?v=20261105-auth-callback-recovery-v1" />
+    <link rel="preload" as="script" href="./admin-direct-response.js?v=20261105-auth-locks-product-stats-v1" />
     <link rel="preload" as="script" href="./admin-diagnostics.js?v=20261030-visible-order-badge-v1" />
     <link rel="preload" as="script" href="./admin-mutation-recovery.js?v=20261019-label-fields-v1" />
     <script src="./customer-config.js?v=20261027-settings-spacing-production-v2"></script>
-    <script src="./admin-direct-response.js?v=20261105-auth-callback-recovery-v1"></script>
+    <script src="./admin-direct-response.js?v=20261105-auth-locks-product-stats-v1"></script>
     <script src="./admin-diagnostics.js?v=20261030-visible-order-badge-v1"></script>
     <script src="./admin-mutation-recovery.js?v=20261019-label-fields-v1"></script>
     <link
@@ -6550,6 +6550,8 @@ body.preview-white-cards #order-page-section .card {
             id="productManagementFeedback"
           ></div>
           <div id="productCatalogReadFeedback" role="status" aria-live="polite" hidden></div>
+          <div><button type="button" class="product-action-btn secondary" id="productStatisticsLoad" onclick="loadProductOperations(true)" disabled>讀取訂單統計</button></div>
+          <div id="productStatisticsFeedback" role="status" aria-live="polite"></div>
           <div class="product-management-toolbar" role="search" aria-label="搜尋商品">
             <div class="product-search-box"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="productSearchInput" type="search" aria-label="搜尋商品、級別" placeholder="搜尋商品、級別" oninput="changeProductManagementFilter()"><button type="button" id="productSearchClear" hidden onclick="if(!productUiHasDraft()){document.getElementById('productSearchInput').value='';}changeProductManagementFilter()">清除</button></div>
             <div class="product-filter-fields"><select id="productGroupFilter" aria-label="商品群組篩選" onchange="changeProductManagementFilter()"><option value="">群組：全部</option></select><select id="productStatusFilter" aria-label="商品狀態篩選" onchange="changeProductManagementFilter()"><option value="">狀態：全部</option><option value="上架">狀態：上架</option><option value="僅後台販售">狀態：僅後台販售</option><option value="後台販售，允許超賣">狀態：後台販售，允許超賣</option><option value="停售">狀態：停售</option></select></div>
@@ -6823,11 +6825,12 @@ body.preview-white-cards #order-page-section .card {
         </div>
         <div class="modal-body">
           <div class="product-operations-tabs" role="tablist" aria-label="商品訂單分類">
-            <button type="button" class="product-operations-tab active" id="productOperationsBookedTab" role="tab" aria-selected="true" onclick="setProductOperationsModalTab('booked')">已訂 0盒</button>
-            <button type="button" class="product-operations-tab" id="productOperationsUnshippedTab" role="tab" aria-selected="false" onclick="setProductOperationsModalTab('unshipped')">未寄 0盒</button>
-            <button type="button" class="product-operations-tab" id="productOperationsShippedTab" role="tab" aria-selected="false" onclick="setProductOperationsModalTab('shipped')">已寄 0盒</button>
+            <button type="button" class="product-operations-tab active" id="productOperationsBookedTab" role="tab" aria-selected="true" onclick="setProductOperationsModalTab('booked')">已訂</button>
+            <button type="button" class="product-operations-tab" id="productOperationsUnshippedTab" role="tab" aria-selected="false" onclick="setProductOperationsModalTab('unshipped')">未寄</button>
+            <button type="button" class="product-operations-tab" id="productOperationsShippedTab" role="tab" aria-selected="false" onclick="setProductOperationsModalTab('shipped')">已寄</button>
           </div>
           <div class="product-operations-note" id="productOperationsModalNote"></div>
+          <button type="button" class="product-action-btn secondary" id="productStatisticsRetry" onclick="loadProductOperations(true)" hidden>重新讀取統計</button>
           <div class="product-operations-list" id="productOperationsModalList"></div>
         </div>
         <div class="modal-footer">
@@ -7442,12 +7445,7 @@ body.preview-white-cards #order-page-section .card {
       let adminProductCatalogVersion = "";
       let adminProductCatalogLoading = false;
       let adminProductCatalogReadFailed = false;
-      let adminProductOperationsLoading = false;
-      let adminProductOperations = {
-        byCode: {},
-        complete: false,
-        unreadableOrderCount: 0,
-      };
+      let adminProductOperations = null;
       let adminSiteSettings = {
         bannerImageUrl:
           ORDER_SYSTEM_CONFIG.assets?.bannerImageUrl || "assets/banner.png",
@@ -10405,15 +10403,13 @@ function handleProductThumbnailError(image) {
 function renderProductManagementCard(product, shared = false) {
   const status = normalizeAdminProductStatus(product.status);
   const label = [shared || product.grade === product.count ? '' : product.grade, product.productSeries, `${product.count || ''}裝`].filter(Boolean).map(part => `<span>${escapeHtml(part)}</span>`).join('<span aria-hidden="true" class="product-row-separator">・</span>');
-  const operations = adminProductOperations?.byCode?.[normalizeAdminProductCode(product.code)];
-  const complete = adminProductOperations?.complete === true;
-  const booked = adminProductOperationsLoading ? '統計讀取中' : operations ? `已訂 ${Number(operations.bookedQty || 0)} · 已寄 ${Number(operations.shippedQty || 0)}${complete?'':'（待確認）'}` : '查看訂單統計';
+  const code = normalizeAdminProductCode(product.code);
   return `<article class="product-admin-card${status==='上架'?'':' is-inactive'}" data-product-id="${escapeHtml(product.id)}" data-shared="${shared}">
     <div class="product-admin-summary"><button type="button" class="product-edit-mini-btn product-row-button" aria-expanded="false" aria-label="編輯 ${escapeHtml(getAdminProductDisplayName(product))}" onclick="toggleProductManagementEdit(this)">
       ${renderProductThumbnail(product.imageUrl)}<span class="product-row-identity"><span class="product-admin-meta">${label}</span><span class="${status==='上架'?'product-status-active':'product-status-inactive'}">${escapeHtml(status)}</span>${!shared?renderAdminProductAvailabilityBadge(product):''}</span><span class="product-admin-price">$${Number(product.price).toLocaleString("zh-TW")}</span>${productUiIcon('angle-right')}</button></div>
     <div class="product-admin-edit">
       <div class="product-field full product-editor-title"><strong>編輯商品</strong><button type="button" class="product-action-btn secondary" onclick="cancelProductManagementEdit(this)">取消</button></div>
-      <div class="product-field full"><button type="button" class="product-chip product-operations-chip" onclick="openProductOperationsModal('${escapeHtml(product.id)}')">${escapeHtml(booked)} ${productUiIcon('angle-right')}</button></div>
+      <div class="product-field full"><button type="button" class="product-chip product-operations-chip" onclick="openProductOperationsModal('${escapeHtml(product.id)}')"><span data-product-stat-code="${escapeHtml(code)}">${escapeHtml(getProductStatisticsLabel(code))}</span> ${productUiIcon('angle-right')}</button></div>
       ${renderProductUiFields(product,shared)}
       <div class="product-field full product-editor-save">${shared ? '<small>顆數固定；不同顆數請新增販售組合。</small>' : ''}<button type="button" class="product-action-btn primary" onclick="saveProductManagementCard(this)">儲存商品</button></div>
     </div></article>`;
@@ -10534,6 +10530,7 @@ function cancelProductManagementEdit(button) {
           replacement.replaceWith(draft);
         }
         applyProductManagementFilters();
+        if (document.getElementById("productStatisticsLoad")) refreshProductStatisticsDisplay();
       }
 
       function getAdminInventoryUnitLabel(product) { return product?.inventoryUnit === 'fruit' ? '顆' : '盒'; }
@@ -10625,7 +10622,7 @@ function cancelProductManagementEdit(button) {
         );
         if (!product) return null;
         const code = normalizeAdminProductCode(product.code);
-        const operations = adminProductOperations?.byCode?.[code] || null;
+        const operations = getCurrentProductOperations()?.byCode?.[code] || null;
         return { product, operations };
       }
 
@@ -10706,9 +10703,23 @@ function cancelProductManagementEdit(button) {
         const bookedTab = document.getElementById("productOperationsBookedTab");
         const unshippedTab = document.getElementById("productOperationsUnshippedTab");
         const shippedTab = document.getElementById("productOperationsShippedTab");
-        if (!context || !title || !note || !list || !bookedTab || !unshippedTab || !shippedTab) return;
+        if (!title || !note || !list || !bookedTab || !unshippedTab || !shippedTab) return;
 
-        const { product, operations } = context;
+        const product = context?.product;
+        title.textContent = product ? `${product.variety || ""} ${product.grade || product.code || ""}｜${product.count || ""}裝` : "商品訂單資訊";
+        const operations = context?.operations;
+        const retry = document.getElementById("productStatisticsRetry");
+        const loading = productStatisticsFlight?.key === getProductStatisticsKey();
+        if (retry) retry.hidden = !product || loading || (!!operations && !getProductStatisticsMessage());
+        if (!operations) {
+          bookedTab.textContent = "已訂";
+          unshippedTab.textContent = "未寄";
+          shippedTab.textContent = "已寄";
+          note.textContent = "";
+          list.textContent = !product ? "此商品已不在目前目錄。" : loading ? "訂單統計讀取中…" :
+            getProductStatisticsMessage() || "尚未取得此商品的訂單統計。";
+          return;
+        }
         const bookedQty = Number(operations?.bookedQty || 0);
         const shippedQty = Number(operations?.shippedQty || 0);
         const isBooked = adminProductOperationsModalMode === "booked";
@@ -10737,7 +10748,6 @@ function cancelProductManagementEdit(button) {
               )
           : [];
 
-        title.textContent = `${product.variety || ""} ${product.grade || product.code || ""}｜${product.count || ""}裝`;
         bookedTab.textContent = `已訂 ${bookedQty}盒`;
         unshippedTab.textContent = `未寄 ${unshippedQty}盒`;
         shippedTab.textContent = `已寄 ${shippedQty}盒`;
@@ -10753,8 +10763,10 @@ function cancelProductManagementEdit(button) {
             ? "未寄數量為已訂扣除已寄；下方列出目前尚未標記為「已寄出」的已訂資料。"
             : "已寄只列出訂單狀態已標記為「已寄出」的訂單，包含團體子單。";
 
-        if (!operations || !details.length) {
-          list.innerHTML = `<div class="product-operations-empty">${operations ? "目前沒有訂單資料" : "訂單資料尚未載入，請重新整理後再試"}</div>`;
+        if (getCurrentProductOperations()?.complete !== true) note.textContent += " 部分訂單無法計入，數量僅包含已讀取的訂單。";
+        if (getProductStatisticsMessage()) note.textContent = getProductStatisticsMessage() + " " + note.textContent;
+        if (!details.length) {
+          list.textContent = "本次統計沒有此項明細。";
           return;
         }
 
@@ -10786,6 +10798,7 @@ function cancelProductManagementEdit(button) {
         adminProductOperationsModalMode = "booked";
         renderProductOperationsModal();
         document.getElementById("productOperationsModal")?.classList.add("open");
+        void loadProductOperations();
       }
 
       function closeProductOperationsModal() {
@@ -14896,86 +14909,38 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
       window.refreshAdminOrdersFromOverlay = refreshAdminOrdersFromOverlay;
       window.hideAdminAuthOverlay = hideAdminAuthOverlay;
 
-      async function fetchAdminProductCatalogFromGas({ includeOperations = true, fresh = false, preserveDraft = false } = {}) {
-        if (adminProductCatalogLoadPromise) {
-          if (!fresh && (!includeOperations || adminProductCatalogLoadPromise.includesOperations !== false)) return adminProductCatalogLoadPromise;
+      async function fetchAdminProductCatalogFromGas({ fresh = false, preserveDraft = false } = {}) {
+        const adminSessionToken = String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "").trim();
+        if (adminProductCatalogLoadPromise?.sessionToken === adminSessionToken) {
+          if (!fresh) return adminProductCatalogLoadPromise;
           await adminProductCatalogLoadPromise;
           // A new opener must read after earlier in-flight data, not reuse an
           // older response that started before a product change.
+          if (adminSessionToken !== String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "").trim()) return null;
         }
 
         const readEpoch = adminProductCatalogMutationEpoch;
+        const generation = ++productCatalogReadGeneration;
+        const current = () => generation === productCatalogReadGeneration &&
+          adminSessionToken === String(sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "").trim();
         const loadPromise = (async () => {
-        const baseUrl = String(GAS_ORDERS_API_URL || "").trim();
-        const adminSessionToken = String(
-          sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
-        ).trim();
-
         setAdminProductCatalogState(false, "讀取管理員商品目錄中...");
         adminProductCatalogLoading = true;
         adminProductCatalogReadFailed = false;
-        if (includeOperations) adminProductOperationsLoading = true;
         renderProductManagement();
         renderShippingManifest();
 
         try {
-          if (!baseUrl || !adminSessionToken) {
-            throw new Error("ADMIN_SESSION_REQUIRED");
-          }
-
-          const response = await fetchAdminRecoverableResponse(
-            baseUrl,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "text/plain;charset=utf-8",
-              },
-              body: JSON.stringify({
-                action: "adminReadProductCatalog",
-                requestId: createAdminDiagnosticRequestId("adminReadProductCatalog"),
-                includeOperations,
-                adminSessionToken,
-              }),
-            },
-            ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS,
-          );
-          const payload = await response.json();
-
-          if (
-            payload &&
-            payload.ok === false &&
-            payload.action === "adminReadProductCatalog" &&
-            payload.error === "ADMIN_SESSION_REQUIRED"
-          ) {
-            throw new Error("ADMIN_SESSION_REQUIRED");
-          }
-
-          if (
-            !payload ||
-            payload.ok !== true ||
-            payload.action !== "adminReadProductCatalog" ||
-            !Array.isArray(payload.products)
-          ) {
-            throw new Error(
-              String(payload?.error || "PRODUCT_CATALOG_READ_FAILED"),
-            );
-          }
-
+          const payload = await requestAdminProductCatalog(adminSessionToken, false);
+          if (!current()) return null;
           if (readEpoch !== adminProductCatalogMutationEpoch || productManagementSaveInFlight) {
             adminProductCatalogLoading = false;
-            if (includeOperations) adminProductOperationsLoading = false;
             return adminProductCatalog;
           }
           markAdminSessionVerified(adminSessionToken);
           adminProductCatalog = payload.products.slice();
           adminProductCatalogVersion = String(payload.catalogVersion || "");
-          if (includeOperations) adminProductOperations =
-            payload.productOperations &&
-            typeof payload.productOperations === "object"
-              ? payload.productOperations
-              : { byCode: {}, complete: false, unreadableOrderCount: 0 };
           adminProductCatalogLoading = false;
-          if (includeOperations) adminProductOperationsLoading = false;
           adminSiteSettings = {
             ...adminSiteSettings,
             ...(payload.siteSettings || {}),
@@ -14987,9 +14952,9 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           updateNewOrderAmountPreview();
           return adminProductCatalog;
         } catch (error) {
+          if (!current()) return null;
           console.error("GAS 商品目錄讀取失敗", error);
           adminProductCatalogLoading = false;
-          if (includeOperations) adminProductOperationsLoading = false;
           if (String(error?.message) === "ADMIN_SESSION_REQUIRED") {
             sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
             setAdminAuthRetryButtonMode(false);
@@ -15006,17 +14971,144 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         }
         })();
 
-        loadPromise.includesOperations = includeOperations;
+        loadPromise.sessionToken = adminSessionToken;
         adminProductCatalogLoadPromise = loadPromise;
         try {
           return await loadPromise;
         } finally {
           if (adminProductCatalogLoadPromise === loadPromise) {
             adminProductCatalogLoadPromise = null;
+            adminProductCatalogLoading = false;
+            refreshProductStatisticsDisplay();
             const trigger = document.querySelector(".btn-add-order-trigger");
             if (trigger) { trigger.disabled = false; trigger.setAttribute("aria-disabled", "false"); }
           }
         }
+      }
+
+      let productCatalogReadGeneration = 0;
+      let productStatisticsFlight = null;
+      let productStatisticsLoadedKey = "";
+      let productStatisticsNotice = null;
+      let productStatisticsGroups = null;
+      let productStatisticsGroupRevision = 0;
+
+      async function requestAdminProductCatalog(adminSessionToken, includeOperations) {
+        const url = String(GAS_ORDERS_API_URL || "").trim();
+        if (!url || !adminSessionToken) throw new Error("ADMIN_SESSION_REQUIRED");
+        const response = await fetchAdminRecoverableResponse(url, {
+          method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({action: "adminReadProductCatalog", adminSessionToken, includeOperations,
+            requestId: createAdminDiagnosticRequestId("adminReadProductCatalog")}),
+        }, ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS);
+        const payload = await response.json();
+        if (response.ok === false || payload?.action !== "adminReadProductCatalog" || payload.ok !== true ||
+            !Array.isArray(payload.products)) {
+          throw new Error(String(payload?.error || "PRODUCT_CATALOG_READ_FAILED"));
+        }
+        return payload;
+      }
+
+      function getProductStatisticsKey() {
+        // Per-page only. A refresh, session change or newer product/order version
+        // invalidates an outstanding scan, including one for the same product.
+        if (productStatisticsGroups !== adminGroupOrders) {
+          productStatisticsGroups = adminGroupOrders;
+          productStatisticsGroupRevision++;
+        }
+        return JSON.stringify([sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY), productCatalogReadGeneration, productStatisticsGroupRevision,
+          adminProductCatalogVersion, adminProductCatalogMutationEpoch, adminOrderMutationRevision,
+          adminOrderReadMeta.snapshotLiveVersion || "", adminOrderSnapshotVersion]);
+      }
+
+      function getCurrentProductOperations() {
+        return productStatisticsLoadedKey && productStatisticsLoadedKey === getProductStatisticsKey() ? adminProductOperations : null;
+      }
+
+      function getProductStatisticsMessage() {
+        return productStatisticsNotice?.key === getProductStatisticsKey() ? productStatisticsNotice.text : "";
+      }
+
+      function getProductStatisticsLabel(code) {
+        const stats = getCurrentProductOperations();
+        const item = stats?.byCode[code];
+        if (item) return `已訂 ${item.bookedQty} · 已寄 ${item.shippedQty}${stats.complete ? "" : "（部分統計）"}${getProductStatisticsMessage() ? "（上次統計）" : ""}`;
+        return productStatisticsFlight?.key === getProductStatisticsKey() ? "統計讀取中…" : "查看訂單統計";
+      }
+
+      function refreshProductStatisticsDisplay() {
+        const button = document.getElementById?.("productStatisticsLoad");
+        if (button) {
+          const loading = productStatisticsFlight?.key === getProductStatisticsKey();
+          button.disabled = loading || !adminProductsReady || productManagementSaveInFlight;
+          button.textContent = loading ? "統計讀取中…" : getCurrentProductOperations() ? "更新訂單統計" : "讀取訂單統計";
+        }
+        const feedback = document.getElementById?.("productStatisticsFeedback");
+        if (feedback) {
+          const stats = getCurrentProductOperations();
+          feedback.textContent = getProductStatisticsMessage() || (stats
+            ? (stats.complete ? "已取得訂單統計，展開商品可查看明細。" : "部分訂單無法計入，展開商品可查看已取得的明細。") : "");
+        }
+        for (const chip of document.querySelectorAll?.("[data-product-stat-code]") || []) {
+          chip.textContent = getProductStatisticsLabel(chip.dataset.productStatCode);
+        }
+        if (document.getElementById?.("productOperationsModal") && adminProductOperationsModalCode) renderProductOperationsModal();
+      }
+
+      async function loadProductOperations(force = false) {
+        const token = sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+        if (adminProductCatalogLoadPromise?.sessionToken === token) await adminProductCatalogLoadPromise;
+        if (!token || token !== sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) ||
+            !adminProductsReady || productManagementSaveInFlight) return null;
+        const key = getProductStatisticsKey();
+        if (productStatisticsFlight?.key === key) return productStatisticsFlight.promise;
+        if (!force && getCurrentProductOperations() && !getProductStatisticsMessage()) return adminProductOperations;
+        const flight = {key, promise: null};
+        productStatisticsFlight = flight;
+        productStatisticsNotice = null;
+        flight.promise = (async () => {
+          try {
+            const payload = await requestAdminProductCatalog(token, true);
+            if (key !== getProductStatisticsKey()) return null;
+            if (String(payload.catalogVersion || "") !== adminProductCatalogVersion) {
+              throw new Error("PRODUCT_STATISTICS_CATALOG_CHANGED");
+            }
+            const stats = payload.productOperations;
+            if (!stats || stats.errorCode || typeof stats.complete !== "boolean" ||
+                !stats.byCode || typeof stats.byCode !== "object" || Array.isArray(stats.byCode) ||
+                !Object.values(stats.byCode).every(item => Number.isSafeInteger(item?.bookedQty) && item.bookedQty >= 0 &&
+                  Number.isSafeInteger(item.shippedQty) && item.shippedQty >= 0 &&
+                  Array.isArray(item.bookedOrders) && Array.isArray(item.shippedOrders))) {
+              throw new Error("PRODUCT_OPERATIONS_READ_FAILED");
+            }
+            // Never apply the product rows, prices, stock or settings returned
+            // by a statistics scan to the editable catalog or order form.
+            adminProductOperations = stats;
+            productStatisticsLoadedKey = key;
+            return stats;
+          } catch (error) {
+            if (key !== getProductStatisticsKey()) return null;
+            const messages = {
+              PRODUCT_STATISTICS_CATALOG_CHANGED: "商品目錄已更新，請先重新整理商品，再讀取統計。",
+              ADMIN_SESSION_REQUIRED: "登入已過期，請重新登入後再讀取統計。",
+            };
+            const specific = messages[error.message];
+            if (specific) {
+              productStatisticsLoadedKey = "";
+              adminProductOperations = null;
+            }
+            productStatisticsNotice = {key, text: specific || (getCurrentProductOperations()
+              ? "統計更新失敗，顯示上次統計。請重新讀取統計。" : "訂單統計讀取失敗，請重新讀取統計。")};
+            return null;
+          } finally {
+            if (productStatisticsFlight === flight) {
+              productStatisticsFlight = null;
+              refreshProductStatisticsDisplay();
+            }
+          }
+        })();
+        refreshProductStatisticsDisplay();
+        return flight.promise;
       }
 
       function renderAdminOrders(adminOrders) {

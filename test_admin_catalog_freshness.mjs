@@ -15,7 +15,8 @@ const modal={classList:{add(){open=true},contains(){return open}},querySelector:
 const trigger={disabled:false,setAttribute(){}};
 const c={adminProductCatalogMutationEpoch:0,productManagementSaveInFlight:false,getNewOrderGroupId:()=>'',loadPendingAdminGroupCreateRequest:()=>null,renderNewOrderGroupChoices(){},syncNewOrderGroupContext(){},refreshNewOrderGroups:async()=>true,restorePendingGroupChildForm(){},buildNewOrderProductOptionsHtml:()=>c.buildAdminProductOptionsHtml(),adminProductCatalogLoadPromise:null,adminProductsReady:true,GAS_ORDERS_API_URL:'mock',ADMIN_LINE_SESSION_TOKEN_KEY:'token',ADMIN_READ_PRODUCT_CATALOG_TIMEOUT_MS:60000,
  adminProductCatalog:catalog,adminSiteSettings:{},adminProductOperations:{byCode:{A:{bookedQty:9}}},
- document:{querySelectorAll:()=>[row],querySelector:q=>q==='.btn-add-order-trigger'?trigger:row,getElementById:()=>modal,body:{style:{}},createElement:()=>({})},
+ adminOrderMutationRevision:0,adminOrderReadMeta:{},adminOrderSnapshotVersion:'',adminGroupOrders:[],adminProductOperationsModalCode:'',
+ document:{querySelectorAll:q=>q==='[data-product-stat-code]'?[]:[row],querySelector:q=>q==='.btn-add-order-trigger'?trigger:row,getElementById:()=>modal,body:{style:{}},createElement:()=>({})},
  sessionStorage:{getItem:()=> 'fixture'},window:{setTimeout:fn=>fn()},requestAnimationFrame:fn=>fn(),console:{error(){}},alert:m=>{c.alert=m},
  ensureAdminSessionReady:async()=>{throw Error("redundant validation")},readAdminCreateDraft:()=>null,restoreAdminCreateDraftFields(){},restoreAdminCreateDraftItems(){},markAdminSessionVerified(){},resetAdminCustomerLookup(){},resetModalProductRows(){throw Error('must preserve draft rows')},renderProductManagement(){},renderShippingManifest(){},updateNewOrderAmountPreview(){preview++},
  buildAdminProductOptionsHtml:()=>JSON.stringify(c.adminProductCatalog.map(p=>({value:p.code,textContent:`${p.code} $${p.price} stock:${p.stock}`}))),
@@ -29,15 +30,16 @@ await c.openAddOrderModal();assert.equal(requests.length,2,'each opening refresh
 catalog=[{code:'B',price:300,stock:8}];open=false;await c.openAddOrderModal();assert.equal(select.value,'','removed selected product must require reselection, never silently switch to B');assert.match(select.options[0].textContent,/已無法訂購/);assert.equal(qty.value,'3');
 open=false;let resolveRead;c.fetchAdminRecoverableResponse=()=>new Promise(r=>resolveRead=r);const before=requests.length;const one=c.openAddOrderModal();await new Promise(setImmediate);const two=c.openAddOrderModal();resolveRead({ok:true,json:async()=>({ok:true,action:'adminReadProductCatalog',products:catalog})});await Promise.all([one,two]);assert.equal(qty.value,'3');
 c.fetchAdminRecoverableResponse=async()=>{throw Error('NETWORK_ERROR')};open=false;await c.openAddOrderModal();assert.equal(open,true,'editing remains available when product loading fails');assert.equal(c.adminProductsReady,false);assert.match(modal.innerText,/重新讀取商品/);assert.equal(draft.recipient,'fixture recipient');
-// Management must not reuse the lean request started by Add Order/print.
+// A catalog opened from management can share the lean read. Only requesting
+// order statistics explicitly scans orders, after the correct catalog is ready.
 let modes=[],finishLean;
-c.fetchAdminRecoverableResponse=async(u,o)=>{const p=JSON.parse(o.body);modes.push(p.includeOperations);if(modes.length===1)await new Promise(r=>finishLean=r);return{ok:true,json:async()=>({ok:true,action:'adminReadProductCatalog',products:catalog,productOperations:{byCode:{B:{bookedQty:12}},complete:true}})}};
+c.fetchAdminRecoverableResponse=async(u,o)=>{const p=JSON.parse(o.body);modes.push(p.includeOperations);if(modes.length===1)await new Promise(r=>finishLean=r);return{ok:true,json:async()=>({ok:true,action:'adminReadProductCatalog',products:catalog,productOperations:{byCode:{B:{bookedQty:12,shippedQty:0,bookedOrders:[],shippedOrders:[]}},complete:true}})}};
 const lean=c.fetchAdminProductCatalogFromGas({includeOperations:false});
-const full=c.fetchAdminProductCatalogFromGas();
-assert.deepEqual(modes,[false]);finishLean();await Promise.all([lean,full]);
+const management=c.fetchAdminProductCatalogFromGas(),stats=c.loadProductOperations();
+assert.deepEqual(modes,[false]);finishLean();await Promise.all([lean,management,stats]);
 assert.deepEqual(modes,[false,true]);assert.equal(c.adminProductOperations.byCode.B.bookedQty,12);
 assert.match(html,/adminProductCatalogLoading\s*\?\s*"商品讀取中"\s*:\s*adminProductCatalogReadFailed\s*\?\s*"商品資料尚未成功讀取"\s*:\s*"目前沒有商品資料"/,'empty catalog must identify an active read instead of claiming no products');
-assert.match(html,/adminProductOperationsLoading[\s\S]*?"已訂 —統計讀取中"[\s\S]*?"已寄 —統計讀取中"/,'product operation chips must identify an active statistics read');
+assert.match(c.getProductStatisticsLabel('B'),/已訂 12 · 已寄 0/,'a verified zero can be displayed');
 console.log('catalog freshness: PASS repeat openings, external price/stock change, preserved quantity/selection, removed SKU, duplicate opening and failed refresh');
 
 // An older read must not overwrite a catalog confirmed by a newer mutation.
