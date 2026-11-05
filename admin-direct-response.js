@@ -18,6 +18,7 @@
       if (options.signal?.aborted) abort();
       const started = Date.now();
       let timer;
+      let authBodyFailure;
       try {
         return await Promise.race([
           (async () => {
@@ -25,7 +26,18 @@
             const response = await fetch(endpoint, { method: 'POST',
               headers: { 'content-type': 'text/plain;charset=utf-8' }, body: options.body,
               credentials: 'omit', cache: 'no-store', redirect: 'error', signal: controller.signal });
-            const text = await response.text();
+            let text;
+            try { text = await response.text(); }
+            catch (failure) {
+              if (payload.action !== 'adminAuth' || controller.signal.aborted) throw failure;
+              // Only the original business body gets this marker. A rejected
+              // fetch, an expired timer or a failed diagnostics clone cannot set it.
+              authBodyFailure = new Error('NETWORK_ERROR');
+              authBodyFailure.httpStatus = response.status;
+              authBodyFailure.responseStage = 'body_read';
+              authBodyFailure.responseFormat = 'body-read-failed';
+              throw authBodyFailure;
+            }
             if (shippingReads.has(payload.action) && !response.ok) {
               let failure; try { failure = JSON.parse(text); } catch {}
               const code = failure?.errorCode || failure?.error || '';
@@ -57,6 +69,11 @@
           }),
         ]);
       } catch (failure) {
+        if (authBodyFailure && failure === authBodyFailure) {
+          authBodyFailure.attempts = 1;
+          authBodyFailure.elapsedMs = Date.now() - started;
+          throw authBodyFailure;
+        }
         if (shippingReads.has(payload.action)) {
           const raw = String(failure?.message || '');
           const code = /^(SHIPPING_READ_[A-Z_]+|ADMIN_SESSION_REQUIRED|ADMIN_ACCESS_DENIED)$/.test(raw) ? raw

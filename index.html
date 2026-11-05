@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261102-short-label-phone-left-v1">
+<html lang="zh-Hant" data-release-version="20261105-auth-callback-recovery-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261102-short-label-phone-left-v1" />
+    <meta name="admin-release" content="20261105-auth-callback-recovery-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -10,11 +10,11 @@
     <title>出貨後台</title>
     <link rel="preconnect" href="https://sanheyuan-admin-response.zoe-quokka.workers.dev" crossorigin />
     <link rel="preload" as="script" href="./customer-config.js?v=20261027-settings-spacing-production-v2" />
-    <link rel="preload" as="script" href="./admin-direct-response.js?v=20261020-download-fence-v1" />
+    <link rel="preload" as="script" href="./admin-direct-response.js?v=20261105-auth-callback-recovery-v1" />
     <link rel="preload" as="script" href="./admin-diagnostics.js?v=20261030-visible-order-badge-v1" />
     <link rel="preload" as="script" href="./admin-mutation-recovery.js?v=20261019-label-fields-v1" />
     <script src="./customer-config.js?v=20261027-settings-spacing-production-v2"></script>
-    <script src="./admin-direct-response.js?v=20261020-download-fence-v1"></script>
+    <script src="./admin-direct-response.js?v=20261105-auth-callback-recovery-v1"></script>
     <script src="./admin-diagnostics.js?v=20261030-visible-order-badge-v1"></script>
     <script src="./admin-mutation-recovery.js?v=20261019-label-fields-v1"></script>
     <link
@@ -8522,11 +8522,7 @@ body.preview-white-cards #order-page-section .card {
           adminSeasonView = null;
           adminSeasonViewToken = "";
         }
-        sessionStorage.removeItem(ADMIN_LINE_STATE_KEY);
-        sessionStorage.removeItem(ADMIN_LINE_NONCE_KEY);
-        sessionStorage.removeItem(ADMIN_LINE_NONCE_KEY + ":submitted");
-        sessionStorage.removeItem(ADMIN_LINE_NONCE_KEY + ":recovery");
-        sessionStorage.removeItem(ADMIN_LINE_CODE_VERIFIER_KEY);
+        clearAdminAuthCallbackProof();
         if (typeof ADMIN_ORDER_SNAPSHOT_SESSION_CACHE_KEY !== "undefined") {
           sessionStorage.removeItem(ADMIN_ORDER_SNAPSHOT_SESSION_CACHE_KEY);
         }
@@ -8547,6 +8543,55 @@ body.preview-white-cards #order-page-section .card {
       function clearAdminAuthQuery() {
         const cleanUrl = `${window.location.origin}${window.location.pathname}${window.location.hash}`;
         history.replaceState({}, document.title, cleanUrl);
+      }
+
+      function clearAdminAuthCallbackProof() {
+        sessionStorage.removeItem(ADMIN_LINE_STATE_KEY);
+        sessionStorage.removeItem(ADMIN_LINE_NONCE_KEY);
+        sessionStorage.removeItem(ADMIN_LINE_NONCE_KEY + ":submitted");
+        sessionStorage.removeItem(ADMIN_LINE_NONCE_KEY + ":recovery");
+        sessionStorage.removeItem(ADMIN_LINE_CODE_VERIFIER_KEY);
+      }
+
+      function getAdminAuthCallbackOwner() {
+        return {
+          state: sessionStorage.getItem(ADMIN_LINE_STATE_KEY),
+          nonce: sessionStorage.getItem(ADMIN_LINE_NONCE_KEY),
+          verifier: sessionStorage.getItem(ADMIN_LINE_CODE_VERIFIER_KEY),
+          token: sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY),
+        };
+      }
+
+      function isCurrentAdminAuthCallback(owner) {
+        return !adminAuthNavigationPending && !isAdminForceLoginQueued() && owner.state === sessionStorage.getItem(ADMIN_LINE_STATE_KEY) &&
+          owner.nonce === sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) &&
+          owner.verifier === sessionStorage.getItem(ADMIN_LINE_CODE_VERIFIER_KEY) &&
+          owner.token === sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+      }
+
+      function rejectAdminAuthCallback(errorCode, returnedState) {
+        publishAdminAuthDiagnostic({requestId: createAdminDiagnosticRequestId("adminAuth"), errorCode});
+        clearAdminAuthQuery();
+        // A replay may arrive while another valid callback is still completing.
+        if (adminAuthNavigationPending || (adminAuthCompletionOwner && isCurrentAdminAuthCallback(adminAuthCompletionOwner))) {
+          return false;
+        }
+        if (returnedState && returnedState === sessionStorage.getItem(ADMIN_LINE_STATE_KEY)) {
+          clearAdminAuthCallbackProof();
+        }
+        adminAuthBlocksDataLoad = true;
+        setAdminAuthRetryButtonMode(false);
+        const owner = getAdminAuthCallbackOwner();
+        if (owner.token) {
+          const completionRevision = adminAuthCompletionRevision;
+          showAdminAuthOverlay("正在驗證既有管理員登入狀態...", false, false, false, true);
+          return validateExistingAdminSession(owner.token, {
+            redirectOnExpired: false, stillCurrent: () => completionRevision === adminAuthCompletionRevision &&
+              isCurrentAdminAuthCallback(owner),
+          });
+        }
+        showAdminAuthOverlay("這次 LINE 登入無法確認，請重新登入 LINE。", true);
+        return false;
       }
 
       function hasRetryableAdminAuthCallback() {
@@ -8614,8 +8659,13 @@ body.preview-white-cards #order-page-section .card {
       let adminNetworkRecoveryPending = "";
       let adminNetworkRecoveryInFlight = false;
       let adminPendingAuthForceLogin = false;
+      let adminForceLoginRevision = 0;
       const ADMIN_NETWORK_SETTLE_MS = 1500;
       const ADMIN_NETWORK_RETRY_DELAYS_MS = Object.freeze([0, 3000]);
+
+      function isAdminForceLoginQueued() {
+        return adminPendingAuthForceLogin || sessionStorage.getItem(ADMIN_LINE_STATE_KEY + ":forceLoginQueued") === "1";
+      }
 
       function adminBrowserIsOffline() {
         return typeof navigator !== "undefined" && navigator.onLine === false;
@@ -8623,7 +8673,7 @@ body.preview-white-cards #order-page-section .card {
 
       function setAdminNetworkRecoveryPending(kind) {
         if (["startAuth", "authCallback", "orders"].includes(kind)) {
-          adminNetworkRecoveryPending = kind;
+          adminNetworkRecoveryPending = isAdminForceLoginQueued() ? "startAuth" : kind;
         }
       }
 
@@ -8728,8 +8778,13 @@ body.preview-white-cards #order-page-section .card {
       async function startAdminAuth(forceLogin = false) {
         if (adminAuthNavigationPending) return;
         if (typeof persistAdminCreateDraft === "function") persistAdminCreateDraft();
+        forceLogin = forceLogin || isAdminForceLoginQueued();
+        if (forceLogin) adminForceLoginRevision++;
         if (adminBrowserIsOffline()) {
           adminPendingAuthForceLogin = forceLogin;
+          // Keep the previous session and draft until departure. Only this
+          // explicit switch intent needs to survive an offline tab reload.
+          if (forceLogin) sessionStorage.setItem(ADMIN_LINE_STATE_KEY + ":forceLoginQueued", "1");
           setAdminNetworkRecoveryPending("startAuth");
           adminAuthBlocksDataLoad = true;
           setAdminAuthRetryButtonMode(false);
@@ -8745,6 +8800,13 @@ body.preview-white-cards #order-page-section .card {
         clearAdminNetworkRecoveryPending("startAuth");
         adminAuthNavigationPending = true;
         adminAuthBlocksDataLoad = true;
+        if (forceLogin) {
+          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
+          clearAdminAuthSession();
+          adminLoginOrderBootstrap = null;
+          sessionStorage.removeItem(ADMIN_LINE_STATE_KEY + ":forceLoginQueued");
+          adminPendingAuthForceLogin = false;
+        }
         const retryButton = document.getElementById("adminAuthRetryBtn");
         if (retryButton) retryButton.disabled = true;
         try {
@@ -8806,6 +8868,8 @@ body.preview-white-cards #order-page-section .card {
         } catch { return option === "0" ? false : defaultEnabled; }
       }
       let adminAuthCompletionPromise = null;
+      let adminAuthCompletionOwner = null;
+      let adminAuthCompletionRevision = 0;
       function isAdminAuthUnacceptedBusy(result) {
         return result?.ok === false && result.action === "adminAuth" &&
           result.error === "ADMIN_AUTH_BUSY" && result.state === "busy" &&
@@ -8825,6 +8889,7 @@ body.preview-white-cards #order-page-section .card {
         if (!saved || saved.nonce !== payload.nonce || saved.deadline !== deadline ||
             saved.diagnosticRequestId !== payload.diagnosticRequestId ||
             !Number.isInteger(count) || count < 0 || count > 2 ||
+            (saved.bodyResultCheckUsed !== undefined && typeof saved.bodyResultCheckUsed !== "boolean") ||
             (saved.claimRetryAllowed !== undefined && typeof saved.claimRetryAllowed !== "boolean")) {
           throw new Error("ADMIN_AUTH_RECOVERY_CONTEXT_INVALID");
         }
@@ -8832,25 +8897,94 @@ body.preview-white-cards #order-page-section .card {
         return saved;
       }
 
+      function adminAuthResultCheckUnavailable(httpStatus) {
+        const error = new Error("ADMIN_AUTH_RESULT_UNAVAILABLE");
+        error.responseStage = "result_lookup";
+        error.responseFormat = "auth-result-read-budget-used";
+        if (Number.isInteger(httpStatus)) error.httpStatus = httpStatus;
+        return error;
+      }
+
+      function prepareAdminAuthBodyResultCheck(payload, saved) {
+        if (saved.bodyResultCheckUsed) throw adminAuthResultCheckUnavailable();
+        if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY + ":submitted") !== payload.nonce) {
+          throw new Error("AUTH_CALLBACK_CONTEXT_MISSING");
+        }
+        // Absent before a body interruption, false while offline, true once
+        // reserved for dispatch. Reloads inherit the same single check.
+        const offline = adminBrowserIsOffline();
+        saved.bodyResultCheckUsed = !offline;
+        saved.claimRetryAllowed = false;
+        sessionStorage.setItem(ADMIN_LINE_NONCE_KEY + ":recovery", JSON.stringify(saved));
+        if (offline) throw new Error("ADMIN_NETWORK_OFFLINE");
+        const {nonce, codeVerifier, redirectUri, diagnosticRequestId} = payload;
+        const request = {action: "adminAuth", resultOnly: true, claimRetryProtocol: 1,
+          nonce, codeVerifier, redirectUri, diagnosticRequestId};
+        if (payload.startup) {
+          // Keep the same first-order-page handoff along with the recovered
+          // session. Only the original startup contract can cross this boundary.
+          const {requestId, workspace, filter} = payload.startup;
+          const {query, statusFilter, notificationFilter, dateStart, dateEnd, page, pageSize, emptyDateSelection} = filter;
+          request.startup = {requestId, workspace, filter: {query, statusFilter, notificationFilter,
+            dateStart, dateEnd, page, pageSize, emptyDateSelection}};
+        }
+        showAdminAuthOverlay("正在取回這次登入結果…", false, false, false, true);
+        return request;
+      }
+
       async function fetchAdminAuthWithResultRecovery(payload, recovery = {}) {
         // One deadline belongs to the whole callback, including reloads. A slow
         // successful exchange must not be cut off just to start shorter queries.
         const deadline = Number.isFinite(recovery.deadline)
           ? recovery.deadline : Date.now() + 60000;
+        const requireCurrentCallback = () => {
+          if ((recovery.stillCurrent && !recovery.stillCurrent()) ||
+              sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce) {
+            throw new Error("AUTH_CALLBACK_CONTEXT_MISSING");
+          }
+        };
+        requireCurrentCallback();
         if (window.AdminDirectResponse?.enabledFor?.("adminAuth")) {
+          const savedAtEntry = readAdminAuthBusyRecovery(payload, deadline);
+          if (savedAtEntry.bodyResultCheckUsed) throw adminAuthResultCheckUnavailable();
+          let request = savedAtEntry.bodyResultCheckUsed === false
+            ? prepareAdminAuthBodyResultCheck(payload, savedAtEntry) : payload;
           while (true) {
+            requireCurrentCallback();
             if (adminBrowserIsOffline()) throw new Error('ADMIN_NETWORK_OFFLINE');
-            if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce) throw new Error('AUTH_CALLBACK_CONTEXT_MISSING');
             const remaining = deadline - Date.now();
             if (remaining <= 0) throw new Error('ADMIN_AUTH_RECOVERY_EXPIRED');
             // A full retry is allowed only after this exact request receives the
             // opt-in not-accepted response. Unknown replies never enter that path.
-            const response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
-              method: 'POST', headers: {'Content-Type':'text/plain;charset=utf-8'},
-              body: JSON.stringify(payload),
-            }, Math.min(60000, remaining), {maxAttempts:1, totalBudgetMs:remaining, flow:recovery.flow});
-            if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce) throw new Error('AUTH_CALLBACK_CONTEXT_MISSING');
+            const checkingLostBody = request !== payload;
+            if (checkingLostBody && !window.AdminDirectResponse?.enabledFor?.("adminAuth")) {
+              throw adminAuthResultCheckUnavailable();
+            }
+            let response;
+            try {
+              response = await fetchAdminRecoverableResponse(GAS_ORDERS_API_URL, {
+                method: 'POST', headers: {'Content-Type':'text/plain;charset=utf-8'},
+                body: JSON.stringify(request),
+              }, Math.min(60000, remaining), {maxAttempts:1, totalBudgetMs:remaining, flow:recovery.flow});
+            } catch (error) {
+              requireCurrentCallback();
+              if (error?.message === "AUTH_CALLBACK_CONTEXT_MISSING") throw error;
+              if (checkingLostBody) throw adminAuthResultCheckUnavailable(error?.httpStatus);
+              if (payload.resultOnly === true || !payload.code || error?.message !== "NETWORK_ERROR" ||
+                  error.responseStage !== "body_read" || !(error.httpStatus >= 200 && error.httpStatus < 300)) throw error;
+              const saved = readAdminAuthBusyRecovery(payload, deadline);
+              request = prepareAdminAuthBodyResultCheck(payload, saved);
+              continue;
+            }
+            requireCurrentCallback();
             const result = response.ok ? await response.json() : null;
+            requireCurrentCallback();
+            if (checkingLostBody) {
+              if (result?.error === "ADMIN_AUTH_PENDING" || isAdminAuthUnacceptedBusy(result)) {
+                throw adminAuthResultCheckUnavailable(response.status);
+              }
+              return response;
+            }
             if (!isAdminAuthUnacceptedBusy(result) || payload.claimRetryProtocol !== 1 ||
                 payload.resultOnly === true || typeof payload.code !== "string" || !payload.code) return response;
             let saved = readAdminAuthBusyRecovery(payload, deadline);
@@ -8859,10 +8993,11 @@ body.preview-white-cards #order-page-section .card {
             // no code, token, or new deadline is written to storage.
             saved.claimRetryAllowed = true;
             sessionStorage.setItem(ADMIN_LINE_NONCE_KEY + ":recovery", JSON.stringify(saved));
-            showAdminAuthOverlay("系統忙碌，正在重新確認登入…", false);
+            showAdminAuthOverlay("系統忙碌，正在重新確認登入…", false, false, false, true);
             const delay = Number.isFinite(result.retryAfterMs)
               ? Math.max(500, Math.min(1500, result.retryAfterMs)) : 1500;
             await new Promise(resolve => window.setTimeout(resolve, Math.min(delay, deadline - Date.now())));
+            requireCurrentCallback();
             if (adminBrowserIsOffline()) throw new Error('ADMIN_NETWORK_OFFLINE');
             saved = readAdminAuthBusyRecovery(payload, deadline);
             if (saved.claimRetryAllowed !== true || (saved.busyRetryCount || 0) >= 2) {
@@ -8878,13 +9013,13 @@ body.preview-white-cards #order-page-section .card {
         }
         let attempt = 0;
         while (Date.now() < deadline) {
+          requireCurrentCallback();
           if (adminBrowserIsOffline()) throw new Error('ADMIN_NETWORK_OFFLINE');
-          if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce) throw new Error('AUTH_CALLBACK_CONTEXT_MISSING');
           const request = {...payload};
           if (attempt > 0 || payload.resultOnly === true) {
             delete request.code;
             request.resultOnly = true;
-            showAdminAuthOverlay('正在取回這次登入結果…', false);
+            showAdminAuthOverlay('正在取回這次登入結果…', false, false, false, true);
           }
           let retryAfterMs = Math.min(4000, 500 * (2 ** Math.min(attempt, 3)));
           try {
@@ -8894,14 +9029,16 @@ body.preview-white-cards #order-page-section .card {
             }, Math.min(30000, deadline - Date.now()), {
               deliveryRecovery: request.resultOnly !== true, flow: recovery.flow,
             });
-            if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== payload.nonce) throw new Error('AUTH_CALLBACK_CONTEXT_MISSING');
+            requireCurrentCallback();
             // Permission and definitive auth failures must not be retried.
             if (!response.ok) return response;
             const result = await response.json();
+            requireCurrentCallback();
             if (result?.restartRequired === true) return response;
             if (!['ADMIN_AUTH_PENDING','ADMIN_AUTH_RESULT_NOT_FOUND'].includes(result?.error)) return response;
             if (Number.isFinite(result.retryAfterMs)) retryAfterMs = Math.max(500, Math.min(4000, result.retryAfterMs));
           } catch (error) {
+            requireCurrentCallback();
             if (['ADMIN_NETWORK_OFFLINE', 'AUTH_CALLBACK_CONTEXT_MISSING'].includes(error?.message)) throw error;
           }
           attempt++;
@@ -8915,30 +9052,26 @@ body.preview-white-cards #order-page-section .card {
       }
 
       async function completeAdminAuth(code) {
-        if (adminAuthCompletionPromise) return adminAuthCompletionPromise;
-        const pending = performAdminAuthCompletion(code);
+        if (adminAuthCompletionPromise && isCurrentAdminAuthCallback(adminAuthCompletionOwner)) return adminAuthCompletionPromise;
+        const owner = getAdminAuthCallbackOwner();
+        if (!owner.verifier || !owner.nonce) return rejectAdminAuthCallback("AUTH_CALLBACK_CONTEXT_MISSING", owner.state);
+        adminAuthCompletionRevision++;
+        const pending = performAdminAuthCompletion(code, owner);
+        adminAuthCompletionOwner = owner;
         adminAuthCompletionPromise = pending;
         try { return await pending; }
-        finally { if (adminAuthCompletionPromise === pending) adminAuthCompletionPromise = null; }
+        finally {
+          if (adminAuthCompletionPromise === pending) {
+            adminAuthCompletionPromise = null;
+            adminAuthCompletionOwner = null;
+          }
+        }
       }
 
-      async function performAdminAuthCompletion(code) {
-        adminLoginOrderBootstrap = null;
-        const codeVerifier = sessionStorage.getItem(
-          ADMIN_LINE_CODE_VERIFIER_KEY,
-        );
-        const nonce = sessionStorage.getItem(ADMIN_LINE_NONCE_KEY);
+      async function performAdminAuthCompletion(code, owner) {
+        const {nonce, verifier: codeVerifier} = owner;
         let diagnosticRequestId = createAdminDiagnosticRequestId("adminAuth");
         let authFlow;
-
-        if (!codeVerifier || !nonce) {
-          publishAdminAuthDiagnostic({ requestId: diagnosticRequestId, errorCode: "AUTH_CALLBACK_CONTEXT_MISSING" });
-          clearAdminAuthSession();
-          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-          clearAdminAuthQuery();
-          showAdminAuthOverlay("⚠️ LINE 登入驗證失敗，請重新登入 LINE", true);
-          return false;
-        }
 
         if (adminBrowserIsOffline()) {
           setAdminNetworkRecoveryPending("authCallback");
@@ -9010,13 +9143,13 @@ body.preview-white-cards #order-page-section .card {
                 codeVerifier,
                 nonce,
                 diagnosticRequestId,
-          }, { deadline: recovery.deadline, flow: authFlow });
+          }, { deadline: recovery.deadline, flow: authFlow, stillCurrent: () => isCurrentAdminAuthCallback(owner) });
 
           const responseContentType = String(
             response.headers.get("content-type") || "",
           ).toLowerCase();
           const responseText = await response.text();
-          if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== nonce) throw new Error("AUTH_CALLBACK_CONTEXT_MISSING");
+          if (!isCurrentAdminAuthCallback(owner)) throw new Error("AUTH_CALLBACK_CONTEXT_MISSING");
           let payload = null;
           try {
             payload = JSON.parse(responseText);
@@ -9075,6 +9208,7 @@ body.preview-white-cards #order-page-section .card {
                 adminDisplayName,
               );
             }
+            adminLoginOrderBootstrap = null;
             if (startup) {
               // In-memory handoff of the SAME response, never a persistent cache
               // or a rescue fetch. The selected read validator checks its contents.
@@ -9151,13 +9285,15 @@ body.preview-white-cards #order-page-section .card {
           });
           window.AdminDiagnostics?.finishFlow?.(authFlow, { outcome: "failure", code: errorCode, requestId: diagnosticRequestId });
           // An older callback must never clear a newer login's stored proof.
-          if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY) !== nonce) return false;
-          if (["ADMIN_AUTH_RECOVERY_EXPIRED", "ADMIN_AUTH_RECOVERY_CONTEXT_INVALID"].includes(errorCode)) {
+          if (!isCurrentAdminAuthCallback(owner)) return false;
+          const resultReadBudgetUsed = errorCode === "ADMIN_AUTH_RESULT_UNAVAILABLE" &&
+            error?.responseFormat === "auth-result-read-budget-used" && error?.responseStage === "result_lookup";
+          if (resultReadBudgetUsed || ["ADMIN_AUTH_RECOVERY_EXPIRED", "ADMIN_AUTH_RECOVERY_CONTEXT_INVALID"].includes(errorCode)) {
             clearAdminAuthSession();
             clearAdminAuthQuery();
             clearAdminNetworkRecoveryPending("authCallback");
             setAdminAuthRetryButtonMode(false);
-            showAdminAuthOverlay("這次登入未能在期限內確認，請重新登入 LINE。", true);
+            showAdminAuthOverlay(resultReadBudgetUsed ? "這次登入結果無法確認，請重新登入 LINE。" : "這次登入未能在期限內確認，請重新登入 LINE。", true);
             return false;
           }
           const retryableCallback = hasRetryableAdminAuthCallback();
@@ -9175,7 +9311,11 @@ body.preview-white-cards #order-page-section .card {
         }
       }
 
-      async function validateExistingAdminSession(token, { redirectOnExpired = true, background = false } = {}) {
+      async function validateExistingAdminSession(token, { redirectOnExpired = true, background = false, stillCurrent } = {}) {
+        const switchRevision = adminForceLoginRevision;
+        const superseded = () => isAdminForceLoginQueued() || switchRevision !== adminForceLoginRevision ||
+          (stillCurrent && !stillCurrent());
+        if (superseded()) return false;
         const requestId = createAdminDiagnosticRequestId("adminValidateSession");
         let diagnosticRequestId = requestId;
         const revision = adminSessionVerificationRevision;
@@ -9213,6 +9353,7 @@ body.preview-white-cards #order-page-section .card {
           }
           diagnosticRequestId = flight.requestId;
           const { response, payload } = await flight.work;
+          if (superseded()) return false;
           if (!background && !sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) &&
               payload?.action === "adminValidateSession" && payload?.error === "ADMIN_SESSION_REQUIRED") {
             setAdminAuthRetryButtonMode(false);
@@ -9237,6 +9378,7 @@ body.preview-white-cards #order-page-section .card {
           }
           throw new Error("ADMIN_SESSION_VALIDATION_FAILED");
         } catch (error) {
+          if (superseded()) return false;
           if (isStale()) return acceptNewerVerification();
           const knownErrors = ["GAS_TIMEOUT", "GAS_NON_JSON_RESPONSE", "GAS_AUTH_REQUEST_FAILED", "GAS_AUTH_RESPONSE_INVALID", "ADMIN_SESSION_VALIDATION_FAILED"];
           const errorCode = error?.name === "AbortError" ? "GAS_TIMEOUT" :
@@ -9256,20 +9398,13 @@ body.preview-white-cards #order-page-section .card {
       }
 
       async function initAdminAuth({ validateWithOrders = false } = {}) {
-        adminAuthBlocksDataLoad = false;
-        showAdminAuthOverlay("管理員登入確認中...", false);
-
+        if (isAdminForceLoginQueued()) {
+          await startAdminAuth(true);
+          return false;
+        }
         const params = new URLSearchParams(window.location.search);
         if (params.has("error") || params.has("error_description")) {
-          publishAdminAuthDiagnostic({ requestId: createAdminDiagnosticRequestId("adminAuth"), errorCode: "AUTH_PROVIDER_CALLBACK_ERROR" });
-          clearAdminAuthSession();
-          sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-          clearAdminAuthQuery();
-          showAdminAuthOverlay(
-            "⚠️ LINE 登入已取消或失敗，請重新登入 LINE",
-            true,
-          );
-          return false;
+          return rejectAdminAuthCallback("AUTH_PROVIDER_CALLBACK_ERROR", params.get("state"));
         }
 
         const code = params.get("code");
@@ -9283,17 +9418,16 @@ body.preview-white-cards #order-page-section .card {
             !expectedState ||
             returnedState !== expectedState
           ) {
-            publishAdminAuthDiagnostic({ requestId: createAdminDiagnosticRequestId("adminAuth"), errorCode: !code || !returnedState ? "AUTH_CALLBACK_PARAMETER_MISSING" : !expectedState ? "AUTH_CALLBACK_CONTEXT_MISSING" : "AUTH_CALLBACK_STATE_MISMATCH" });
-            clearAdminAuthSession();
-            sessionStorage.removeItem(ADMIN_LINE_SESSION_TOKEN_KEY);
-            clearAdminAuthQuery();
-            showAdminAuthOverlay("⚠️ LINE 登入驗證失敗，請重新登入 LINE", true);
-            return false;
+            return rejectAdminAuthCallback(!code || !returnedState ? "AUTH_CALLBACK_PARAMETER_MISSING" :
+              !expectedState ? "AUTH_CALLBACK_CONTEXT_MISSING" : "AUTH_CALLBACK_STATE_MISMATCH", returnedState);
           }
-
+          adminAuthBlocksDataLoad = true;
+          showAdminAuthOverlay("管理員登入確認中...", false, false, false, true);
           return completeAdminAuth(code);
         }
 
+        adminAuthBlocksDataLoad = false;
+        showAdminAuthOverlay("管理員登入確認中...", false);
         const existingSessionToken = String(
           sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) || "",
         ).trim();
@@ -26515,7 +26649,7 @@ ${adminNote}
             );
           }
           if (adminBrowserIsOffline()) return;
-          if (recovery === "startAuth") {
+          if (recovery === "startAuth" || isAdminForceLoginQueued()) {
             clearAdminNetworkRecoveryPending("startAuth");
             await startAdminAuth(adminPendingAuthForceLogin);
             return;
