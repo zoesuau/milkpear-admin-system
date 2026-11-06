@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261106-summary-cache-diagnostics-v1">
+<html lang="zh-Hant" data-release-version="20261106-auth-502-recovery-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261106-summary-cache-diagnostics-v1" />
+    <meta name="admin-release" content="20261106-auth-502-recovery-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -8908,7 +8908,7 @@ body.preview-white-cards #order-page-section .card {
         if (sessionStorage.getItem(ADMIN_LINE_NONCE_KEY + ":submitted") !== payload.nonce) {
           throw new Error("AUTH_CALLBACK_CONTEXT_MISSING");
         }
-        // Absent before a body interruption, false while offline, true once
+        // Absent before a browser/upstream body interruption, false while offline, true once
         // reserved for dispatch. Reloads inherit the same single check.
         const offline = adminBrowserIsOffline();
         saved.bodyResultCheckUsed = !offline;
@@ -8975,7 +8975,10 @@ body.preview-white-cards #order-page-section .card {
               continue;
             }
             requireCurrentCallback();
-            const result = response.ok ? await response.json() : null;
+            // The direct transport has already validated the action and JSON
+            // envelope. Only its exact upstream body failure may use the same
+            // single receipt lookup as a browser-side body interruption.
+            const result = (response.ok || response.status === 502) ? await response.json() : null;
             requireCurrentCallback();
             if (checkingLostBody) {
               if (result?.error === "ADMIN_AUTH_PENDING" || isAdminAuthUnacceptedBusy(result)) {
@@ -8983,7 +8986,14 @@ body.preview-white-cards #order-page-section .card {
               }
               return response;
             }
-            if (!isAdminAuthUnacceptedBusy(result) || payload.claimRetryProtocol !== 1 ||
+            if (response.status === 502 && result?.ok === false && result.action === "adminAuth" &&
+                result.error === "UPSTREAM_BODY_INVALID" && payload.resultOnly !== true &&
+                typeof payload.code === "string" && payload.code) {
+              const saved = readAdminAuthBusyRecovery(payload, deadline);
+              request = prepareAdminAuthBodyResultCheck(payload, saved);
+              continue;
+            }
+            if (!response.ok || !isAdminAuthUnacceptedBusy(result) || payload.claimRetryProtocol !== 1 ||
                 payload.resultOnly === true || typeof payload.code !== "string" || !payload.code) return response;
             let saved = readAdminAuthBusyRecovery(payload, deadline);
             if ((saved.busyRetryCount || 0) >= 2) return response;
