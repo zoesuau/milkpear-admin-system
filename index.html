@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant" data-release-version="20261105-auth-locks-product-stats-v1">
+<html lang="zh-Hant" data-release-version="20261106-order-read-efficiency-v1">
   <head>
     <meta charset="UTF-8" />
-    <meta name="admin-release" content="20261105-auth-locks-product-stats-v1" />
+    <meta name="admin-release" content="20261106-order-read-efficiency-v1" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0"
@@ -10,11 +10,11 @@
     <title>出貨後台</title>
     <link rel="preconnect" href="https://sanheyuan-admin-response.zoe-quokka.workers.dev" crossorigin />
     <link rel="preload" as="script" href="./customer-config.js?v=20261027-settings-spacing-production-v2" />
-    <link rel="preload" as="script" href="./admin-direct-response.js?v=20261105-auth-locks-product-stats-v1" />
+    <link rel="preload" as="script" href="./admin-direct-response.js?v=20261106-order-read-efficiency-v1" />
     <link rel="preload" as="script" href="./admin-diagnostics.js?v=20261030-visible-order-badge-v1" />
     <link rel="preload" as="script" href="./admin-mutation-recovery.js?v=20261019-label-fields-v1" />
     <script src="./customer-config.js?v=20261027-settings-spacing-production-v2"></script>
-    <script src="./admin-direct-response.js?v=20261105-auth-locks-product-stats-v1"></script>
+    <script src="./admin-direct-response.js?v=20261106-order-read-efficiency-v1"></script>
     <script src="./admin-diagnostics.js?v=20261030-visible-order-badge-v1"></script>
     <script src="./admin-mutation-recovery.js?v=20261019-label-fields-v1"></script>
     <link
@@ -13840,17 +13840,22 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
         );
       }
 
-      function attachAdminOrderSnapshotReadMeta(orders, payload = {}) {
+      function attachAdminOrderSnapshotReadMeta(orders, payload = {}, baseSorted = false) {
         // Keep the published chunk cache unchanged. Durable server-side deltas
         // are applied afresh on every read, including unchanged/base-cache hits.
         const baseCount = orders.length;
         const byOrderNo = new Map(orders.map(order => [String(order.orderNo || ""), order]));
-        for (const order of payload.pendingOrders || []) {
+        const pendingOrders = payload.pendingOrders || [];
+        for (const order of pendingOrders) {
           const orderNo = String(order?.orderNo || "").trim();
           if (!orderNo) throw new Error("ADMIN_ORDER_SNAPSHOT_PENDING_INVALID");
           byOrderNo.set(orderNo, order);
         }
-        orders = [...byOrderNo.values()].sort(compareAdminOrdersByCreatedAtDesc);
+        // A fresh array from flattenAdminOrderSnapshotChunks is already sorted.
+        // Deltas and duplicate legacy identifiers still take the full merge path.
+        if (!baseSorted || pendingOrders.length || byOrderNo.size !== baseCount) {
+          orders = [...byOrderNo.values()].sort(compareAdminOrdersByCreatedAtDesc);
+        }
         Object.defineProperty(orders, "adminReadMeta", {
           value: {
             searchMode: false,
@@ -13943,7 +13948,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
           throw new Error("ADMIN_ORDER_SNAPSHOT_COUNT_MISMATCH");
         }
         persistAdminOrderSnapshotSessionCache();
-        return attachAdminOrderSnapshotReadMeta(orders, payload);
+        return attachAdminOrderSnapshotReadMeta(orders, payload, true);
       }
 
       async function acceptAdminStartupWorkspace(payload, contextIsCurrent) {
@@ -14484,7 +14489,7 @@ function calculateGroupShipping(items, offshore, legacyCalculate) {
             : payload.unchanged === true
             ? attachAdminOrderSnapshotReadMeta(
                 flattenAdminOrderSnapshotChunks(adminOrderSnapshotManifest),
-                payload,
+                payload, true,
               )
             : await mergeAdminOrderSnapshotPayload(payload);
           if (mutationRevision !== adminOrderMutationRevision || sessionStorage.getItem(ADMIN_LINE_SESSION_TOKEN_KEY) !== adminSessionToken) return null;
