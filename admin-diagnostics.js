@@ -130,8 +130,8 @@
 
   function sanitizeSnapshotTiming(value) {
     if (!value || typeof value !== 'object') return null;
-    const readReasons = new Set(['NOT_ATTEMPTED','DISABLED','DIRTY','VERSION_MISSING','INDEX_MISSING','VERSION_MISMATCH','INDEX_INVALID','SEGMENT_MISSING','SEGMENT_INVALID','LENGTH_MISMATCH','CHECKSUM_MISMATCH','MANIFEST_INVALID','PUBLICATION_CHANGED','HIT','READ_EXCEPTION','REQUIRED_VERSION_MISMATCH']);
-    const writeReasons = new Set(['NOT_ATTEMPTED','DIRTY','VERSION_MISSING','VERSION_MISMATCH','MANIFEST_INVALID','TOO_LARGE','PUBLICATION_CHANGED','STORED','WRITE_EXCEPTION']);
+    const readReasons = new Set(['NOT_ATTEMPTED','DISABLED','DIRTY','VERSION_MISSING','INDEX_MISSING','VERSION_MISMATCH','INDEX_INVALID','SEGMENT_MISSING','SEGMENT_INVALID','LENGTH_MISMATCH','CHECKSUM_MISMATCH','MANIFEST_INVALID','PUBLICATION_CHANGED','HIT','SUMMARY_HIT','SUMMARY_FALLBACK','READ_EXCEPTION','REQUIRED_VERSION_MISMATCH']);
+    const writeReasons = new Set(['NOT_ATTEMPTED','DIRTY','VERSION_MISSING','VERSION_MISMATCH','MANIFEST_INVALID','TOO_LARGE','PUBLICATION_CHANGED','STORED','SUMMARY_STORED','WRITE_EXCEPTION']);
     const result = {};
     for (const key of ['serverElapsedMs','sessionMs','cacheMs','manifestMs','chunksMs','firestoreMs','driveMs','snapshotConfigReadMs','snapshotCacheIoMs','snapshotCacheDecodeMs','snapshotCacheWriteMs']) {
       result[key] = Number.isFinite(value[key]) && value[key] >= 0 ? Math.min(600000, value[key]) : null;
